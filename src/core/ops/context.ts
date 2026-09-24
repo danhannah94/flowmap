@@ -13,12 +13,13 @@
 //
 // v1.1 adds "Keeping the layout file in step" (§8.2): `rekeyEdgeEntries` re-keys edge entries by position after an
 // operation changes the edge list, and `commit` re-expresses bend points in `_unassigned` when an operation makes the
-// Unassigned lane disappear. A config whose note ids clash with node or lane ids has errors (§4, UI31), as in the UI.
+// Unassigned lane disappear, and (ruling R12) re-expresses the old first lane's pins and bend points when an operation
+// changes which lane is displayed first. A config whose note ids clash with node or lane ids has errors (§4, UI31).
 
 import { checkNoteClashes, ConfigDoc, laneOrder, parseConfig, type EditResult, type FlowConfig } from '../config';
 import {
-  checkPinRanges, effectivePlacements, firstLaneOf, movePointsToLane, parseLayoutFile, rekeyEdgesByPosition,
-  serializeLayoutFile,
+  checkPinRanges, effectivePlacements, firstLaneOf, movePointsToLane, parseLayoutFile, pinOf, rekeyEdgesByPosition,
+  serializeLayoutFile, setPins,
 } from '../layoutfile';
 import { pinTranslation, type LayoutOutput, type Translation } from '../layout';
 import { loadDocument } from '../document';
@@ -26,7 +27,7 @@ import {
   declaredNodes, edgeIds, findNode, format, isIdForm, isReservedId, parse, toGraph, undeclaredNodes,
   type Diagram, type Edge, type NodeDecl,
 } from '../mmd';
-import { UNASSIGNED, type Graph, type LayoutFile } from '../types';
+import { UNASSIGNED, type Graph, type LayoutFile, type Pin } from '../types';
 
 /** The diagram's three files. `null` means the file doesn't exist (only the `.mmd` is required, §2). */
 export interface Files {
@@ -324,7 +325,37 @@ export class Ctx {
     this.layout = movePointsToLane(this.layout, UNASSIGNED, last, { across: from - to });
   }
 
+  /**
+   * Ruling R12: when an operation changes which lane is displayed first (reordering lanes, adding a lane to a
+   * lane-free diagram, deleting the first lane…), the old first lane's pins and bend points get its growth U (the
+   * frame's `across`, §6) added to every `across`, in the same write: every value is then at least 0 (§5) and nothing
+   * moves on screen (the old first lane's zero line was U after its start edge; now it is its start edge).
+   */
+  private keepOldFirstLane(): void {
+    const before = this.graphIn().lanes[0]?.id;
+    if (before === undefined) return;
+    const now = firstLaneOf(laneOrder(parseConfig(this.configText).config, this.d.lanes.map((l) => l.id)));
+    if (now === before) return;
+    if (this.layoutBroken) {
+      // Can't read U. Only a file with a negative number can have U > 0; refuse if it could hold one in that lane.
+      const text = this.input.layout;
+      if (text !== null && /-\s*\d/.test(text) && mentions(text, before)) {
+        refuse('The layout file has errors; fix it before making this change (it would move the first lane\'s pins)');
+      }
+      return;
+    }
+    const u = this.frame().across;
+    if (u === 0 || !this.layout) return;
+    const pins = Object.entries(this.layout.nodes)
+      .map(([id, e]) => [id, pinOf(e)] as const)
+      .filter((x): x is readonly [string, Pin] => x[1] !== null && x[1].lane === before)
+      .map(([id, pin]): [string, Pin] => [id, { ...pin, across: pin.across + u }]);
+    if (pins.length) this.layout = setPins(this.layout, pins);
+    this.layout = movePointsToLane(this.layout, before, before, { across: u });
+  }
+
   commit(): Files {
+    this.keepOldFirstLane();
     this.keepUnassignedPoints();
     let layout = this.input.layout;
     if (!this.layoutBroken && !sameJson(this.layout, this.layoutIn)) {
