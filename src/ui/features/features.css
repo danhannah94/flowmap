@@ -6,23 +6,24 @@
   cursor: grab;
 }
 
-/* Keep the label clear of the opener (top of an LR strip, right end of a TB bar): reserve that side only. */
+/* Keep the label clear of the opener (top of an LR strip, right end of a TB bar): reserve that side only, and no
+   more than it needs, so a label like "Purchasing" still fits a one-row lane. */
 .fm-LR > .fm-lane-header > .fm-lane-label {
-  max-height: calc(100% - 44px);
-  margin-top: 30px;
+  max-height: calc(100% - 34px);
+  margin-top: 28px;
 }
 
 .fm-TB > .fm-lane-header > .fm-lane-label {
-  max-width: calc(100% - 44px);
-  margin-right: 30px;
+  max-width: calc(100% - 38px);
+  margin-right: 28px;
 }
 
 .fm-lane-menu-btn {
   position: absolute;
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   padding: 0;
   border: 1px solid transparent;
   border-radius: 7px;
@@ -34,8 +35,8 @@
 }
 
 .fm-LR > .fm-lane-header > .fm-lane-menu-btn {
-  top: 7px;
-  left: 7px;
+  top: 5px;
+  left: 9px;
 }
 
 .fm-LR > .fm-lane-header > .fm-lane-menu-btn svg {
@@ -43,8 +44,8 @@
 }
 
 .fm-TB > .fm-lane-header > .fm-lane-menu-btn {
-  right: 7px;
-  top: 7px;
+  right: 5px;
+  top: 9px;
 }
 
 .fm-lane-header:hover > .fm-lane-menu-btn,
@@ -597,4 +598,49 @@
 .fm-editor-wrap-title > .fm-editor-title {
   width: 100%;
   min-width: 0;
+}
+
+/* ---- first steps on an empty diagram (EmptyHint.tsx) -------------------------------------------------------- */
+
+.fm-empty-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: min(640px, calc(100% - 220px));
+  padding: 10px 12px 10px 18px;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--muted);
+  background: var(--panel-glass);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  z-index: 5;
+  animation: fm-empty-hint-in 0.2s ease-out;
+}
+
+.fm-empty-hint-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  white-space: nowrap;
+}
+
+.fm-empty-hint-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+@keyframes fm-empty-hint-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
 }

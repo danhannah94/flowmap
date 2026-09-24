@@ -47,14 +47,6 @@ function headerEditorAnchor(lane: LayoutLane, direction: 'LR' | 'TB'): Rect {
   return { x: 12, y: Math.round(lane.y + lane.height / 2 - 17), width: 220, height: 34 };
 }
 
-/**
- * Edit in place when the canvas is zoomed in enough to read the editor; when zoomed out (a fitted big diagram), use the
- * centred prompt instead, so the text and any refusal stay readable.
- */
-export function editInPlace(store: Store): boolean {
-  return store.getState().viewport.zoom >= 0.7;
-}
-
 /** Pan (never zoom) the least amount that brings a lane's band into view across the flow, if it isn't already. */
 export function revealLane(store: Store, id: string): void {
   const lane = laneById(store, id);
@@ -108,9 +100,9 @@ export function editLaneLabel(store: Store, id: string): boolean {
     testid: 'label-editor',
     target: { kind: 'lane', id },
     initial: lane.label,
-    ...(editInPlace(store)
-      ? { anchor: headerEditorAnchor(lane, layout.direction), variant: 'label' as const }
-      : { anchor: null, placeholder: `Rename the lane “${lane.label}”`, variant: 'plain' as const }),
+    anchor: headerEditorAnchor(lane, layout.direction),
+    variant: 'label',
+    align: 'start',
     commit: (text) => {
       if (text === lane.label) return;
       store.apply(setLaneLabel, id, text);
@@ -130,7 +122,8 @@ export function editLaneId(store: Store, id: string): void {
     testid: 'id-editor',
     target: { kind: 'lane', id },
     initial: id,
-    anchor: editInPlace(store) ? headerEditorAnchor(lane, layout.direction) : null,
+    anchor: headerEditorAnchor(lane, layout.direction),
+    align: 'start',
     placeholder: `Id of the lane “${lane.label}”`,
     variant: 'plain',
     commit: (text) => {

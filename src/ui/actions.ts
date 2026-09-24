@@ -37,6 +37,8 @@ export function editNodeLabel(store: Store, id: string): void {
   const node = store.layout?.nodes.find((n) => n.id === id);
   if (!node) return;
   store.select({ nodes: [id] });
+  // A block added below the fold of a growing lane, or Enter on one scrolled away: bring it into view first.
+  store.reveal(node, { onlyIfOffscreen: true });
   store.beginEdit({
     testid: 'label-editor',
     target: { kind: 'node', id },

@@ -1,5 +1,5 @@
 // Error banner (UI31), notices and toasts (UI28, UI30), the confirmation dialog, and the side-panel slot.
-import type { ComponentType } from 'react';
+import { useLayoutEffect, useState, type ComponentType } from 'react';
 import type { Problem } from '../../core/types';
 import type { State } from '../store/store';
 import { useStore, useStoreState } from '../store/hooks';
@@ -123,12 +123,70 @@ export interface SidePanel {
 
 export const sidePanels: SidePanel[] = [];
 
+/** The column's width: the styles panel needs a little more room for its colour rows. */
+export function sideColumnWidth(ids: readonly string[]): number {
+  return ids.includes('styles') ? 392 : 340;
+}
+
+/**
+ * How long the column waits to open after a press on the canvas where it would appear. Opening it at once would put
+ * it under the pointer, so the second click of a double-click (UI8 on a block near the right edge) would land on the
+ * panel instead of the block.
+ */
+const HOLD_MS = 350;
+
+/** The last primary-button press anywhere on the page (window capture, so canvas pointer capture doesn't hide it). */
+const press = { x: 0, y: 0, down: false, at: -Infinity, upAt: -Infinity };
+if (typeof window !== 'undefined') {
+  window.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (e.button !== 0) return;
+      Object.assign(press, { x: e.clientX, y: e.clientY, down: true, at: performance.now() });
+    },
+    true,
+  );
+  const up = () => {
+    if (!press.down) return;
+    press.down = false;
+    press.upAt = performance.now();
+  };
+  window.addEventListener('pointerup', up, true);
+  window.addEventListener('pointercancel', up, true);
+}
+
+/** Is a recent press on the canvas inside the strip a column of `width` would cover? */
+function pressUnderColumn(width: number): boolean {
+  const recent = press.down || performance.now() - press.upAt < HOLD_MS;
+  if (!recent || performance.now() - press.at > 2000) return false;
+  const canvas = document.querySelector('[data-testid="canvas"]')?.getBoundingClientRect();
+  if (!canvas) return false;
+  return press.x >= canvas.right - width && press.x <= canvas.right && press.y >= canvas.top && press.y <= canvas.bottom;
+}
+
 export function SidePanels() {
-  const visible = useStoreState((s) => sidePanels.filter((p) => p.when(s)).map((p) => p.id).join(' '));
+  const wanted = useStoreState((s) => sidePanels.filter((p) => p.when(s)).map((p) => p.id).join(' '));
+  const [visible, setVisible] = useState(wanted);
+  // Opening waits while the press that caused it (or a double-click's second press) could still land under the
+  // column; closing and switching panels are immediate. Once the column opens, the canvas narrows and keeps the
+  // selected block in view (Store.setViewportSize).
+  useLayoutEffect(() => {
+    if (wanted === visible) return;
+    if (visible === '' && wanted !== '' && pressUnderColumn(sideColumnWidth(wanted.split(' ')))) {
+      let timer = 0;
+      const tick = () => {
+        if (!press.down && performance.now() - press.upAt >= HOLD_MS) setVisible(wanted);
+        else timer = window.setTimeout(tick, 40);
+      };
+      timer = window.setTimeout(tick, 40);
+      return () => clearTimeout(timer);
+    }
+    setVisible(wanted);
+  }, [wanted, visible]);
   if (!visible) return null;
   const ids = visible.split(' ');
   return (
-    <aside className="fm-side">
+    <aside className="fm-side" style={{ width: sideColumnWidth(ids) }}>
       {sidePanels
         .filter((p) => ids.includes(p.id))
         .map((p) => (

@@ -64,6 +64,18 @@ export async function putDiagram(file: string, base: Versions, files: Files): Pr
   return { kind: 'saved', versions: js.versions };
 }
 
+/**
+ * Create a new, empty diagram (`flowchart LR`, no config or layout file). Refused if a diagram with that name exists:
+ * the PUT is based on "no files", so an existing file is a conflict and nothing is written.
+ */
+export async function createDiagram(file: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const none: Versions = { mmd: null, config: null, layout: null };
+  const out = await putDiagram(file, none, { mmd: 'flowchart LR\n', config: null, layout: null });
+  if (out.kind === 'saved') return { ok: true };
+  if (out.kind === 'conflict') return { ok: false, error: `${file} already exists` };
+  return { ok: false, error: out.message };
+}
+
 export async function requestExport(file: string, format: 'svg' | 'png', theme: 'light' | 'dark'): Promise<string> {
   const res = await fetch(`/api/export?${q(file)}&format=${format}&theme=${theme}`, { method: 'POST' });
   if (!res.ok) throw new Error(await failure(res));

@@ -88,10 +88,15 @@ const EdgeView = memo(function EdgeView({ edge, source, target, selected, mode, 
 
 /**
  * A selected edge's draggable end (UI16). It sits a little way along the line from its block rather than on the
- * border: blocks are drawn above edges and their handles reach 6 px outside the box, so a grip centred on the border
- * would be under the block. At the target end it sits just behind the arrowhead.
+ * border: blocks are drawn above edges and their handles reach outside the box, so a grip centred on the border
+ * would be under the block. At the target end it sits just behind the arrowhead. Its radius keeps it about 10 px
+ * across on screen when zoomed out (capped so it never dwarfs the line), inside a wider invisible hit ring of about
+ * 14 px; where the ring reaches under a block, the block wins.
  */
 function EndGrip({ pts, end }: { pts: Point[]; end: 'source' | 'target' }) {
+  const zoom = useStoreState((s) => s.viewport.zoom);
+  const r = Math.min(14, Math.max(5, 6 / zoom));
+  const hit = Math.min(20, Math.max(8, 9 / zoom));
   const path = end === 'source' ? pts : [...pts].reverse();
   let total = 0;
   for (let i = 1; i < path.length; i++) total += Math.hypot(path[i]!.x - path[i - 1]!.x, path[i]!.y - path[i - 1]!.y);
@@ -108,7 +113,12 @@ function EndGrip({ pts, end }: { pts: Point[]; end: 'source' | 'target' }) {
     left -= len;
     at = b;
   }
-  return <circle className="fm-edge-end" data-edge-end={end} cx={at.x} cy={at.y} r={5} />;
+  return (
+    <g className="fm-edge-end" data-edge-end={end}>
+      <circle className="fm-edge-end-hit" cx={at.x} cy={at.y} r={hit} />
+      <circle className="fm-edge-end-dot" cx={at.x} cy={at.y} r={r} style={{ strokeWidth: Math.min(4, 2 / zoom) }} />
+    </g>
+  );
 }
 
 function arrowHead(from: Point, tip: Point): string {

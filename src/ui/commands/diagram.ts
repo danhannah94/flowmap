@@ -1,9 +1,10 @@
-// Diagram-level commands: direction (UI23), export (UI32), the shortcut list (UI33). The title (UI22) is edited by
-// double-clicking it (features/index.tsx). `styles-toggle` (UI25) stays a placeholder for the styles feature.
+// Diagram-level commands: direction (UI23), the styles panel (UI25, defined with the panel in chrome/Styles.tsx),
+// export (UI32), the shortcut list (UI33). The title (UI22) is edited by double-clicking it (features/index.tsx).
 import { icons } from '../chrome/icons';
+import { stylesToggleCommand } from '../chrome/Styles';
 import { exportDiagram, toggleDirection } from '../features/diagramActions';
 import { SHORTCUTS_PANEL } from '../features/ShortcutList';
-import { editable, placeholder, type Command } from './types';
+import { editable, type Command } from './types';
 
 const exportCommand = (format: 'svg' | 'png'): Command => ({
   id: `export-${format}`,
@@ -23,7 +24,7 @@ export const diagramCommands: Command[] = [
     enabled: editable,
     run: (store) => toggleDirection(store),
   },
-  placeholder('styles-toggle', 'Styles', icons.styles),
+  stylesToggleCommand,
   exportCommand('svg'),
   exportCommand('png'),
   {

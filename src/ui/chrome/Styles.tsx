@@ -12,7 +12,6 @@ import {
 } from '../../core/ops';
 import { getTheme } from '../../core/theme';
 import { SHAPE_KINDS, UNASSIGNED } from '../../core/types';
-import { command } from '../commands';
 import type { Command } from '../commands/types';
 import { shallow, useStore, useStoreState } from '../store/hooks';
 import type { Store } from '../store/store';
@@ -589,7 +588,7 @@ function StylesYaml({ configText, disabled }: { configText: string | null; disab
 // ---------------------------------------------------------------------------------------------------------------
 // Registration
 
-/** The `styles-toggle` toolbar command (§8.3). `commands/diagram.ts` can list this in place of its placeholder. */
+/** The `styles-toggle` toolbar command (§8.3), listed by `commands/diagram.ts`. */
 export const stylesToggleCommand: Command = {
   id: 'styles-toggle',
   title: 'Styles: how evidence looks',
@@ -598,11 +597,6 @@ export const stylesToggleCommand: Command = {
   active: (s) => !!s.panels.styles,
   run: (store) => store.togglePanel('styles'),
 };
-
-// Until the diagram commands list the real command, fill in the placeholder (same object, so the toolbar and the
-// keyboard pick it up).
-const existing = command('styles-toggle');
-if (existing?.placeholder) Object.assign(existing, stylesToggleCommand, { placeholder: false });
 
 sidePanels.push({ id: 'styles', when: (s) => !!s.panels.styles && s.status === 'ready', Component: StylesPanel });
 

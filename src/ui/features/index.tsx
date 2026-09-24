@@ -8,6 +8,7 @@ import { setLaneHeaderExtras } from '../canvas/LanesLayer';
 import { overlays } from '../chrome/Panels';
 import { useStore } from '../store/hooks';
 import { editTitle } from './diagramActions';
+import { EmptyHint } from './EmptyHint';
 import { ExportResult } from './ExportResult';
 import { editLaneLabel } from './laneActions';
 import { LaneDeleteDialog } from './LaneDeleteDialog';
@@ -36,6 +37,7 @@ function FeatureHost() {
       <LaneDragOverlay />
       <ExportResult />
       <ShortcutList />
+      <EmptyHint />
     </>
   );
 }

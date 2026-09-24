@@ -3,7 +3,6 @@ import { setDirection, setTitle } from '../../core/ops';
 import { requestExport } from '../api';
 import type { Store } from '../store/store';
 import { TITLE_BAND } from '../store/store';
-import { editInPlace } from './laneActions';
 
 /** UI22: edit the title in place (`title-editor`). Empty (or only spaces) removes the config `title` (§4). */
 export function editTitle(store: Store): void {
@@ -17,9 +16,8 @@ export function editTitle(store: Store): void {
     target: { kind: 'title' },
     initial: current,
     // In place, the input's text lines up with the title's (its padding and border sit left of x = 0).
-    ...(editInPlace(store)
-      ? { anchor: { x: -10, y: -TITLE_BAND + 12, width: Math.max(360, shownWidth + 80), height: 40 }, variant: 'title' as const }
-      : { anchor: null, variant: 'plain' as const }),
+    anchor: { x: -10, y: -TITLE_BAND + 12, width: Math.max(360, shownWidth + 80), height: 40 },
+    variant: 'title',
     placeholder: 'Diagram title',
     commit: (text) => {
       if (text === current) return;

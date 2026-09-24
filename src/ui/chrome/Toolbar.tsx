@@ -13,7 +13,7 @@ function ToolButton({ cmd }: { cmd: Command }) {
   return (
     <button
       type="button"
-      className={`fm-tool${active ? ' fm-active' : ''}${cmd.placeholder ? ' fm-placeholder' : ''}`}
+      className={`fm-tool${active ? ' fm-active' : ''}`}
       data-testid={cmd.id}
       title={shortcut ? `${cmd.title} (${prettyKey(shortcut)})` : cmd.title}
       aria-label={cmd.title}

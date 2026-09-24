@@ -44,12 +44,16 @@ export interface EditRequest {
   placeholder?: string;
   /** Text style hint: `label` (13/18 Inter, centred) or `title` (20 bold, left). */
   variant?: 'label' | 'title' | 'plain';
+  /** Where the anchored editor sits on its anchor: centred (blocks, lines), or from its start edge (lanes, title). */
+  align?: 'center' | 'start';
   commit: (text: string) => string | void;
   cancel?: () => void;
 }
 
 export interface DragPreview {
   ids: readonly string[];
+  /** The block under the pointer (whose lane change the canvas previews). */
+  lead?: string;
   dx: number;
   dy: number;
 }
@@ -453,11 +457,61 @@ export class Store {
     this.set({ viewport: v });
   }
 
+  /**
+   * The canvas element's size: the visible area, which ends at the side column's edge (the column is a sibling, so
+   * opening it narrows the canvas). When the canvas shrinks, the view pans the least amount that keeps the block
+   * being edited or the one selected block in view.
+   */
   setViewportSize(width: number, height: number): void {
     const cur = this.state.viewportSize;
     if (cur.width === width && cur.height === height) return;
     this.set({ viewportSize: { width, height } });
-    this.maybeFit();
+    if (this.fitPending) {
+      this.maybeFit();
+      return;
+    }
+    if (cur.width > 0 && (width < cur.width || height < cur.height)) this.revealFocus();
+  }
+
+  /** The world rect the person is working on: the open editor's target, else the one selected block. */
+  private focusRect(): Rect | null {
+    const s = this.state;
+    if (s.editing?.anchor) return s.editing.anchor;
+    if (s.selection.nodes.length !== 1) return null;
+    const id = s.selection.nodes[0];
+    const n = this.layout?.nodes.find((x) => x.id === id);
+    return n ? { x: n.x, y: n.y, width: n.width, height: n.height } : null;
+  }
+
+  private revealFocus(): void {
+    if (this.state.drag || this.state.marquee) return; // never move the world under a gesture in progress
+    const r = this.focusRect();
+    if (r) this.reveal(r);
+  }
+
+  /**
+   * Pan (never zoom) the least amount that brings a world rect into the visible area, clear of the palette. With
+   * `onlyIfOffscreen`, a rect that is at least partly visible is left where it is.
+   */
+  reveal(r: Rect, opts: { margin?: number; onlyIfOffscreen?: boolean } = {}): void {
+    const { viewport: v, viewportSize: size } = this.state;
+    if (size.width === 0) return;
+    const margin = opts.margin ?? 32;
+    if (opts.onlyIfOffscreen) {
+      const sx = r.x * v.zoom + v.x;
+      const sy = r.y * v.zoom + v.y;
+      if (sx < size.width && sx + r.width * v.zoom > 0 && sy < size.height && sy + r.height * v.zoom > 0) return;
+    }
+    const shift = (start: number, end: number, lo: number, hi: number) => {
+      if (end - start > hi - lo || start < lo) return lo - start; // too big, or off the start: align the start
+      if (end > hi) return hi - end;
+      return 0;
+    };
+    const x0 = r.x * v.zoom + v.x;
+    const y0 = r.y * v.zoom + v.y;
+    const dx = shift(x0, x0 + r.width * v.zoom, PALETTE_INSET + 8, size.width - margin);
+    const dy = shift(y0, y0 + r.height * v.zoom, margin, size.height - margin);
+    if (dx || dy) this.set({ viewport: { ...v, x: v.x + dx, y: v.y + dy } });
   }
 
   private maybeFit(): void {
@@ -475,10 +529,23 @@ export class Store {
     this.set({ viewport: fitViewport(bounds, s.viewportSize, 40, PALETTE_INSET) });
   }
 
+  /**
+   * Zoom by `factor` around a screen point: the pointer for the wheel; for the buttons and keys, the one selected
+   * block if it is on screen (so it stays put while you zoom in to work on it), else the middle of the visible area.
+   */
   zoomBy(factor: number, center?: { x: number; y: number }): void {
     const s = this.state;
-    const c = center ?? { x: s.viewportSize.width / 2, y: s.viewportSize.height / 2 };
-    this.set({ viewport: zoomAround(s.viewport, factor, c) });
+    this.set({ viewport: zoomAround(s.viewport, factor, center ?? this.zoomCentre()) });
+  }
+
+  private zoomCentre(): { x: number; y: number } {
+    const { viewport: v, viewportSize: size, selection } = this.state;
+    const middle = { x: size.width / 2, y: size.height / 2 };
+    if (selection.nodes.length !== 1) return middle;
+    const n = this.layout?.nodes.find((x) => x.id === selection.nodes[0]);
+    if (!n) return middle;
+    const c = { x: (n.x + n.width / 2) * v.zoom + v.x, y: (n.y + n.height / 2) * v.zoom + v.y };
+    return c.x >= 0 && c.x <= size.width && c.y >= 0 && c.y <= size.height ? c : middle;
   }
 
   toggleTheme(): void {

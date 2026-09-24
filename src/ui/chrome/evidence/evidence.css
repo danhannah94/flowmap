@@ -1,11 +1,6 @@
 /* Evidence and styles (UI24–UI27): the inspector, the styles panel and the orphan buttons. Uses the chrome's
    variables from styles.css, so both themes follow <html data-theme>. */
 
-/* The styles panel needs a little more room than the foundation's side column. */
-.fm-side:has(.fm-styles) {
-  width: 392px;
-}
-
 .fm-ev-panel {
   display: flex;
   flex-direction: column;

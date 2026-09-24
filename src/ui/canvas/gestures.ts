@@ -174,7 +174,7 @@ registerGesture('node', (hit, e, ctx) => {
       if (blocked) return;
       dragging = true;
       const p = ctx.world(ev);
-      store.set({ drag: { ids, dx: p.x - start.x, dy: p.y - start.y } });
+      store.set({ drag: { ids, lead: hit.id, dx: p.x - start.x, dy: p.y - start.y } });
     },
     up(ev) {
       if (!dragging) {

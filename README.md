@@ -21,7 +21,8 @@ pnpm exec flowmap serve <dir>            # the editor for every .mmd in <dir>, o
 pnpm exec flowmap serve <dir> --port 5000
 ```
 
-Open the address it prints, pick a diagram, and edit. `/?file=<name>.mmd` opens one directly.
+Open the address it prints, pick a diagram (or start an empty one with New diagram), and edit. `/?file=<name>.mmd`
+opens one directly.
 
 The other commands (each takes the path to a `.mmd`; its config and layout files are found beside it):
 
@@ -66,12 +67,14 @@ a block, or select it and press Enter, to rename it. Change its shape from the s
 inspector.
 
 **Moving.** Drag a block to move it; it is pinned where you drop it (saved within a second). Drop it in another lane
-to move it there. Shift-click adds to the selection, Shift-drag on the background draws a selection box, and the
-arrow keys nudge by 10 px. Unpin puts selected blocks back under automatic placement; Re-layout all clears every pin.
-Drag the background to pan; scroll or pinch to zoom; Fit shows everything.
+to move it there (the lane it will land in lights up while you drag). Shift-click adds to the selection, Shift-drag on
+the background draws a selection box, and the arrow keys nudge by 10 px. Unpin puts selected blocks back under
+automatic placement; Re-layout all clears every pin. Drag the background to pan; scroll or pinch to zoom; Fit shows
+everything.
 
-**Lines.** Drag from a block's connection handle to another block, or select a block, press Connect and click the
-target. Select a line and drag either end to reconnect it. Double-click a line to set or clear its label.
+**Lines.** Drag from a block's connection handle (the dot on its side, shown on hover) to another block, or select a
+block, press Connect and click the target. Select a line and drag either end to reconnect it. Double-click a line to
+set or clear its label.
 
 **Lanes.** Add a lane from the toolbar and name it. Double-click a lane's header to rename it. The header's menu
 (the `···` button that appears on hover) can also change the lane's id, move it up or down, or delete it. Drag a lane

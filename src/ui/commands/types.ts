@@ -24,17 +24,10 @@ export interface Command {
   /** Toggle state for buttons such as styles or connect (`aria-pressed`). */
   active?: (s: State) => boolean;
   run: (store: Store, e?: KeyboardEvent) => void;
-  /** A not-yet-built feature: rendered as a disabled button with the right test id. */
-  placeholder?: boolean;
 }
 
 /** Enabled when the diagram is loaded and has no `.mmd` errors (UI31). */
 export const editable = (s: State) => s.status === 'ready' && !!s.derived && !s.derived.readOnly;
-
-/** A disabled toolbar button with the right test id, for a feature another module will provide. */
-export function placeholder(id: string, title: string, icon?: ReactNode): Command {
-  return { id, title, icon, placeholder: true, enabled: () => false, run: () => {} };
-}
 
 export function isEnabled(cmd: Command, s: State, store: Store): boolean {
   return (cmd.enabled ?? editable)(s, store);

@@ -1,6 +1,6 @@
 // UI1: the home page lists the diagrams; `/?file=<name>.mmd` opens one in the editor.
 import { useEffect, useMemo, useState } from 'react';
-import { listDiagrams } from './api';
+import { createDiagram, listDiagrams } from './api';
 import { Canvas } from './canvas/Canvas';
 import { Palette } from './chrome/Palette';
 import './chrome/evidence'; // evidence and styles (UI24–UI27): inspector, styles panel, orphan deletes
@@ -117,10 +117,13 @@ function HomePage() {
       </header>
       <main className="fm-homepage">
         <div className="fm-home-card">
-          <h1>Diagrams</h1>
+          <div className="fm-home-head">
+            <h1>Diagrams</h1>
+            <NewDiagram taken={files ?? []} />
+          </div>
           {error ? <p className="fm-error-text">Couldn’t list the diagrams: {error}</p> : null}
           {files === null && !error ? <p className="fm-muted">Loading…</p> : null}
-          {files && files.length === 0 ? <p className="fm-muted">No .mmd files in this folder yet.</p> : null}
+          {files && files.length === 0 ? <p className="fm-muted">No .mmd files in this folder yet. Start one with New diagram.</p> : null}
           <ul data-testid="diagram-list" className="fm-diagram-list">
             {(files ?? []).map((f) => (
               <li key={f}>
@@ -134,5 +137,74 @@ function HomePage() {
         </div>
       </main>
     </div>
+  );
+}
+
+/** The file name for a new diagram's name: lowercase words joined by `-` (`Purchase approval` → `purchase-approval.mmd`). */
+function diagramFileName(name: string): string | null {
+  const slug = name.trim().toLowerCase().replace(/\.mmd$/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return slug ? `${slug}.mmd` : null;
+}
+
+/** Home page: name a new diagram, create its empty `.mmd`, and open it. */
+function NewDiagram({ taken }: { taken: readonly string[] }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const file = diagramFileName(name);
+  const submit = async () => {
+    if (!file || busy) return;
+    if (taken.includes(file)) {
+      setError(`${file} already exists`);
+      return;
+    }
+    setBusy(true);
+    const r = await createDiagram(file);
+    setBusy(false);
+    if (r.ok) location.href = `/?file=${encodeURIComponent(file)}`;
+    else setError(r.error);
+  };
+  if (!open) {
+    return (
+      <button type="button" className="fm-btn fm-btn-primary" onClick={() => setOpen(true)}>
+        New diagram
+      </button>
+    );
+  }
+  return (
+    <form
+      className="fm-new-diagram"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit();
+      }}
+    >
+      <input
+        autoFocus
+        className="fm-new-diagram-input"
+        placeholder="Name, e.g. Purchase approval"
+        aria-label="New diagram name"
+        value={name}
+        spellCheck={false}
+        onChange={(e) => {
+          setName(e.target.value);
+          setError(null);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            setOpen(false);
+            setName('');
+            setError(null);
+          }
+        }}
+      />
+      <button type="submit" className="fm-btn fm-btn-primary" disabled={!file || busy}>
+        Create
+      </button>
+      <div className={error ? 'fm-new-diagram-note fm-error-text' : 'fm-new-diagram-note'}>
+        {error ?? (file ? `Creates ${file}` : 'Enter to create, Esc to cancel')}
+      </div>
+    </form>
   );
 }
