@@ -85,6 +85,11 @@ export interface RouterOptions {
   /** Extra coordinates that must be grid lines (ports). */
   xs: number[];
   ys: number[];
+  /**
+   * Room outside the diagram routes may use (default 0). Only the fallback router uses it, for a set side (§6 L12) whose
+   * port faces out of the diagram; running out there costs extra.
+   */
+  pad?: number;
 }
 
 export class Router {
@@ -121,16 +126,23 @@ export class Router {
     const yset = new Set<number>();
     const W = opts.width;
     const H = opts.height;
+    const pad = opts.pad ?? 0;
     const addX = (v: number) => {
-      if (v >= 0 && v <= W) xset.add(Math.round(v));
+      if (v >= -pad && v <= W + pad) xset.add(Math.round(v));
     };
     const addY = (v: number) => {
-      if (v >= 0 && v <= H) yset.add(Math.round(v));
+      if (v >= -pad && v <= H + pad) yset.add(Math.round(v));
     };
     addX(2);
     addX(W - 2);
     addY(2);
     addY(H - 2);
+    if (pad > 0) {
+      addX(-pad);
+      addX(W + pad);
+      addY(-pad);
+      addY(H + pad);
+    }
     // Only the margin lines around each box are grid lines (plus ports and channel tracks); grid edges are classified
     // by whether their span overlaps a box, which is exact without lines on the box sides.
     for (const b of boxes) {
@@ -170,11 +182,13 @@ export class Router {
       const y = this.ys[j]!;
       if (opts.laneBorders.some((b) => Math.abs(b - y) <= 3)) this.rowExtra[j] = BORDER_PER_PX;
       if (y <= 3 || y >= H - 3) this.rowExtra[j] = BORDER_PER_PX;
+      if (y < 0 || y > H) this.rowExtra[j] = HEADER_PER_PX;
     }
     for (let i = 0; i < nx; i++) {
       const x = this.xs[i]!;
       if (x < opts.headerEnd) this.colExtra[i] = HEADER_PER_PX;
       if (x <= 3 || x >= W - 3) this.colExtra[i] = BORDER_PER_PX;
+      if (x < 0 || x > W) this.colExtra[i] = HEADER_PER_PX;
     }
     boxes.forEach((b) => this.markNear(b));
     boxes.forEach((b, bi) => this.markBox(b, bi));
@@ -244,6 +258,14 @@ export class Router {
     }
   }
 
+  /**
+   * Records a line the router didn't route (a manual line, §6 L11) as if it had, so later routes pay for crossing it
+   * and avoid running along it. Its corners must be grid lines (pass them in `xs`/`ys`); parts off the grid are skipped.
+   */
+  addPolyline(points: [number, number][]): void {
+    this.record(simplify(points));
+  }
+
   /** Marks a placed edge label (abstract coordinates) so later routes avoid running under it. */
   addLabel(r: RBox): void {
     const { xs, ys, nx } = this;
@@ -265,7 +287,8 @@ export class Router {
     }
   }
 
-  route(req: RouteRequest): RouteResult {
+  /** The route, or null when there is none at all (a port facing out of the grid: see RouterOptions.pad). */
+  route(req: RouteRequest): RouteResult | null {
     const box = this.boxes;
     const s = box[req.src]!;
     const t = box[req.tgt]!;
@@ -291,7 +314,7 @@ export class Router {
         this.search(req, 1, null, STRICT_BUDGET * 3, 8);
       if (r) return r;
     }
-    return this.search(req, 2, null, Infinity, GREEDY)!;
+    return this.search(req, 2, null, Infinity, GREEDY);
   }
 
   /**

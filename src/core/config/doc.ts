@@ -4,7 +4,11 @@ import { parseDocument } from 'yaml';
 import { UNASSIGNED, type Problems } from '../types';
 import { isValidColor, sameColor } from './color';
 import { deepEqual, isPlainObject, isScalarValue, renderDocument, type Path } from './emit';
-import { BORDER_STYLES, COLOR_PROPS, FONT_STYLES, type ColorProp, type FlowConfig, type StyleProp } from './model';
+import { isIdForm, isReservedId } from '../mmd/syntax';
+import {
+  BLOCK_STYLE_KEY, BORDER_STYLES, COLOR_PROPS, FONT_STYLES, NOTE_FONT_MAX, NOTE_FONT_MIN, NOTE_FONT_SIZE,
+  type ColorProp, type FlowConfig, type StyleProp,
+} from './model';
 import { parseConfig, readRules, scalarString } from './parse';
 import {
   appendItem, deleteIn, rebuildSeq, renameKey, setIn, sourceOf, SpliceError, swapItems, valueAt,
@@ -84,6 +88,52 @@ function renameMatchValues(src: string, field: string, oldV: string, newV: strin
 }
 
 const blank = (s: string | null | undefined) => s === null || s === undefined || s.trim() === '';
+
+/**
+ * A colour from its light and dark inputs (UI25, UI35): null when both are empty (clear it); a dark colour needs a
+ * light one; a dark value that is empty or the same colour as the light one gives a single colour; otherwise
+ * `{light, dark}`. Colours are `#rgb` or `#rrggbb`, written lowercase as entered.
+ */
+function colorValue(light: string | null, dark: string | null): string | { light: string; dark: string } | null {
+  const l = blank(light) ? null : light!.trim().toLowerCase();
+  const d = blank(dark) ? null : dark!.trim().toLowerCase();
+  if (l === null && d === null) return null;
+  if (l === null) return refuse('A dark colour needs a light colour too');
+  if (!isValidColor(l)) refuse(`"${light}" is not a colour (use #rgb or #rrggbb)`);
+  if (d !== null && !isValidColor(d)) refuse(`"${dark}" is not a colour (use #rgb or #rrggbb)`);
+  return d === null || sameColor(l, d) ? l : { light: l, dark: d };
+}
+
+/**
+ * Remove style properties from a node's own `style` (UI35): `style` goes too if that empties it, and the node's entry
+ * if that empties it (§4: removing a node's last field removes its entry; an emptied `nodes` is `nodes: {}`).
+ */
+function removeBlockStyleProps(src: string, id: string, props: readonly string[]): string {
+  const entry = valueAt(src, ['nodes', id]);
+  if (!isPlainObject(entry)) return src;
+  const style = entry[BLOCK_STYLE_KEY];
+  if (!isPlainObject(style)) return src;
+  const present = props.filter((p) => Object.hasOwn(style, p));
+  if (present.length === 0) return src;
+  if (present.length === Object.keys(style).length) {
+    return Object.keys(entry).length === 1 ? deleteIn(src, ['nodes', id]) : deleteIn(src, ['nodes', id, BLOCK_STYLE_KEY]);
+  }
+  let out = src;
+  for (const p of present) out = deleteIn(out, ['nodes', id, BLOCK_STYLE_KEY, p]);
+  return out;
+}
+
+const refuseStyleKey = (key: string) => {
+  if (key === BLOCK_STYLE_KEY) {
+    refuse('"style" holds the block\'s colours: set them with the colour controls, or edit the node YAML');
+  }
+};
+
+/** A note's text as written (§4): not blank, no trailing line breaks. */
+function noteText(text: string): string {
+  if (typeof text !== 'string' || text.trim() === '') refuse('A note needs some text');
+  return text.replace(/[\r\n]+$/, '');
+}
 
 export class ConfigDoc {
   constructor(readonly text: string | null) {}
@@ -184,6 +234,7 @@ export class ConfigDoc {
   setFieldOnNodes(ids: readonly string[], key: string, value: FieldValue): EditResult {
     return this.run((src) => {
       if (key.trim() === '') refuse('A field needs a name');
+      refuseStyleKey(key);
       const v = fieldValueToJs(value);
       let out = src;
       for (const id of ids) out = setIn(out, ['nodes', id, key], v);
@@ -194,6 +245,7 @@ export class ConfigDoc {
   /** Remove a field from several nodes; a node left with no fields loses its entry (§4). */
   removeFieldFromNodes(ids: readonly string[], key: string): EditResult {
     return this.run((src) => {
+      refuseStyleKey(key);
       let out = src;
       for (const id of ids) {
         const entry = valueAt(out, ['nodes', id]);
@@ -219,6 +271,7 @@ export class ConfigDoc {
     return this.run((src, cfg) => {
       if (oldId === newId) return src;
       if (Object.hasOwn(cfg.nodes, newId)) refuse(`The config already has an entry for "${newId}"`);
+      if (Object.hasOwn(cfg.notes, newId)) refuse(`"${newId}" is already a note id`);
       let out = src;
       if (Object.hasOwn(cfg.nodes, oldId)) out = renameKey(out, ['nodes'], oldId, newId);
       return renameMatchValues(out, 'id', oldId, newId);
@@ -349,16 +402,118 @@ export class ConfigDoc {
     return this.run((src, cfg) => {
       this.rule(cfg, i);
       if (!(COLOR_PROPS as readonly string[]).includes(prop)) refuse(`"${prop}" is not a colour property`);
-      const l = blank(light) ? null : light!.trim().toLowerCase();
-      const d = blank(dark) ? null : dark!.trim().toLowerCase();
       const path: Path = ['styles', i, 'style', prop];
-      if (l === null && d === null) return deleteIn(src, path);
-      if (l === null) return refuse('A dark colour needs a light colour too');
-      if (!isValidColor(l)) refuse(`"${light}" is not a colour (use #rgb or #rrggbb)`);
-      if (d !== null && !isValidColor(d)) refuse(`"${dark}" is not a colour (use #rgb or #rrggbb)`);
-      const value = d === null || sameColor(l, d) ? l : { light: l, dark: d };
-      return setIn(src, path, value);
+      const value = colorValue(light, dark);
+      return value === null ? deleteIn(src, path) : setIn(src, path, value);
     });
+  }
+
+  // ---- a block's own colours (v1.1 UI35: `nodes.<id>.style`)
+
+  /**
+   * Set (or, with both inputs empty, clear) one colour of a block's own style on each node, in the given order (new
+   * entries are appended in that order). Clearing removes the property, then `style` if that empties it, then the
+   * node's entry if that empties it. The colour rules are the styles panel's (`setStyleColor`).
+   */
+  setBlockColor(ids: readonly string[], prop: ColorProp, light: string | null, dark: string | null): EditResult {
+    return this.run((src) => {
+      if (!(COLOR_PROPS as readonly string[]).includes(prop)) refuse(`"${prop}" is not a colour property`);
+      const value = colorValue(light, dark);
+      let out = src;
+      for (const id of ids) {
+        out = value === null ? removeBlockStyleProps(out, id, [prop]) : setIn(out, ['nodes', id, BLOCK_STYLE_KEY, prop], value);
+      }
+      return out;
+    });
+  }
+
+  /** UI35 swatch: sets only the fill, to its light and dark values (a single colour if the two are equal). */
+  applySwatch(ids: readonly string[], light: string, dark: string | null): EditResult {
+    if (blank(light)) return { ok: false, error: 'A swatch needs a light colour' };
+    return this.setBlockColor(ids, 'fill', light, dark);
+  }
+
+  /**
+   * UI35 "Reset colours": remove `fill`, `border_color` and `text_color` from each block's own style, and `style` if
+   * that empties it (other properties written by hand stay), and the entry if that empties it.
+   */
+  resetBlockColors(ids: readonly string[]): EditResult {
+    return this.run((src) => {
+      let out = src;
+      for (const id of ids) out = removeBlockStyleProps(out, id, COLOR_PROPS);
+      return out;
+    });
+  }
+
+  // ---- notes (v1.1 UI41) and title visibility (UI42)
+
+  private note(cfg: FlowConfig, id: string): void {
+    if (!Object.hasOwn(cfg.notes, id)) refuse(`There is no note "${id}"`);
+  }
+
+  /**
+   * Add a note with its text (its position goes in the layout file). The id must follow the node id rules and not be a
+   * note or node entry already (the caller checks the `.mmd` and layout file, §3.1 taken). Blank text is refused;
+   * trailing line breaks are dropped.
+   */
+  addNote(id: string, text: string): EditResult {
+    return this.run((src, cfg) => {
+      if (!isIdForm(id) || isReservedId(id)) refuse(`"${id}" is not a valid note id`);
+      if (Object.hasOwn(cfg.notes, id) || valueAt(src, ['notes', id]) !== undefined) refuse(`There is already a note "${id}"`);
+      if (Object.hasOwn(cfg.nodes, id)) refuse(`"${id}" is already used by a block's config entry`);
+      return setIn(src, ['notes', id], { text: noteText(text) });
+    });
+  }
+
+  /** Edit a note's text (blank is refused: deleting the note is `deleteNote`). */
+  setNoteText(id: string, text: string): EditResult {
+    return this.run((src, cfg) => {
+      this.note(cfg, id);
+      return setIn(src, ['notes', id, 'text'], noteText(text));
+    });
+  }
+
+  /** A note's font size, an integer from 10 to 48; null or the default (14) removes the key. */
+  setNoteFontSize(id: string, size: number | null): EditResult {
+    return this.run((src, cfg) => {
+      this.note(cfg, id);
+      if (size === null || size === NOTE_FONT_SIZE) return deleteIn(src, ['notes', id, 'font_size']);
+      if (!Number.isInteger(size) || size < NOTE_FONT_MIN || size > NOTE_FONT_MAX) {
+        refuse(`Font size must be a whole number from ${NOTE_FONT_MIN} to ${NOTE_FONT_MAX}`);
+      }
+      return setIn(src, ['notes', id, 'font_size'], size);
+    });
+  }
+
+  /** Bold or not; not bold (the default) removes the key. */
+  setNoteBold(id: string, bold: boolean): EditResult {
+    return this.run((src, cfg) => {
+      this.note(cfg, id);
+      return bold ? setIn(src, ['notes', id, 'bold'], true) : deleteIn(src, ['notes', id, 'bold']);
+    });
+  }
+
+  /** A note's colour from light and dark inputs (as `setStyleColor`); both empty (the default) removes the key. */
+  setNoteColor(id: string, light: string | null, dark: string | null): EditResult {
+    return this.run((src, cfg) => {
+      this.note(cfg, id);
+      const value = colorValue(light, dark);
+      return value === null ? deleteIn(src, ['notes', id, 'color']) : setIn(src, ['notes', id, 'color'], value);
+    });
+  }
+
+  /** Delete a note (its layout position is the caller's); an emptied `notes` is removed (§4). */
+  deleteNote(id: string): EditResult {
+    return this.run((src) => {
+      const notes = valueAt(src, ['notes']);
+      if (!isPlainObject(notes) || !Object.hasOwn(notes, id)) return src;
+      return Object.keys(notes).length === 1 ? deleteIn(src, ['notes']) : deleteIn(src, ['notes', id]);
+    });
+  }
+
+  /** UI42: hide the title (`show_title: false`) or show it (the key is removed; `true` is never written). */
+  setShowTitle(shown: boolean): EditResult {
+    return this.run((src) => (shown ? deleteIn(src, ['show_title']) : setIn(src, ['show_title'], false)));
   }
 
   /** UI25 styles YAML: replace the whole `styles` list; anything but a list of rules is refused. */

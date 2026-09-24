@@ -1,6 +1,6 @@
 // The `.flow.yaml` config (§4): reading, applying to the diagram, and writing it the way the UI does.
 export * from './model';
-export { parseConfig, checkReferences, scalarString, type ConfigParse } from './parse';
+export { parseConfig, checkReferences, checkNoteClashes, scalarString, type ConfigParse } from './parse';
 export {
   effectiveKind, resolveStyle, legend, laneOrder, diagramTitle, fieldSuggestions, matchFields, ruleMatches, nodeMeta,
   type NodeFieldsInput,

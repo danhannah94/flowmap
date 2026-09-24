@@ -2,7 +2,7 @@
 import type { LegendItem, ResolvedStyle, ShapeKind } from '../types';
 import { UNASSIGNED } from '../types';
 import { isScalarValue } from './emit';
-import type { FlowConfig, NodeMeta, StyleRule } from './model';
+import { BLOCK_STYLE_KEY, type FlowConfig, type NodeMeta, type StyleRule } from './model';
 import { scalarString } from './parse';
 
 /** The node properties a rule can match on, besides metadata. `kind` here is the SHAPE kind. */
@@ -44,12 +44,18 @@ function fieldMatches(fields: Record<string, unknown>, field: string, value: str
   return false;
 }
 
-/** Every condition holds (AND); an empty match applies to every node. */
+/**
+ * Every condition holds (AND); an empty match applies to every node. v1.1: a condition on `style` (a block's own
+ * style, §4), including `present` and `absent`, is always false.
+ */
 export function ruleMatches(rule: StyleRule, fields: Record<string, unknown>): boolean {
-  return rule.match.every((c) => fieldMatches(fields, c.field, c.value));
+  return rule.match.every((c) => c.field !== BLOCK_STYLE_KEY && fieldMatches(fields, c.field, c.value));
 }
 
-/** The node's style: matching rules applied top to bottom, a later rule overriding earlier properties. */
+/**
+ * The node's style: matching rules applied top to bottom, a later rule overriding earlier properties, then (v1.1) the
+ * node's own `style`, which overrides every rule (§4).
+ */
 export function resolveStyle(config: FlowConfig | null, node: NodeFieldsInput): ResolvedStyle {
   const out: ResolvedStyle = {};
   if (!config) return out;
@@ -57,6 +63,8 @@ export function resolveStyle(config: FlowConfig | null, node: NodeFieldsInput): 
   for (const rule of config.styles) {
     if (ruleMatches(rule, fields)) Object.assign(out, rule.style);
   }
+  const own = config.nodeStyles && Object.hasOwn(config.nodeStyles, node.id) ? config.nodeStyles[node.id] : undefined;
+  if (own) Object.assign(out, own);
   return out;
 }
 
@@ -95,6 +103,7 @@ export function fieldSuggestions(config: FlowConfig | null, key: string, exceptN
   const out: string[] = [];
   const add = (s: string) => { if (!out.includes(s)) out.push(s); };
   for (const r of config.styles) for (const c of r.match) if (c.field === key && c.op === 'equals') add(c.value);
+  if (key === BLOCK_STYLE_KEY) return out;
   for (const [id, meta] of Object.entries(config.nodes)) {
     if (id === exceptNodeId || !Object.hasOwn(meta, key)) continue;
     const v = meta[key];

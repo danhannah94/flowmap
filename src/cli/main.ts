@@ -263,6 +263,7 @@ async function exportDiagram(
     layout: doc.layout.result,
     styles: doc.styles,
     legend: doc.legend,
+    notes: doc.notes,
     theme,
   });
   const name = basename(paths.mmd).replace(/\.mmd$/i, '');

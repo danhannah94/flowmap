@@ -1,13 +1,18 @@
 // The SVG export (design.md §7.1). Pure: takes a Graph, a LayoutResult, resolved per-node styles and
 // a legend, and returns an SVG document as a string. No fs — the CLI and the UI both write the bytes
 // this returns. Layout and drawing details beyond §7.1's structural contract are this module's choice.
-import { isLaneFree, type Graph, type LayoutResult, type LegendItem, type ResolvedStyle } from '../types';
+import { isLaneFree, type Graph, type LayoutResult, type LayoutTextBox, type LegendItem, type NoteInput, type ResolvedStyle } from '../types';
 import { shapeGeometry, type DecorationShape, type OutlineShape } from '../shapes';
 import { getTheme, resolveStyle, type ResolvedNodeStyle, type Theme, type ThemeName } from '../theme';
-import { BADGE_FONT, LABEL_FONT, badgeBox, textArea, textWidth, wrapLabel } from '../measure';
+import { BADGE_FONT, LABEL_FONT, TITLE_FONT, badgeBox, noteLineHeight, noteLines, textArea, textWidth, titleSize, wrapLabel } from '../measure';
 
 export interface RenderSvgOptions {
+  /** The title's text. Where it goes (and whether it shows) is `layout.title`; a layout without a `title` key (a
+   * v1.0-style caller) gets it in the default place, above the diagram's top-left corner. */
   title: string;
+  /** v1.1: the notes' font size, weight and colour, by id or as the list the layout was given (config order). The
+   * layout's `notes` say where they go; a note missing here is drawn at 14 px, regular, in the theme's text colour. */
+  notes?: NoteInput[];
   /** Topology and labels (this module treats `layout` as authoritative for geometry and text content;
    *  `graph` is accepted for interface completeness and any future cross-referencing need). */
   graph: Graph;
@@ -18,8 +23,8 @@ export interface RenderSvgOptions {
 }
 
 const MARGIN = 24;
-const TITLE_FONT_SIZE = 20;
-const TITLE_BLOCK_HEIGHT = TITLE_FONT_SIZE + 24;
+/** The title's default place (§6): above the diagram's top-left corner, as the layout puts it (layout TITLE_GAP). */
+const TITLE_DEFAULT_Y = -(TITLE_FONT.lineHeight + 18);
 const LEGEND_GAP = 28;
 const LEGEND_ROW_HEIGHT = 20;
 const LEGEND_SWATCH_W = 26;
@@ -109,7 +114,7 @@ function renderLane(lane: LayoutResult['lanes'][number], index: number, theme: T
   if (laneFree) {
     // Amendment A4: a diagram without subgraphs is a plain flowchart: no band, no header. The lane's group and its
     // label stay in the file (hidden) so the §7.1 structure still lists every lane of `flowmap layout`.
-    return `<g data-lane-id="${escapeXml(lane.id)}"><text visibility="hidden" x="${num(lane.x)}" y="${num(lane.y)}" font-size="12">${escapeXml(lane.label)}</text></g>`;
+    return `<g data-lane-id="${escapeXml(lane.id)}"><text visibility="hidden" x="${num(lane.x)}" y="${num(lane.y)}" font-size="12" fill="${theme.laneLabel}">${escapeXml(lane.label)}</text></g>`;
   }
   const fill = theme.laneFill[index % 2];
   return [
@@ -199,16 +204,63 @@ function renderDefs(theme: Theme): string {
   return `<defs><marker id="arrowhead" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="${theme.edgeColor}"/></marker></defs>`;
 }
 
+/** The title: one line of TITLE_FONT, its top-left at the box's (the layout's `title`, §7). */
+function renderTitle(box: LayoutTextBox, theme: Theme): string {
+  const baseline = box.y + (TITLE_FONT.lineHeight - TITLE_FONT.size) / 2 + TITLE_FONT.size * 0.8;
+  return `<text data-role="title" x="${num(box.x)}" y="${num(baseline)}" font-size="${TITLE_FONT.size}" font-weight="700" fill="${theme.titleColor}">${escapeXml(box.text)}</text>`;
+}
+
+/** A note (§7.1 v1.1): a <g data-note-id> with one <text> per line, each with its size and colour, bold only when bold. */
+function renderNote(note: { id: string } & LayoutTextBox, style: NoteInput | undefined, theme: Theme): string {
+  const size = style?.font_size ?? 14;
+  const bold = style?.bold ?? false;
+  const fill = resolveStyle({ text_color: style?.color }, theme).textColor;
+  const lh = noteLineHeight(size);
+  const weight = bold ? ' font-weight="bold"' : '';
+  const lines = noteLines(note.text).map((line, i) => {
+    const baseline = note.y + i * lh + (lh - size) / 2 + size * 0.8;
+    return `<text x="${num(note.x)}" y="${num(baseline)}" font-size="${size}" fill="${fill}"${weight} xml:space="preserve">${escapeXml(line)}</text>`;
+  });
+  return `<g data-note-id="${escapeXml(note.id)}">${lines.join('')}</g>`;
+}
+
 /** Render the diagram to an SVG document string (design.md §7.1). */
 export function renderSvg(options: RenderSvgOptions): string {
   const theme = getTheme(options.theme);
   const { title, layout, styles, legend } = options;
+  const titleBox: LayoutTextBox | null = layout.title !== undefined
+    ? layout.title
+    : { text: title, x: 0, y: TITLE_DEFAULT_Y, ...titleSize(title) };
+  const notes = layout.notes ?? [];
+  const noteStyle = new Map((options.notes ?? []).map((n) => [n.id, n]));
 
-  const contentWidth = Math.max(layout.width, MIN_CONTENT_WIDTH);
-  const diagramTop = MARGIN + TITLE_BLOCK_HEIGHT;
+  // Everything drawn, in diagram coordinates: the lanes from (0, 0), plus the title, notes and any line or label
+  // outside them (all may be at negative coordinates, §6). The picture is that box plus a margin, then the legend.
+  let minX = 0;
+  let minY = 0;
+  let maxX = Math.max(layout.width, MIN_CONTENT_WIDTH);
+  let maxY = layout.height;
+  const grow = (x0: number, y0: number, x1: number, y1: number) => {
+    minX = Math.min(minX, x0);
+    minY = Math.min(minY, y0);
+    maxX = Math.max(maxX, x1);
+    maxY = Math.max(maxY, y1);
+  };
+  if (titleBox) grow(titleBox.x, titleBox.y, titleBox.x + titleBox.width, titleBox.y + titleBox.height);
+  for (const n of notes) grow(n.x, n.y, n.x + n.width, n.y + n.height);
+  for (const e of layout.edges) for (const [x, y] of e.points) grow(x - 8, y - 8, x + 8, y + 8);
+  for (const e of layout.edges) {
+    if (e.label && e.label_pos) {
+      const w = textWidth(e.label) + EDGE_LABEL_PAD_X * 2;
+      grow(e.label_pos[0] - w / 2, e.label_pos[1] - LABEL_FONT.lineHeight / 2, e.label_pos[0] + w / 2, e.label_pos[1] + LABEL_FONT.lineHeight / 2);
+    }
+  }
+  const ox = MARGIN - minX;
+  const oy = MARGIN - minY;
+  const contentWidth = maxX - minX;
   const legendLayout = layoutLegend(legend, contentWidth);
-  const legendTop = diagramTop + layout.height + LEGEND_GAP;
-  const totalHeight = legend.length ? legendTop + legendLayout.totalHeight + MARGIN : diagramTop + layout.height + MARGIN;
+  const legendTop = oy + maxY + LEGEND_GAP;
+  const totalHeight = legend.length ? legendTop + legendLayout.totalHeight + MARGIN : oy + maxY + MARGIN;
   const totalWidth = contentWidth + MARGIN * 2;
 
   const parts: string[] = [];
@@ -217,13 +269,15 @@ export function renderSvg(options: RenderSvgOptions): string {
   );
   parts.push(renderDefs(theme));
   parts.push(`<rect x="0" y="0" width="${num(totalWidth)}" height="${num(totalHeight)}" fill="${theme.canvasBackground}"/>`);
-  parts.push(`<text data-role="title" x="${num(MARGIN + contentWidth / 2)}" y="${num(MARGIN + TITLE_FONT_SIZE)}" text-anchor="middle" font-size="${TITLE_FONT_SIZE}" font-weight="700" fill="${theme.titleColor}">${escapeXml(title)}</text>`);
 
-  parts.push(`<g transform="translate(${num(MARGIN)}, ${num(diagramTop)})">`);
+  parts.push(`<g transform="translate(${num(ox)}, ${num(oy)})">`);
   const laneFree = isLaneFree(layout.lanes);
   layout.lanes.forEach((lane, index) => parts.push(renderLane(lane, index, theme, laneFree)));
   for (const node of layout.nodes) parts.push(renderNode(node, styles[node.id], theme));
   for (const edge of layout.edges) parts.push(renderEdge(edge, theme));
+  // Notes and the title take no part in the layout rules and may sit over anything: drawn last, on top.
+  for (const note of notes) parts.push(renderNote(note, noteStyle.get(note.id), theme));
+  if (titleBox) parts.push(renderTitle(titleBox, theme));
   parts.push('</g>');
 
   parts.push(renderLegend(legend, theme, MARGIN, legendTop, contentWidth));

@@ -102,10 +102,13 @@ export function renderInline(v: unknown): string {
 
 /**
  * Where a collection value at `path` is written in flow style even in a block context. Style rules keep their
- * `match` and `style` maps (and anything inside them) inline, as the fixture does.
+ * `match` and `style` maps (and anything inside them) inline, as the fixture does; so do (v1.1) a block's own
+ * `style` (`nodes.<id>.style`) and a note's `color` (`notes.<id>.color`).
  */
 export function flowByPolicy(path: Path): boolean {
-  return path[0] === 'styles' && path.length >= 3;
+  if (path[0] === 'styles') return path.length >= 3;
+  if (path.length < 3) return false;
+  return (path[0] === 'nodes' && path[2] === 'style') || (path[0] === 'notes' && path[2] === 'color');
 }
 
 export function isInlineish(v: unknown, path: Path): boolean {

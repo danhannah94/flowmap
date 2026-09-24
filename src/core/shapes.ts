@@ -7,8 +7,8 @@
 // textArea()/outlineInset() model exactly, or a label could be sized for one shape and drawn inside
 // a visually different one, and the layout module's edge endpoints would miss the drawn boundary.
 // Importing the shared constants (rather than redeclaring them) keeps the two in lockstep.
-import type { ShapeKind } from './types';
-import { roundRadius, SHAPE_GEOMETRY } from './measure';
+import type { ShapeKind, Side } from './types';
+import { outlineInset, roundRadius, SHAPE_GEOMETRY } from './measure';
 
 export interface Box {
   x: number;
@@ -208,5 +208,44 @@ export function shapeGeometry(kind: ShapeKind, box: Box): ShapeGeometry {
       const exhaustive: never = kind;
       throw new Error(`shapes.shapeGeometry: unknown shape kind ${String(exhaustive)}`);
     }
+  }
+}
+
+// --- ports (v1.1 §6 L12) -------------------------------------------------------------------------
+
+/** A port is never deeper inside the box than this (§6 L12). */
+export const PORT_MAX_INSET = 20;
+
+/**
+ * How far inside the box a side's port is: where the drawn outline crosses the side's midline (the centre line
+ * `floor(size / 2)`, as UI39 counts centre lines). 0 on a straight side and at a diamond's vertex; the parallelogram's
+ * slanted sides (half the skew), the document's wavy bottom (the wave's amplitude) and round ends narrower than
+ * their radius sit inside. Rounded to a whole pixel, at most PORT_MAX_INSET.
+ */
+export function portInset(kind: ShapeKind, width: number, height: number, side: Side): number {
+  // A diamond's port is its vertex, even when an odd size puts the vertex half a pixel off the whole-pixel midline
+  // (where the face would already be a few pixels in on a wide, flat diamond).
+  if (kind === 'decision') return 0;
+  const t = side === 'top' || side === 'bottom' ? Math.floor(width / 2) : Math.floor(height / 2);
+  return Math.min(PORT_MAX_INSET, Math.max(0, Math.round(outlineInset(kind, width, height, side, t))));
+}
+
+/**
+ * The port of one side of a block (§6 L12), in the box's coordinates: on the side's midline, on the drawn outline.
+ * Diamonds have theirs at their four vertices. Integers when the box is.
+ */
+export function portPoint(kind: ShapeKind, box: Box, side: Side): [number, number] {
+  const inset = portInset(kind, box.width, box.height, side);
+  const cx = box.x + Math.floor(box.width / 2);
+  const cy = box.y + Math.floor(box.height / 2);
+  switch (side) {
+    case 'top':
+      return [cx, box.y + inset];
+    case 'bottom':
+      return [cx, box.y + box.height - inset];
+    case 'left':
+      return [box.x + inset, cy];
+    case 'right':
+      return [box.x + box.width - inset, cy];
   }
 }

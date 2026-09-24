@@ -1,0 +1,4459 @@
+{
+ "fixtures/purchase-request/purchase-request.mmd": {
+  "problems": {
+   "errors": [],
+   "warnings": []
+  },
+  "config": {
+   "version": 1,
+   "title": "Purchase request approval (current state, synthetic)",
+   "lanes": [
+    {
+     "id": "requester",
+     "extra": {}
+    },
+    {
+     "id": "manager",
+     "extra": {}
+    },
+    {
+     "id": "purchasing",
+     "extra": {}
+    },
+    {
+     "id": "finance",
+     "extra": {}
+    },
+    {
+     "id": "vendor",
+     "extra": {}
+    }
+   ],
+   "styles": [
+    {
+     "legend": "Confirmed by two or more people",
+     "match": [
+      {
+       "field": "confidence",
+       "op": "equals",
+       "value": "confirmed"
+      }
+     ],
+     "style": {
+      "border_style": "solid",
+      "border_width": 2
+     },
+     "rawStyle": {
+      "border_style": "solid",
+      "border_width": 2
+     }
+    },
+    {
+     "legend": "One source only",
+     "match": [
+      {
+       "field": "confidence",
+       "op": "equals",
+       "value": "single-source"
+      }
+     ],
+     "style": {
+      "border_style": "dashed",
+      "border_width": 1
+     },
+     "rawStyle": {
+      "border_style": "dashed",
+      "border_width": 1
+     }
+    },
+    {
+     "legend": "Inferred, nobody said it directly",
+     "match": [
+      {
+       "field": "confidence",
+       "op": "equals",
+       "value": "inferred"
+      }
+     ],
+     "style": {
+      "border_style": "dotted",
+      "font_style": "italic"
+     },
+     "rawStyle": {
+      "border_style": "dotted",
+      "font_style": "italic"
+     }
+    },
+    {
+     "legend": "Done in the ERP",
+     "match": [
+      {
+       "field": "system",
+       "op": "equals",
+       "value": "erp"
+      }
+     ],
+     "style": {
+      "fill": {
+       "light": "#dae8fc",
+       "dark": "#1e3a5f"
+      }
+     },
+     "rawStyle": {
+      "fill": {
+       "light": "#dae8fc",
+       "dark": "#1e3a5f"
+      }
+     }
+    },
+    {
+     "legend": "Done in a spreadsheet",
+     "match": [
+      {
+       "field": "system",
+       "op": "equals",
+       "value": "excel"
+      }
+     ],
+     "style": {
+      "fill": {
+       "light": "#d5e8d4",
+       "dark": "#1f4a2c"
+      }
+     },
+     "rawStyle": {
+      "fill": {
+       "light": "#d5e8d4",
+       "dark": "#1f4a2c"
+      }
+     }
+    },
+    {
+     "legend": "Waiting on someone",
+     "match": [
+      {
+       "field": "kind",
+       "op": "equals",
+       "value": "wait"
+      }
+     ],
+     "style": {
+      "fill": {
+       "light": "#fff2cc",
+       "dark": "#4a3f12"
+      },
+      "badge": "wait"
+     },
+     "rawStyle": {
+      "fill": {
+       "light": "#fff2cc",
+       "dark": "#4a3f12"
+      },
+      "badge": "wait"
+     }
+    },
+    {
+     "legend": "Open question",
+     "match": [
+      {
+       "field": "open_question",
+       "op": "present",
+       "value": "present"
+      }
+     ],
+     "style": {
+      "border_color": {
+       "light": "#b85450",
+       "dark": "#f08080"
+      }
+     },
+     "rawStyle": {
+      "border_color": {
+       "light": "#b85450",
+       "dark": "#f08080"
+      }
+     }
+    }
+   ],
+   "nodes": {
+    "intake": {
+     "confidence": "confirmed",
+     "source": [
+      "sam-09-01",
+      "lee-09-03"
+     ]
+    },
+    "r01": {
+     "system": "excel",
+     "confidence": "confirmed",
+     "source": [
+      "sam-09-01",
+      "lee-09-03"
+     ],
+     "quote": "the form is a spreadsheet somebody made in 2014"
+    },
+    "p01": {
+     "confidence": "confirmed",
+     "source": [
+      "lee-09-03",
+      "pat-09-04"
+     ]
+    },
+    "p03": {
+     "system": "email",
+     "confidence": "single-source",
+     "source": [
+      "lee-09-03"
+     ],
+     "quote": "half of them come back at least once",
+     "open_question": "Which fields are missing most often?"
+    },
+    "p04": {
+     "confidence": "single-source",
+     "source": [
+      "pat-09-04"
+     ],
+     "open_question": "Is the threshold $1,000 everywhere, or only at the main plant?"
+    },
+    "m01": {
+     "kind": "wait",
+     "confidence": "confirmed",
+     "source": [
+      "sam-09-01",
+      "pat-09-04"
+     ],
+     "quote": "it sits in his inbox for a week"
+    },
+    "m03": {
+     "confidence": "inferred",
+     "source": [
+      "sam-09-01"
+     ]
+    },
+    "p05": {
+     "kind": "wait",
+     "confidence": "single-source",
+     "source": [
+      "pat-09-04"
+     ],
+     "open_question": "Are three quotes required, or just the habit?",
+     "variants": {
+      "main plant": "three quotes over $1,000",
+      "warehouse": "one quote is fine under $5,000"
+     }
+    },
+    "v01": {
+     "kind": "wait",
+     "confidence": "confirmed",
+     "source": [
+      "pat-09-04",
+      "lee-09-03"
+     ]
+    },
+    "f01": {
+     "system": "erp",
+     "confidence": "single-source",
+     "source": [
+      "kim-09-05"
+     ]
+    },
+    "f02": {
+     "kind": "wait",
+     "confidence": "single-source",
+     "source": [
+      "kim-09-05"
+     ]
+    },
+    "p07": {
+     "system": "erp",
+     "confidence": "confirmed",
+     "source": [
+      "pat-09-04",
+      "kim-09-05"
+     ]
+    },
+    "r02": {
+     "confidence": "inferred"
+    },
+    "f03": {
+     "system": "erp",
+     "confidence": "confirmed",
+     "source": [
+      "kim-09-05",
+      "pat-09-04"
+     ],
+     "quote": "three-way match, when the receipt shows up"
+    }
+   }
+  },
+  "pins": {
+   "closed": {
+    "lane": "requester",
+    "along": 1400,
+    "across": 40
+   }
+  },
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "requester",
+     "label": "Requester"
+    },
+    {
+     "id": "manager",
+     "label": "Manager"
+    },
+    {
+     "id": "purchasing",
+     "label": "Purchasing"
+    },
+    {
+     "id": "finance",
+     "label": "Finance"
+    },
+    {
+     "id": "vendor",
+     "label": "Vendor"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "intake",
+     "label": "Needs a part or service",
+     "kind": "terminal",
+     "lane": "requester"
+    },
+    {
+     "id": "r01",
+     "label": "Fill the purchase request form",
+     "kind": "step",
+     "lane": "requester"
+    },
+    {
+     "id": "r02",
+     "label": "Receive the delivery and sign for it",
+     "kind": "step",
+     "lane": "requester"
+    },
+    {
+     "id": "closed",
+     "label": "Request closed",
+     "kind": "terminal",
+     "lane": "requester"
+    },
+    {
+     "id": "m01",
+     "label": "Review the request",
+     "kind": "step",
+     "lane": "manager"
+    },
+    {
+     "id": "m02",
+     "label": "Approved?",
+     "kind": "decision",
+     "lane": "manager"
+    },
+    {
+     "id": "m03",
+     "label": "Tell the requester why not",
+     "kind": "step",
+     "lane": "manager"
+    },
+    {
+     "id": "p01",
+     "label": "Check the request is complete",
+     "kind": "step",
+     "lane": "purchasing"
+    },
+    {
+     "id": "p02",
+     "label": "Complete?",
+     "kind": "decision",
+     "lane": "purchasing"
+    },
+    {
+     "id": "p03",
+     "label": "Send it back with what is missing",
+     "kind": "step",
+     "lane": "purchasing"
+    },
+    {
+     "id": "p04",
+     "label": "Over $1,000?",
+     "kind": "decision",
+     "lane": "purchasing"
+    },
+    {
+     "id": "p05",
+     "label": "Get three quotes",
+     "kind": "step",
+     "lane": "purchasing"
+    },
+    {
+     "id": "p06",
+     "label": "Pick the vendor",
+     "kind": "step",
+     "lane": "purchasing"
+    },
+    {
+     "id": "p07",
+     "label": "Create the PO in the ERP",
+     "kind": "step",
+     "lane": "purchasing"
+    },
+    {
+     "id": "f01",
+     "label": "Budget available?",
+     "kind": "decision",
+     "lane": "finance"
+    },
+    {
+     "id": "f02",
+     "label": "Move budget or defer to next quarter",
+     "kind": "step",
+     "lane": "finance"
+    },
+    {
+     "id": "f03",
+     "label": "Match the invoice to the PO and the receipt",
+     "kind": "step",
+     "lane": "finance"
+    },
+    {
+     "id": "f04",
+     "label": "Vendor paid",
+     "kind": "terminal",
+     "lane": "finance"
+    },
+    {
+     "id": "v01",
+     "label": "Send a quote",
+     "kind": "document",
+     "lane": "vendor"
+    },
+    {
+     "id": "v02",
+     "label": "Ship the order",
+     "kind": "step",
+     "lane": "vendor"
+    }
+   ],
+   "edges": [
+    {
+     "id": "intake->r01",
+     "source": "intake",
+     "target": "r01",
+     "label": null
+    },
+    {
+     "id": "r01->p01",
+     "source": "r01",
+     "target": "p01",
+     "label": null
+    },
+    {
+     "id": "p01->p02",
+     "source": "p01",
+     "target": "p02",
+     "label": null
+    },
+    {
+     "id": "p02->p03",
+     "source": "p02",
+     "target": "p03",
+     "label": "no"
+    },
+    {
+     "id": "p03->r01",
+     "source": "p03",
+     "target": "r01",
+     "label": null
+    },
+    {
+     "id": "p02->p04",
+     "source": "p02",
+     "target": "p04",
+     "label": "yes"
+    },
+    {
+     "id": "p04->m01",
+     "source": "p04",
+     "target": "m01",
+     "label": "yes"
+    },
+    {
+     "id": "p04->p05",
+     "source": "p04",
+     "target": "p05",
+     "label": "no"
+    },
+    {
+     "id": "m01->m02",
+     "source": "m01",
+     "target": "m02",
+     "label": null
+    },
+    {
+     "id": "m02->m03",
+     "source": "m02",
+     "target": "m03",
+     "label": "no"
+    },
+    {
+     "id": "m03->closed",
+     "source": "m03",
+     "target": "closed",
+     "label": null
+    },
+    {
+     "id": "m02->p05",
+     "source": "m02",
+     "target": "p05",
+     "label": "yes"
+    },
+    {
+     "id": "p05->v01",
+     "source": "p05",
+     "target": "v01",
+     "label": null
+    },
+    {
+     "id": "v01->p06",
+     "source": "v01",
+     "target": "p06",
+     "label": null
+    },
+    {
+     "id": "p06->f01",
+     "source": "p06",
+     "target": "f01",
+     "label": null
+    },
+    {
+     "id": "f01->p07",
+     "source": "f01",
+     "target": "p07",
+     "label": "yes"
+    },
+    {
+     "id": "f01->f02",
+     "source": "f01",
+     "target": "f02",
+     "label": "no"
+    },
+    {
+     "id": "f02->f01",
+     "source": "f02",
+     "target": "f01",
+     "label": null
+    },
+    {
+     "id": "p07->v02",
+     "source": "p07",
+     "target": "v02",
+     "label": null
+    },
+    {
+     "id": "v02->r02",
+     "source": "v02",
+     "target": "r02",
+     "label": null
+    },
+    {
+     "id": "r02->f03",
+     "source": "r02",
+     "target": "f03",
+     "label": null
+    },
+    {
+     "id": "f03->f04",
+     "source": "f03",
+     "target": "f04",
+     "label": null
+    }
+   ]
+  },
+  "styles": {
+   "intake": {
+    "border_style": "solid",
+    "border_width": 2
+   },
+   "r01": {
+    "border_style": "solid",
+    "border_width": 2,
+    "fill": {
+     "light": "#d5e8d4",
+     "dark": "#1f4a2c"
+    }
+   },
+   "r02": {
+    "border_style": "dotted",
+    "font_style": "italic"
+   },
+   "closed": {},
+   "m01": {
+    "border_style": "solid",
+    "border_width": 2,
+    "fill": {
+     "light": "#fff2cc",
+     "dark": "#4a3f12"
+    },
+    "badge": "wait"
+   },
+   "m02": {},
+   "m03": {
+    "border_style": "dotted",
+    "font_style": "italic"
+   },
+   "p01": {
+    "border_style": "solid",
+    "border_width": 2
+   },
+   "p02": {},
+   "p03": {
+    "border_style": "dashed",
+    "border_width": 1,
+    "border_color": {
+     "light": "#b85450",
+     "dark": "#f08080"
+    }
+   },
+   "p04": {
+    "border_style": "dashed",
+    "border_width": 1,
+    "border_color": {
+     "light": "#b85450",
+     "dark": "#f08080"
+    }
+   },
+   "p05": {
+    "border_style": "dashed",
+    "border_width": 1,
+    "fill": {
+     "light": "#fff2cc",
+     "dark": "#4a3f12"
+    },
+    "badge": "wait",
+    "border_color": {
+     "light": "#b85450",
+     "dark": "#f08080"
+    }
+   },
+   "p06": {},
+   "p07": {
+    "border_style": "solid",
+    "border_width": 2,
+    "fill": {
+     "light": "#dae8fc",
+     "dark": "#1e3a5f"
+    }
+   },
+   "f01": {
+    "border_style": "dashed",
+    "border_width": 1,
+    "fill": {
+     "light": "#dae8fc",
+     "dark": "#1e3a5f"
+    }
+   },
+   "f02": {
+    "border_style": "dashed",
+    "border_width": 1,
+    "fill": {
+     "light": "#fff2cc",
+     "dark": "#4a3f12"
+    },
+    "badge": "wait"
+   },
+   "f03": {
+    "border_style": "solid",
+    "border_width": 2,
+    "fill": {
+     "light": "#dae8fc",
+     "dark": "#1e3a5f"
+    }
+   },
+   "f04": {},
+   "v01": {
+    "border_style": "solid",
+    "border_width": 2,
+    "fill": {
+     "light": "#fff2cc",
+     "dark": "#4a3f12"
+    },
+    "badge": "wait"
+   },
+   "v02": {}
+  },
+  "legend": [
+   {
+    "text": "Confirmed by two or more people",
+    "style": {
+     "border_style": "solid",
+     "border_width": 2
+    }
+   },
+   {
+    "text": "One source only",
+    "style": {
+     "border_style": "dashed",
+     "border_width": 1
+    }
+   },
+   {
+    "text": "Inferred, nobody said it directly",
+    "style": {
+     "border_style": "dotted",
+     "font_style": "italic"
+    }
+   },
+   {
+    "text": "Done in the ERP",
+    "style": {
+     "fill": {
+      "light": "#dae8fc",
+      "dark": "#1e3a5f"
+     }
+    }
+   },
+   {
+    "text": "Done in a spreadsheet",
+    "style": {
+     "fill": {
+      "light": "#d5e8d4",
+      "dark": "#1f4a2c"
+     }
+    }
+   },
+   {
+    "text": "Waiting on someone",
+    "style": {
+     "fill": {
+      "light": "#fff2cc",
+      "dark": "#4a3f12"
+     },
+     "badge": "wait"
+    }
+   },
+   {
+    "text": "Open question",
+    "style": {
+     "border_color": {
+      "light": "#b85450",
+      "dark": "#f08080"
+     }
+    }
+   }
+  ],
+  "title": "Purchase request approval (current state, synthetic)",
+  "laidOut": true
+ },
+ "fixtures/syntax/edge-cases.canonical.mmd": {
+  "problems": {
+   "errors": [],
+   "warnings": [
+    {
+     "code": "W-no-lane",
+     "line": 5,
+     "message": "\"intake\" is not in any subgraph"
+    },
+    {
+     "code": "W-no-lane",
+     "line": 6,
+     "message": "\"e\" is not in any subgraph"
+    },
+    {
+     "code": "W-no-lane",
+     "line": 7,
+     "message": "\"finish\" is not in any subgraph"
+    },
+    {
+     "code": "W-no-lane",
+     "line": 28,
+     "message": "\"audit\" is never declared, so it is not in any subgraph"
+    }
+   ]
+  },
+  "config": {
+   "version": 1,
+   "title": null,
+   "lanes": null,
+   "styles": [],
+   "nodes": {}
+  },
+  "pins": {},
+  "graph": {
+   "direction": "TB",
+   "lanes": [
+    {
+     "id": "ops",
+     "label": "Operations team"
+    },
+    {
+     "id": "fin",
+     "label": "Finance & approvals"
+    },
+    {
+     "id": "_unassigned",
+     "label": "Unassigned"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "intake",
+     "label": "Start here",
+     "kind": "terminal",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "e",
+     "label": "Unlaned step",
+     "kind": "step",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "finish",
+     "label": "End",
+     "kind": "terminal",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "a",
+     "label": "Check the order",
+     "kind": "step",
+     "lane": "ops"
+    },
+    {
+     "id": "b",
+     "label": "Is it complete?",
+     "kind": "decision",
+     "lane": "ops"
+    },
+    {
+     "id": "c",
+     "label": "Approve (over $5k)",
+     "kind": "step",
+     "lane": "fin"
+    },
+    {
+     "id": "d",
+     "label": "Say \"done\"",
+     "kind": "step",
+     "lane": "fin"
+    },
+    {
+     "id": "audit",
+     "label": "audit",
+     "kind": "step",
+     "lane": "_unassigned"
+    }
+   ],
+   "edges": [
+    {
+     "id": "intake->a",
+     "source": "intake",
+     "target": "a",
+     "label": null
+    },
+    {
+     "id": "b->a",
+     "source": "b",
+     "target": "a",
+     "label": "no"
+    },
+    {
+     "id": "b->c",
+     "source": "b",
+     "target": "c",
+     "label": "yes"
+    },
+    {
+     "id": "c->d",
+     "source": "c",
+     "target": "d",
+     "label": null
+    },
+    {
+     "id": "c->e",
+     "source": "c",
+     "target": "e",
+     "label": null
+    },
+    {
+     "id": "d->finish",
+     "source": "d",
+     "target": "finish",
+     "label": null
+    },
+    {
+     "id": "d->finish#2",
+     "source": "d",
+     "target": "finish",
+     "label": null
+    },
+    {
+     "id": "d->audit",
+     "source": "d",
+     "target": "audit",
+     "label": null
+    }
+   ]
+  },
+  "styles": {
+   "intake": {},
+   "e": {},
+   "finish": {},
+   "a": {},
+   "b": {},
+   "c": {},
+   "d": {},
+   "audit": {}
+  },
+  "legend": [],
+  "title": "edge-cases.canonical",
+  "laidOut": true
+ },
+ "fixtures/syntax/edge-cases.mmd": {
+  "problems": {
+   "errors": [],
+   "warnings": [
+    {
+     "code": "W-no-lane",
+     "line": 4,
+     "message": "\"intake\" is not in any subgraph"
+    },
+    {
+     "code": "W-direction",
+     "line": 6,
+     "message": "direction lines are ignored; the header sets the direction"
+    },
+    {
+     "code": "W-no-lane",
+     "line": 19,
+     "message": "\"e\" is not in any subgraph"
+    },
+    {
+     "code": "W-no-lane",
+     "line": 20,
+     "message": "\"finish\" is not in any subgraph"
+    },
+    {
+     "code": "W-no-lane",
+     "line": 22,
+     "message": "\"audit\" is never declared, so it is not in any subgraph"
+    }
+   ]
+  },
+  "config": {
+   "version": 1,
+   "title": null,
+   "lanes": null,
+   "styles": [],
+   "nodes": {}
+  },
+  "pins": {},
+  "graph": {
+   "direction": "TB",
+   "lanes": [
+    {
+     "id": "ops",
+     "label": "Operations team"
+    },
+    {
+     "id": "fin",
+     "label": "Finance & approvals"
+    },
+    {
+     "id": "_unassigned",
+     "label": "Unassigned"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "intake",
+     "label": "Start here",
+     "kind": "terminal",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "e",
+     "label": "Unlaned step",
+     "kind": "step",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "finish",
+     "label": "End",
+     "kind": "terminal",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "a",
+     "label": "Check the order",
+     "kind": "step",
+     "lane": "ops"
+    },
+    {
+     "id": "b",
+     "label": "Is it complete?",
+     "kind": "decision",
+     "lane": "ops"
+    },
+    {
+     "id": "c",
+     "label": "Approve (over $5k)",
+     "kind": "step",
+     "lane": "fin"
+    },
+    {
+     "id": "d",
+     "label": "Say \"done\"",
+     "kind": "step",
+     "lane": "fin"
+    },
+    {
+     "id": "audit",
+     "label": "audit",
+     "kind": "step",
+     "lane": "_unassigned"
+    }
+   ],
+   "edges": [
+    {
+     "id": "intake->a",
+     "source": "intake",
+     "target": "a",
+     "label": null
+    },
+    {
+     "id": "b->a",
+     "source": "b",
+     "target": "a",
+     "label": "no"
+    },
+    {
+     "id": "b->c",
+     "source": "b",
+     "target": "c",
+     "label": "yes"
+    },
+    {
+     "id": "c->d",
+     "source": "c",
+     "target": "d",
+     "label": null
+    },
+    {
+     "id": "c->e",
+     "source": "c",
+     "target": "e",
+     "label": null
+    },
+    {
+     "id": "d->finish",
+     "source": "d",
+     "target": "finish",
+     "label": null
+    },
+    {
+     "id": "d->finish#2",
+     "source": "d",
+     "target": "finish",
+     "label": null
+    },
+    {
+     "id": "d->audit",
+     "source": "d",
+     "target": "audit",
+     "label": null
+    }
+   ]
+  },
+  "styles": {
+   "intake": {},
+   "e": {},
+   "finish": {},
+   "a": {},
+   "b": {},
+   "c": {},
+   "d": {},
+   "audit": {}
+  },
+  "legend": [],
+  "title": "edge-cases",
+  "laidOut": true
+ },
+ "fixtures/syntax/shapes.canonical.mmd": {
+  "problems": {
+   "errors": [],
+   "warnings": []
+  },
+  "config": {
+   "version": 1,
+   "title": null,
+   "lanes": null,
+   "styles": [],
+   "nodes": {}
+  },
+  "pins": {},
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "s",
+     "label": "Shapes"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "a",
+     "label": "Plain step",
+     "kind": "step",
+     "lane": "s"
+    },
+    {
+     "id": "b",
+     "label": "Decide",
+     "kind": "decision",
+     "lane": "s"
+    },
+    {
+     "id": "c",
+     "label": "Begin",
+     "kind": "terminal",
+     "lane": "s"
+    },
+    {
+     "id": "d",
+     "label": "Run the sub-process",
+     "kind": "subprocess",
+     "lane": "s"
+    },
+    {
+     "id": "e",
+     "label": "ERP",
+     "kind": "database",
+     "lane": "s"
+    },
+    {
+     "id": "f",
+     "label": "Enter the form",
+     "kind": "io",
+     "lane": "s"
+    },
+    {
+     "id": "g",
+     "label": "Vendor quote",
+     "kind": "document",
+     "lane": "s"
+    },
+    {
+     "id": "h",
+     "label": "Wait for freight",
+     "kind": "delay",
+     "lane": "s"
+    },
+    {
+     "id": "i",
+     "label": "Upload a/b test",
+     "kind": "io",
+     "lane": "s"
+    }
+   ],
+   "edges": [
+    {
+     "id": "a->b",
+     "source": "a",
+     "target": "b",
+     "label": null
+    },
+    {
+     "id": "b->d",
+     "source": "b",
+     "target": "d",
+     "label": "two  spaces"
+    },
+    {
+     "id": "e->f",
+     "source": "e",
+     "target": "f",
+     "label": null
+    },
+    {
+     "id": "f->g",
+     "source": "f",
+     "target": "g",
+     "label": null
+    },
+    {
+     "id": "g->h",
+     "source": "g",
+     "target": "h",
+     "label": null
+    },
+    {
+     "id": "h->i",
+     "source": "h",
+     "target": "i",
+     "label": "done"
+    }
+   ]
+  },
+  "styles": {
+   "a": {},
+   "b": {},
+   "c": {},
+   "d": {},
+   "e": {},
+   "f": {},
+   "g": {},
+   "h": {},
+   "i": {}
+  },
+  "legend": [],
+  "title": "shapes.canonical",
+  "laidOut": true
+ },
+ "fixtures/syntax/shapes.mmd": {
+  "problems": {
+   "errors": [],
+   "warnings": []
+  },
+  "config": {
+   "version": 1,
+   "title": null,
+   "lanes": null,
+   "styles": [],
+   "nodes": {}
+  },
+  "pins": {},
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "s",
+     "label": "Shapes"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "a",
+     "label": "Plain step",
+     "kind": "step",
+     "lane": "s"
+    },
+    {
+     "id": "b",
+     "label": "Decide",
+     "kind": "decision",
+     "lane": "s"
+    },
+    {
+     "id": "c",
+     "label": "Begin",
+     "kind": "terminal",
+     "lane": "s"
+    },
+    {
+     "id": "d",
+     "label": "Run the sub-process",
+     "kind": "subprocess",
+     "lane": "s"
+    },
+    {
+     "id": "e",
+     "label": "ERP",
+     "kind": "database",
+     "lane": "s"
+    },
+    {
+     "id": "f",
+     "label": "Enter the form",
+     "kind": "io",
+     "lane": "s"
+    },
+    {
+     "id": "g",
+     "label": "Vendor quote",
+     "kind": "document",
+     "lane": "s"
+    },
+    {
+     "id": "h",
+     "label": "Wait for freight",
+     "kind": "delay",
+     "lane": "s"
+    },
+    {
+     "id": "i",
+     "label": "Upload a/b test",
+     "kind": "io",
+     "lane": "s"
+    }
+   ],
+   "edges": [
+    {
+     "id": "a->b",
+     "source": "a",
+     "target": "b",
+     "label": null
+    },
+    {
+     "id": "b->d",
+     "source": "b",
+     "target": "d",
+     "label": "two  spaces"
+    },
+    {
+     "id": "e->f",
+     "source": "e",
+     "target": "f",
+     "label": null
+    },
+    {
+     "id": "f->g",
+     "source": "f",
+     "target": "g",
+     "label": null
+    },
+    {
+     "id": "g->h",
+     "source": "g",
+     "target": "h",
+     "label": null
+    },
+    {
+     "id": "h->i",
+     "source": "h",
+     "target": "i",
+     "label": "done"
+    }
+   ]
+  },
+  "styles": {
+   "a": {},
+   "b": {},
+   "c": {},
+   "d": {},
+   "e": {},
+   "f": {},
+   "g": {},
+   "h": {},
+   "i": {}
+  },
+  "legend": [],
+  "title": "shapes",
+  "laidOut": true
+ },
+ "fixtures/errors/E-config.mmd": {
+  "problems": {
+   "errors": [
+    {
+     "code": "E-config",
+     "line": null,
+     "message": "Config is not valid YAML: Block collections are not allowed within flow collections at line 2, column 19:\n\nstyles: [this is: not: valid\n                  ^\n"
+    }
+   ],
+   "warnings": [
+    {
+     "code": "W-no-lane",
+     "line": 2,
+     "message": "\"a\" is not in any subgraph"
+    }
+   ]
+  },
+  "config": null,
+  "pins": {},
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "_unassigned",
+     "label": "Unassigned"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "a",
+     "label": "A",
+     "kind": "step",
+     "lane": "_unassigned"
+    }
+   ],
+   "edges": []
+  },
+  "styles": {
+   "a": {}
+  },
+  "legend": [],
+  "title": "E-config",
+  "laidOut": true
+ },
+ "fixtures/errors/E-duplicate.mmd": {
+  "problems": {
+   "errors": [
+    {
+     "code": "E-duplicate",
+     "line": 3,
+     "message": "\"a\" is declared again differently (first at line 2)"
+    }
+   ],
+   "warnings": [
+    {
+     "code": "W-no-lane",
+     "line": 2,
+     "message": "\"a\" is not in any subgraph"
+    }
+   ]
+  },
+  "config": {
+   "version": 1,
+   "title": null,
+   "lanes": null,
+   "styles": [],
+   "nodes": {}
+  },
+  "pins": {},
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "_unassigned",
+     "label": "Unassigned"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "a",
+     "label": "A",
+     "kind": "step",
+     "lane": "_unassigned"
+    }
+   ],
+   "edges": []
+  },
+  "styles": {
+   "a": {}
+  },
+  "legend": [],
+  "title": "E-duplicate",
+  "laidOut": false
+ },
+ "fixtures/errors/E-edge.mmd": {
+  "problems": {
+   "errors": [
+    {
+     "code": "E-edge",
+     "line": 4,
+     "message": "arrow not supported: \"-.-> b\""
+    }
+   ],
+   "warnings": [
+    {
+     "code": "W-no-lane",
+     "line": 2,
+     "message": "\"a\" is not in any subgraph"
+    },
+    {
+     "code": "W-no-lane",
+     "line": 3,
+     "message": "\"b\" is not in any subgraph"
+    }
+   ]
+  },
+  "config": {
+   "version": 1,
+   "title": null,
+   "lanes": null,
+   "styles": [],
+   "nodes": {}
+  },
+  "pins": {},
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "_unassigned",
+     "label": "Unassigned"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "a",
+     "label": "A",
+     "kind": "step",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "b",
+     "label": "B",
+     "kind": "step",
+     "lane": "_unassigned"
+    }
+   ],
+   "edges": []
+  },
+  "styles": {
+   "a": {},
+   "b": {}
+  },
+  "legend": [],
+  "title": "E-edge",
+  "laidOut": false
+ },
+ "fixtures/errors/E-header.mmd": {
+  "problems": {
+   "errors": [
+    {
+     "code": "E-header",
+     "line": 1,
+     "message": "bad header \"flowchart RL\": expected \"flowchart LR\" or \"flowchart TB\""
+    }
+   ],
+   "warnings": [
+    {
+     "code": "W-no-lane",
+     "line": 2,
+     "message": "\"a\" is not in any subgraph"
+    },
+    {
+     "code": "W-no-lane",
+     "line": 2,
+     "message": "\"b\" is not in any subgraph"
+    }
+   ]
+  },
+  "config": {
+   "version": 1,
+   "title": null,
+   "lanes": null,
+   "styles": [],
+   "nodes": {}
+  },
+  "pins": {},
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "_unassigned",
+     "label": "Unassigned"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "a",
+     "label": "A",
+     "kind": "step",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "b",
+     "label": "B",
+     "kind": "step",
+     "lane": "_unassigned"
+    }
+   ],
+   "edges": [
+    {
+     "id": "a->b",
+     "source": "a",
+     "target": "b",
+     "label": null
+    }
+   ]
+  },
+  "styles": {
+   "a": {},
+   "b": {}
+  },
+  "legend": [],
+  "title": "E-header",
+  "laidOut": false
+ },
+ "fixtures/errors/E-nested.mmd": {
+  "problems": {
+   "errors": [
+    {
+     "code": "E-nested",
+     "line": 3,
+     "message": "a subgraph inside a subgraph"
+    }
+   ],
+   "warnings": []
+  },
+  "config": {
+   "version": 1,
+   "title": null,
+   "lanes": null,
+   "styles": [],
+   "nodes": {}
+  },
+  "pins": {},
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "outer",
+     "label": "Outer"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "a",
+     "label": "A",
+     "kind": "step",
+     "lane": "outer"
+    }
+   ],
+   "edges": []
+  },
+  "styles": {
+   "a": {}
+  },
+  "legend": [],
+  "title": "E-nested",
+  "laidOut": false
+ },
+ "fixtures/errors/E-shape.mmd": {
+  "problems": {
+   "errors": [
+    {
+     "code": "E-shape",
+     "line": 3,
+     "message": "shape not supported: \"(…\""
+    }
+   ],
+   "warnings": [
+    {
+     "code": "W-no-lane",
+     "line": 2,
+     "message": "\"a\" is not in any subgraph"
+    },
+    {
+     "code": "W-no-lane",
+     "line": 4,
+     "message": "\"b\" is never declared, so it is not in any subgraph"
+    }
+   ]
+  },
+  "config": {
+   "version": 1,
+   "title": null,
+   "lanes": null,
+   "styles": [],
+   "nodes": {}
+  },
+  "pins": {},
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "_unassigned",
+     "label": "Unassigned"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "a",
+     "label": "A",
+     "kind": "step",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "b",
+     "label": "b",
+     "kind": "step",
+     "lane": "_unassigned"
+    }
+   ],
+   "edges": [
+    {
+     "id": "a->b",
+     "source": "a",
+     "target": "b",
+     "label": null
+    }
+   ]
+  },
+  "styles": {
+   "a": {},
+   "b": {}
+  },
+  "legend": [],
+  "title": "E-shape",
+  "laidOut": false
+ },
+ "fixtures/errors/E-syntax.mmd": {
+  "problems": {
+   "errors": [
+    {
+     "code": "E-syntax",
+     "line": 3,
+     "message": "unexpected \"is not mermaid\""
+    }
+   ],
+   "warnings": [
+    {
+     "code": "W-no-lane",
+     "line": 2,
+     "message": "\"a\" is not in any subgraph"
+    }
+   ]
+  },
+  "config": {
+   "version": 1,
+   "title": null,
+   "lanes": null,
+   "styles": [],
+   "nodes": {}
+  },
+  "pins": {},
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "_unassigned",
+     "label": "Unassigned"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "a",
+     "label": "A",
+     "kind": "step",
+     "lane": "_unassigned"
+    }
+   ],
+   "edges": []
+  },
+  "styles": {
+   "a": {}
+  },
+  "legend": [],
+  "title": "E-syntax",
+  "laidOut": false
+ },
+ "fixtures/errors/E-unclosed.mmd": {
+  "problems": {
+   "errors": [
+    {
+     "code": "E-unclosed",
+     "line": 2,
+     "message": "subgraph without \"end\""
+    }
+   ],
+   "warnings": []
+  },
+  "config": {
+   "version": 1,
+   "title": null,
+   "lanes": null,
+   "styles": [],
+   "nodes": {}
+  },
+  "pins": {},
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "lane1",
+     "label": "Lane"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "a",
+     "label": "A",
+     "kind": "step",
+     "lane": "lane1"
+    }
+   ],
+   "edges": []
+  },
+  "styles": {
+   "a": {}
+  },
+  "legend": [],
+  "title": "E-unclosed",
+  "laidOut": false
+ },
+ "pr: no config, no layout": {
+  "problems": {
+   "errors": [],
+   "warnings": []
+  },
+  "config": {
+   "version": 1,
+   "title": null,
+   "lanes": null,
+   "styles": [],
+   "nodes": {}
+  },
+  "pins": {},
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "requester",
+     "label": "Requester"
+    },
+    {
+     "id": "manager",
+     "label": "Manager"
+    },
+    {
+     "id": "purchasing",
+     "label": "Purchasing"
+    },
+    {
+     "id": "finance",
+     "label": "Finance"
+    },
+    {
+     "id": "vendor",
+     "label": "Vendor"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "intake",
+     "label": "Needs a part or service",
+     "kind": "terminal",
+     "lane": "requester"
+    },
+    {
+     "id": "r01",
+     "label": "Fill the purchase request form",
+     "kind": "step",
+     "lane": "requester"
+    },
+    {
+     "id": "r02",
+     "label": "Receive the delivery and sign for it",
+     "kind": "step",
+     "lane": "requester"
+    },
+    {
+     "id": "closed",
+     "label": "Request closed",
+     "kind": "terminal",
+     "lane": "requester"
+    },
+    {
+     "id": "m01",
+     "label": "Review the request",
+     "kind": "step",
+     "lane": "manager"
+    },
+    {
+     "id": "m02",
+     "label": "Approved?",
+     "kind": "decision",
+     "lane": "manager"
+    },
+    {
+     "id": "m03",
+     "label": "Tell the requester why not",
+     "kind": "step",
+     "lane": "manager"
+    },
+    {
+     "id": "p01",
+     "label": "Check the request is complete",
+     "kind": "step",
+     "lane": "purchasing"
+    },
+    {
+     "id": "p02",
+     "label": "Complete?",
+     "kind": "decision",
+     "lane": "purchasing"
+    },
+    {
+     "id": "p03",
+     "label": "Send it back with what is missing",
+     "kind": "step",
+     "lane": "purchasing"
+    },
+    {
+     "id": "p04",
+     "label": "Over $1,000?",
+     "kind": "decision",
+     "lane": "purchasing"
+    },
+    {
+     "id": "p05",
+     "label": "Get three quotes",
+     "kind": "step",
+     "lane": "purchasing"
+    },
+    {
+     "id": "p06",
+     "label": "Pick the vendor",
+     "kind": "step",
+     "lane": "purchasing"
+    },
+    {
+     "id": "p07",
+     "label": "Create the PO in the ERP",
+     "kind": "step",
+     "lane": "purchasing"
+    },
+    {
+     "id": "f01",
+     "label": "Budget available?",
+     "kind": "decision",
+     "lane": "finance"
+    },
+    {
+     "id": "f02",
+     "label": "Move budget or defer to next quarter",
+     "kind": "step",
+     "lane": "finance"
+    },
+    {
+     "id": "f03",
+     "label": "Match the invoice to the PO and the receipt",
+     "kind": "step",
+     "lane": "finance"
+    },
+    {
+     "id": "f04",
+     "label": "Vendor paid",
+     "kind": "terminal",
+     "lane": "finance"
+    },
+    {
+     "id": "v01",
+     "label": "Send a quote",
+     "kind": "document",
+     "lane": "vendor"
+    },
+    {
+     "id": "v02",
+     "label": "Ship the order",
+     "kind": "step",
+     "lane": "vendor"
+    }
+   ],
+   "edges": [
+    {
+     "id": "intake->r01",
+     "source": "intake",
+     "target": "r01",
+     "label": null
+    },
+    {
+     "id": "r01->p01",
+     "source": "r01",
+     "target": "p01",
+     "label": null
+    },
+    {
+     "id": "p01->p02",
+     "source": "p01",
+     "target": "p02",
+     "label": null
+    },
+    {
+     "id": "p02->p03",
+     "source": "p02",
+     "target": "p03",
+     "label": "no"
+    },
+    {
+     "id": "p03->r01",
+     "source": "p03",
+     "target": "r01",
+     "label": null
+    },
+    {
+     "id": "p02->p04",
+     "source": "p02",
+     "target": "p04",
+     "label": "yes"
+    },
+    {
+     "id": "p04->m01",
+     "source": "p04",
+     "target": "m01",
+     "label": "yes"
+    },
+    {
+     "id": "p04->p05",
+     "source": "p04",
+     "target": "p05",
+     "label": "no"
+    },
+    {
+     "id": "m01->m02",
+     "source": "m01",
+     "target": "m02",
+     "label": null
+    },
+    {
+     "id": "m02->m03",
+     "source": "m02",
+     "target": "m03",
+     "label": "no"
+    },
+    {
+     "id": "m03->closed",
+     "source": "m03",
+     "target": "closed",
+     "label": null
+    },
+    {
+     "id": "m02->p05",
+     "source": "m02",
+     "target": "p05",
+     "label": "yes"
+    },
+    {
+     "id": "p05->v01",
+     "source": "p05",
+     "target": "v01",
+     "label": null
+    },
+    {
+     "id": "v01->p06",
+     "source": "v01",
+     "target": "p06",
+     "label": null
+    },
+    {
+     "id": "p06->f01",
+     "source": "p06",
+     "target": "f01",
+     "label": null
+    },
+    {
+     "id": "f01->p07",
+     "source": "f01",
+     "target": "p07",
+     "label": "yes"
+    },
+    {
+     "id": "f01->f02",
+     "source": "f01",
+     "target": "f02",
+     "label": "no"
+    },
+    {
+     "id": "f02->f01",
+     "source": "f02",
+     "target": "f01",
+     "label": null
+    },
+    {
+     "id": "p07->v02",
+     "source": "p07",
+     "target": "v02",
+     "label": null
+    },
+    {
+     "id": "v02->r02",
+     "source": "v02",
+     "target": "r02",
+     "label": null
+    },
+    {
+     "id": "r02->f03",
+     "source": "r02",
+     "target": "f03",
+     "label": null
+    },
+    {
+     "id": "f03->f04",
+     "source": "f03",
+     "target": "f04",
+     "label": null
+    }
+   ]
+  },
+  "styles": {
+   "intake": {},
+   "r01": {},
+   "r02": {},
+   "closed": {},
+   "m01": {},
+   "m02": {},
+   "m03": {},
+   "p01": {},
+   "p02": {},
+   "p03": {},
+   "p04": {},
+   "p05": {},
+   "p06": {},
+   "p07": {},
+   "f01": {},
+   "f02": {},
+   "f03": {},
+   "f04": {},
+   "v01": {},
+   "v02": {}
+  },
+  "legend": [],
+  "title": "purchase-request",
+  "laidOut": true
+ },
+ "pr: unknown and stale pins": {
+  "problems": {
+   "errors": [],
+   "warnings": [
+    {
+     "code": "W-layout-unknown-node",
+     "line": null,
+     "message": "Layout file pins \"ghost\", which is not in the diagram"
+    }
+   ]
+  },
+  "config": {
+   "version": 1,
+   "title": "Purchase request approval (current state, synthetic)",
+   "lanes": [
+    {
+     "id": "requester",
+     "extra": {}
+    },
+    {
+     "id": "manager",
+     "extra": {}
+    },
+    {
+     "id": "purchasing",
+     "extra": {}
+    },
+    {
+     "id": "finance",
+     "extra": {}
+    },
+    {
+     "id": "vendor",
+     "extra": {}
+    }
+   ],
+   "styles": [
+    {
+     "legend": "Confirmed by two or more people",
+     "match": [
+      {
+       "field": "confidence",
+       "op": "equals",
+       "value": "confirmed"
+      }
+     ],
+     "style": {
+      "border_style": "solid",
+      "border_width": 2
+     },
+     "rawStyle": {
+      "border_style": "solid",
+      "border_width": 2
+     }
+    },
+    {
+     "legend": "One source only",
+     "match": [
+      {
+       "field": "confidence",
+       "op": "equals",
+       "value": "single-source"
+      }
+     ],
+     "style": {
+      "border_style": "dashed",
+      "border_width": 1
+     },
+     "rawStyle": {
+      "border_style": "dashed",
+      "border_width": 1
+     }
+    },
+    {
+     "legend": "Inferred, nobody said it directly",
+     "match": [
+      {
+       "field": "confidence",
+       "op": "equals",
+       "value": "inferred"
+      }
+     ],
+     "style": {
+      "border_style": "dotted",
+      "font_style": "italic"
+     },
+     "rawStyle": {
+      "border_style": "dotted",
+      "font_style": "italic"
+     }
+    },
+    {
+     "legend": "Done in the ERP",
+     "match": [
+      {
+       "field": "system",
+       "op": "equals",
+       "value": "erp"
+      }
+     ],
+     "style": {
+      "fill": {
+       "light": "#dae8fc",
+       "dark": "#1e3a5f"
+      }
+     },
+     "rawStyle": {
+      "fill": {
+       "light": "#dae8fc",
+       "dark": "#1e3a5f"
+      }
+     }
+    },
+    {
+     "legend": "Done in a spreadsheet",
+     "match": [
+      {
+       "field": "system",
+       "op": "equals",
+       "value": "excel"
+      }
+     ],
+     "style": {
+      "fill": {
+       "light": "#d5e8d4",
+       "dark": "#1f4a2c"
+      }
+     },
+     "rawStyle": {
+      "fill": {
+       "light": "#d5e8d4",
+       "dark": "#1f4a2c"
+      }
+     }
+    },
+    {
+     "legend": "Waiting on someone",
+     "match": [
+      {
+       "field": "kind",
+       "op": "equals",
+       "value": "wait"
+      }
+     ],
+     "style": {
+      "fill": {
+       "light": "#fff2cc",
+       "dark": "#4a3f12"
+      },
+      "badge": "wait"
+     },
+     "rawStyle": {
+      "fill": {
+       "light": "#fff2cc",
+       "dark": "#4a3f12"
+      },
+      "badge": "wait"
+     }
+    },
+    {
+     "legend": "Open question",
+     "match": [
+      {
+       "field": "open_question",
+       "op": "present",
+       "value": "present"
+      }
+     ],
+     "style": {
+      "border_color": {
+       "light": "#b85450",
+       "dark": "#f08080"
+      }
+     },
+     "rawStyle": {
+      "border_color": {
+       "light": "#b85450",
+       "dark": "#f08080"
+      }
+     }
+    }
+   ],
+   "nodes": {
+    "intake": {
+     "confidence": "confirmed",
+     "source": [
+      "sam-09-01",
+      "lee-09-03"
+     ]
+    },
+    "r01": {
+     "system": "excel",
+     "confidence": "confirmed",
+     "source": [
+      "sam-09-01",
+      "lee-09-03"
+     ],
+     "quote": "the form is a spreadsheet somebody made in 2014"
+    },
+    "p01": {
+     "confidence": "confirmed",
+     "source": [
+      "lee-09-03",
+      "pat-09-04"
+     ]
+    },
+    "p03": {
+     "system": "email",
+     "confidence": "single-source",
+     "source": [
+      "lee-09-03"
+     ],
+     "quote": "half of them come back at least once",
+     "open_question": "Which fields are missing most often?"
+    },
+    "p04": {
+     "confidence": "single-source",
+     "source": [
+      "pat-09-04"
+     ],
+     "open_question": "Is the threshold $1,000 everywhere, or only at the main plant?"
+    },
+    "m01": {
+     "kind": "wait",
+     "confidence": "confirmed",
+     "source": [
+      "sam-09-01",
+      "pat-09-04"
+     ],
+     "quote": "it sits in his inbox for a week"
+    },
+    "m03": {
+     "confidence": "inferred",
+     "source": [
+      "sam-09-01"
+     ]
+    },
+    "p05": {
+     "kind": "wait",
+     "confidence": "single-source",
+     "source": [
+      "pat-09-04"
+     ],
+     "open_question": "Are three quotes required, or just the habit?",
+     "variants": {
+      "main plant": "three quotes over $1,000",
+      "warehouse": "one quote is fine under $5,000"
+     }
+    },
+    "v01": {
+     "kind": "wait",
+     "confidence": "confirmed",
+     "source": [
+      "pat-09-04",
+      "lee-09-03"
+     ]
+    },
+    "f01": {
+     "system": "erp",
+     "confidence": "single-source",
+     "source": [
+      "kim-09-05"
+     ]
+    },
+    "f02": {
+     "kind": "wait",
+     "confidence": "single-source",
+     "source": [
+      "kim-09-05"
+     ]
+    },
+    "p07": {
+     "system": "erp",
+     "confidence": "confirmed",
+     "source": [
+      "pat-09-04",
+      "kim-09-05"
+     ]
+    },
+    "r02": {
+     "confidence": "inferred"
+    },
+    "f03": {
+     "system": "erp",
+     "confidence": "confirmed",
+     "source": [
+      "kim-09-05",
+      "pat-09-04"
+     ],
+     "quote": "three-way match, when the receipt shows up"
+    }
+   }
+  },
+  "pins": {
+   "m01": {
+    "lane": "manager",
+    "along": 300,
+    "across": 12
+   }
+  },
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "requester",
+     "label": "Requester"
+    },
+    {
+     "id": "manager",
+     "label": "Manager"
+    },
+    {
+     "id": "purchasing",
+     "label": "Purchasing"
+    },
+    {
+     "id": "finance",
+     "label": "Finance"
+    },
+    {
+     "id": "vendor",
+     "label": "Vendor"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "intake",
+     "label": "Needs a part or service",
+     "kind": "terminal",
+     "lane": "requester"
+    },
+    {
+     "id": "r01",
+     "label": "Fill the purchase request form",
+     "kind": "step",
+     "lane": "requester"
+    },
+    {
+     "id": "r02",
+     "label": "Receive the delivery and sign for it",
+     "kind": "step",
+     "lane": "requester"
+    },
+    {
+     "id": "closed",
+     "label": "Request closed",
+     "kind": "terminal",
+     "lane": "requester"
+    },
+    {
+     "id": "m01",
+     "label": "Review the request",
+     "kind": "step",
+     "lane": "manager"
+    },
+    {
+     "id": "m02",
+     "label": "Approved?",
+     "kind": "decision",
+     "lane": "manager"
+    },
+    {
+     "id": "m03",
+     "label": "Tell the requester why not",
+     "kind": "step",
+     "lane": "manager"
+    },
+    {
+     "id": "p01",
+     "label": "Check the request is complete",
+     "kind": "step",
+     "lane": "purchasing"
+    },
+    {
+     "id": "p02",
+     "label": "Complete?",
+     "kind": "decision",
+     "lane": "purchasing"
+    },
+    {
+     "id": "p03",
+     "label": "Send it back with what is missing",
+     "kind": "step",
+     "lane": "purchasing"
+    },
+    {
+     "id": "p04",
+     "label": "Over $1,000?",
+     "kind": "decision",
+     "lane": "purchasing"
+    },
+    {
+     "id": "p05",
+     "label": "Get three quotes",
+     "kind": "step",
+     "lane": "purchasing"
+    },
+    {
+     "id": "p06",
+     "label": "Pick the vendor",
+     "kind": "step",
+     "lane": "purchasing"
+    },
+    {
+     "id": "p07",
+     "label": "Create the PO in the ERP",
+     "kind": "step",
+     "lane": "purchasing"
+    },
+    {
+     "id": "f01",
+     "label": "Budget available?",
+     "kind": "decision",
+     "lane": "finance"
+    },
+    {
+     "id": "f02",
+     "label": "Move budget or defer to next quarter",
+     "kind": "step",
+     "lane": "finance"
+    },
+    {
+     "id": "f03",
+     "label": "Match the invoice to the PO and the receipt",
+     "kind": "step",
+     "lane": "finance"
+    },
+    {
+     "id": "f04",
+     "label": "Vendor paid",
+     "kind": "terminal",
+     "lane": "finance"
+    },
+    {
+     "id": "v01",
+     "label": "Send a quote",
+     "kind": "document",
+     "lane": "vendor"
+    },
+    {
+     "id": "v02",
+     "label": "Ship the order",
+     "kind": "step",
+     "lane": "vendor"
+    }
+   ],
+   "edges": [
+    {
+     "id": "intake->r01",
+     "source": "intake",
+     "target": "r01",
+     "label": null
+    },
+    {
+     "id": "r01->p01",
+     "source": "r01",
+     "target": "p01",
+     "label": null
+    },
+    {
+     "id": "p01->p02",
+     "source": "p01",
+     "target": "p02",
+     "label": null
+    },
+    {
+     "id": "p02->p03",
+     "source": "p02",
+     "target": "p03",
+     "label": "no"
+    },
+    {
+     "id": "p03->r01",
+     "source": "p03",
+     "target": "r01",
+     "label": null
+    },
+    {
+     "id": "p02->p04",
+     "source": "p02",
+     "target": "p04",
+     "label": "yes"
+    },
+    {
+     "id": "p04->m01",
+     "source": "p04",
+     "target": "m01",
+     "label": "yes"
+    },
+    {
+     "id": "p04->p05",
+     "source": "p04",
+     "target": "p05",
+     "label": "no"
+    },
+    {
+     "id": "m01->m02",
+     "source": "m01",
+     "target": "m02",
+     "label": null
+    },
+    {
+     "id": "m02->m03",
+     "source": "m02",
+     "target": "m03",
+     "label": "no"
+    },
+    {
+     "id": "m03->closed",
+     "source": "m03",
+     "target": "closed",
+     "label": null
+    },
+    {
+     "id": "m02->p05",
+     "source": "m02",
+     "target": "p05",
+     "label": "yes"
+    },
+    {
+     "id": "p05->v01",
+     "source": "p05",
+     "target": "v01",
+     "label": null
+    },
+    {
+     "id": "v01->p06",
+     "source": "v01",
+     "target": "p06",
+     "label": null
+    },
+    {
+     "id": "p06->f01",
+     "source": "p06",
+     "target": "f01",
+     "label": null
+    },
+    {
+     "id": "f01->p07",
+     "source": "f01",
+     "target": "p07",
+     "label": "yes"
+    },
+    {
+     "id": "f01->f02",
+     "source": "f01",
+     "target": "f02",
+     "label": "no"
+    },
+    {
+     "id": "f02->f01",
+     "source": "f02",
+     "target": "f01",
+     "label": null
+    },
+    {
+     "id": "p07->v02",
+     "source": "p07",
+     "target": "v02",
+     "label": null
+    },
+    {
+     "id": "v02->r02",
+     "source": "v02",
+     "target": "r02",
+     "label": null
+    },
+    {
+     "id": "r02->f03",
+     "source": "r02",
+     "target": "f03",
+     "label": null
+    },
+    {
+     "id": "f03->f04",
+     "source": "f03",
+     "target": "f04",
+     "label": null
+    }
+   ]
+  },
+  "styles": {
+   "intake": {
+    "border_style": "solid",
+    "border_width": 2
+   },
+   "r01": {
+    "border_style": "solid",
+    "border_width": 2,
+    "fill": {
+     "light": "#d5e8d4",
+     "dark": "#1f4a2c"
+    }
+   },
+   "r02": {
+    "border_style": "dotted",
+    "font_style": "italic"
+   },
+   "closed": {},
+   "m01": {
+    "border_style": "solid",
+    "border_width": 2,
+    "fill": {
+     "light": "#fff2cc",
+     "dark": "#4a3f12"
+    },
+    "badge": "wait"
+   },
+   "m02": {},
+   "m03": {
+    "border_style": "dotted",
+    "font_style": "italic"
+   },
+   "p01": {
+    "border_style": "solid",
+    "border_width": 2
+   },
+   "p02": {},
+   "p03": {
+    "border_style": "dashed",
+    "border_width": 1,
+    "border_color": {
+     "light": "#b85450",
+     "dark": "#f08080"
+    }
+   },
+   "p04": {
+    "border_style": "dashed",
+    "border_width": 1,
+    "border_color": {
+     "light": "#b85450",
+     "dark": "#f08080"
+    }
+   },
+   "p05": {
+    "border_style": "dashed",
+    "border_width": 1,
+    "fill": {
+     "light": "#fff2cc",
+     "dark": "#4a3f12"
+    },
+    "badge": "wait",
+    "border_color": {
+     "light": "#b85450",
+     "dark": "#f08080"
+    }
+   },
+   "p06": {},
+   "p07": {
+    "border_style": "solid",
+    "border_width": 2,
+    "fill": {
+     "light": "#dae8fc",
+     "dark": "#1e3a5f"
+    }
+   },
+   "f01": {
+    "border_style": "dashed",
+    "border_width": 1,
+    "fill": {
+     "light": "#dae8fc",
+     "dark": "#1e3a5f"
+    }
+   },
+   "f02": {
+    "border_style": "dashed",
+    "border_width": 1,
+    "fill": {
+     "light": "#fff2cc",
+     "dark": "#4a3f12"
+    },
+    "badge": "wait"
+   },
+   "f03": {
+    "border_style": "solid",
+    "border_width": 2,
+    "fill": {
+     "light": "#dae8fc",
+     "dark": "#1e3a5f"
+    }
+   },
+   "f04": {},
+   "v01": {
+    "border_style": "solid",
+    "border_width": 2,
+    "fill": {
+     "light": "#fff2cc",
+     "dark": "#4a3f12"
+    },
+    "badge": "wait"
+   },
+   "v02": {}
+  },
+  "legend": [
+   {
+    "text": "Confirmed by two or more people",
+    "style": {
+     "border_style": "solid",
+     "border_width": 2
+    }
+   },
+   {
+    "text": "One source only",
+    "style": {
+     "border_style": "dashed",
+     "border_width": 1
+    }
+   },
+   {
+    "text": "Inferred, nobody said it directly",
+    "style": {
+     "border_style": "dotted",
+     "font_style": "italic"
+    }
+   },
+   {
+    "text": "Done in the ERP",
+    "style": {
+     "fill": {
+      "light": "#dae8fc",
+      "dark": "#1e3a5f"
+     }
+    }
+   },
+   {
+    "text": "Done in a spreadsheet",
+    "style": {
+     "fill": {
+      "light": "#d5e8d4",
+      "dark": "#1f4a2c"
+     }
+    }
+   },
+   {
+    "text": "Waiting on someone",
+    "style": {
+     "fill": {
+      "light": "#fff2cc",
+      "dark": "#4a3f12"
+     },
+     "badge": "wait"
+    }
+   },
+   {
+    "text": "Open question",
+    "style": {
+     "border_color": {
+      "light": "#b85450",
+      "dark": "#f08080"
+     }
+    }
+   }
+  ],
+  "title": "Purchase request approval (current state, synthetic)",
+  "laidOut": true
+ },
+ "lanes: negative pins in the first lane": {
+  "problems": {
+   "errors": [],
+   "warnings": [
+    {
+     "code": "W-no-lane",
+     "line": 2,
+     "message": "\"u1\" is not in any subgraph"
+    }
+   ]
+  },
+  "config": {
+   "version": 1,
+   "title": null,
+   "lanes": null,
+   "styles": [],
+   "nodes": {}
+  },
+  "pins": {
+   "a": {
+    "lane": "l1",
+    "along": -40,
+    "across": -30
+   },
+   "c": {
+    "lane": "l2",
+    "along": -5,
+    "across": 0
+   }
+  },
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "l1",
+     "label": "One"
+    },
+    {
+     "id": "l2",
+     "label": "Two"
+    },
+    {
+     "id": "_unassigned",
+     "label": "Unassigned"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "u1",
+     "label": "Loose",
+     "kind": "step",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "a",
+     "label": "A",
+     "kind": "step",
+     "lane": "l1"
+    },
+    {
+     "id": "b",
+     "label": "B?",
+     "kind": "decision",
+     "lane": "l1"
+    },
+    {
+     "id": "c",
+     "label": "C",
+     "kind": "terminal",
+     "lane": "l2"
+    }
+   ],
+   "edges": [
+    {
+     "id": "a->b",
+     "source": "a",
+     "target": "b",
+     "label": null
+    },
+    {
+     "id": "b->c",
+     "source": "b",
+     "target": "c",
+     "label": "yes"
+    },
+    {
+     "id": "b->a",
+     "source": "b",
+     "target": "a",
+     "label": "no"
+    },
+    {
+     "id": "a->c",
+     "source": "a",
+     "target": "c",
+     "label": null
+    },
+    {
+     "id": "a->c#2",
+     "source": "a",
+     "target": "c",
+     "label": null
+    }
+   ]
+  },
+  "styles": {
+   "u1": {},
+   "a": {},
+   "b": {},
+   "c": {}
+  },
+  "legend": [],
+  "title": "lanes",
+  "laidOut": true
+ },
+ "lanes: negative across outside the first lane": {
+  "problems": {
+   "errors": [
+    {
+     "code": "E-layout",
+     "line": null,
+     "message": "Pin \"c\": \"across\" must be at least 0 outside the first lane"
+    }
+   ],
+   "warnings": [
+    {
+     "code": "W-no-lane",
+     "line": 2,
+     "message": "\"u1\" is not in any subgraph"
+    }
+   ]
+  },
+  "config": {
+   "version": 1,
+   "title": null,
+   "lanes": null,
+   "styles": [],
+   "nodes": {}
+  },
+  "pins": {},
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "l1",
+     "label": "One"
+    },
+    {
+     "id": "l2",
+     "label": "Two"
+    },
+    {
+     "id": "_unassigned",
+     "label": "Unassigned"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "u1",
+     "label": "Loose",
+     "kind": "step",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "a",
+     "label": "A",
+     "kind": "step",
+     "lane": "l1"
+    },
+    {
+     "id": "b",
+     "label": "B?",
+     "kind": "decision",
+     "lane": "l1"
+    },
+    {
+     "id": "c",
+     "label": "C",
+     "kind": "terminal",
+     "lane": "l2"
+    }
+   ],
+   "edges": [
+    {
+     "id": "a->b",
+     "source": "a",
+     "target": "b",
+     "label": null
+    },
+    {
+     "id": "b->c",
+     "source": "b",
+     "target": "c",
+     "label": "yes"
+    },
+    {
+     "id": "b->a",
+     "source": "b",
+     "target": "a",
+     "label": "no"
+    },
+    {
+     "id": "a->c",
+     "source": "a",
+     "target": "c",
+     "label": null
+    },
+    {
+     "id": "a->c#2",
+     "source": "a",
+     "target": "c",
+     "label": null
+    }
+   ]
+  },
+  "styles": {
+   "u1": {},
+   "a": {},
+   "b": {},
+   "c": {}
+  },
+  "legend": [],
+  "title": "lanes",
+  "laidOut": true
+ },
+ "lanes: config lane order makes l2 first": {
+  "problems": {
+   "errors": [],
+   "warnings": [
+    {
+     "code": "W-no-lane",
+     "line": 2,
+     "message": "\"u1\" is not in any subgraph"
+    }
+   ]
+  },
+  "config": {
+   "version": 1,
+   "title": null,
+   "lanes": [
+    {
+     "id": "l2",
+     "extra": {}
+    }
+   ],
+   "styles": [],
+   "nodes": {}
+  },
+  "pins": {
+   "c": {
+    "lane": "l2",
+    "along": 5,
+    "across": -1
+   }
+  },
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "l2",
+     "label": "Two"
+    },
+    {
+     "id": "l1",
+     "label": "One"
+    },
+    {
+     "id": "_unassigned",
+     "label": "Unassigned"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "u1",
+     "label": "Loose",
+     "kind": "step",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "a",
+     "label": "A",
+     "kind": "step",
+     "lane": "l1"
+    },
+    {
+     "id": "b",
+     "label": "B?",
+     "kind": "decision",
+     "lane": "l1"
+    },
+    {
+     "id": "c",
+     "label": "C",
+     "kind": "terminal",
+     "lane": "l2"
+    }
+   ],
+   "edges": [
+    {
+     "id": "a->b",
+     "source": "a",
+     "target": "b",
+     "label": null
+    },
+    {
+     "id": "b->c",
+     "source": "b",
+     "target": "c",
+     "label": "yes"
+    },
+    {
+     "id": "b->a",
+     "source": "b",
+     "target": "a",
+     "label": "no"
+    },
+    {
+     "id": "a->c",
+     "source": "a",
+     "target": "c",
+     "label": null
+    },
+    {
+     "id": "a->c#2",
+     "source": "a",
+     "target": "c",
+     "label": null
+    }
+   ]
+  },
+  "styles": {
+   "u1": {},
+   "a": {},
+   "b": {},
+   "c": {}
+  },
+  "legend": [],
+  "title": "lanes",
+  "laidOut": true
+ },
+ "layout: invalid JSON": {
+  "problems": {
+   "errors": [
+    {
+     "code": "E-layout",
+     "line": null,
+     "message": "Layout file is not valid JSON: Expected double-quoted property name in JSON at position 14 (line 1 column 15)"
+    }
+   ],
+   "warnings": [
+    {
+     "code": "W-no-lane",
+     "line": 2,
+     "message": "\"u1\" is not in any subgraph"
+    }
+   ]
+  },
+  "config": {
+   "version": 1,
+   "title": null,
+   "lanes": null,
+   "styles": [],
+   "nodes": {}
+  },
+  "pins": {},
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "l1",
+     "label": "One"
+    },
+    {
+     "id": "l2",
+     "label": "Two"
+    },
+    {
+     "id": "_unassigned",
+     "label": "Unassigned"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "u1",
+     "label": "Loose",
+     "kind": "step",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "a",
+     "label": "A",
+     "kind": "step",
+     "lane": "l1"
+    },
+    {
+     "id": "b",
+     "label": "B?",
+     "kind": "decision",
+     "lane": "l1"
+    },
+    {
+     "id": "c",
+     "label": "C",
+     "kind": "terminal",
+     "lane": "l2"
+    }
+   ],
+   "edges": [
+    {
+     "id": "a->b",
+     "source": "a",
+     "target": "b",
+     "label": null
+    },
+    {
+     "id": "b->c",
+     "source": "b",
+     "target": "c",
+     "label": "yes"
+    },
+    {
+     "id": "b->a",
+     "source": "b",
+     "target": "a",
+     "label": "no"
+    },
+    {
+     "id": "a->c",
+     "source": "a",
+     "target": "c",
+     "label": null
+    },
+    {
+     "id": "a->c#2",
+     "source": "a",
+     "target": "c",
+     "label": null
+    }
+   ]
+  },
+  "styles": {
+   "u1": {},
+   "a": {},
+   "b": {},
+   "c": {}
+  },
+  "legend": [],
+  "title": "x",
+  "laidOut": true
+ },
+ "layout: unknown key": {
+  "problems": {
+   "errors": [
+    {
+     "code": "E-layout",
+     "line": null,
+     "message": "Layout file has an unknown key \"extra\""
+    }
+   ],
+   "warnings": [
+    {
+     "code": "W-no-lane",
+     "line": 2,
+     "message": "\"u1\" is not in any subgraph"
+    }
+   ]
+  },
+  "config": {
+   "version": 1,
+   "title": null,
+   "lanes": null,
+   "styles": [],
+   "nodes": {}
+  },
+  "pins": {},
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "l1",
+     "label": "One"
+    },
+    {
+     "id": "l2",
+     "label": "Two"
+    },
+    {
+     "id": "_unassigned",
+     "label": "Unassigned"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "u1",
+     "label": "Loose",
+     "kind": "step",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "a",
+     "label": "A",
+     "kind": "step",
+     "lane": "l1"
+    },
+    {
+     "id": "b",
+     "label": "B?",
+     "kind": "decision",
+     "lane": "l1"
+    },
+    {
+     "id": "c",
+     "label": "C",
+     "kind": "terminal",
+     "lane": "l2"
+    }
+   ],
+   "edges": [
+    {
+     "id": "a->b",
+     "source": "a",
+     "target": "b",
+     "label": null
+    },
+    {
+     "id": "b->c",
+     "source": "b",
+     "target": "c",
+     "label": "yes"
+    },
+    {
+     "id": "b->a",
+     "source": "b",
+     "target": "a",
+     "label": "no"
+    },
+    {
+     "id": "a->c",
+     "source": "a",
+     "target": "c",
+     "label": null
+    },
+    {
+     "id": "a->c#2",
+     "source": "a",
+     "target": "c",
+     "label": null
+    }
+   ]
+  },
+  "styles": {
+   "u1": {},
+   "a": {},
+   "b": {},
+   "c": {}
+  },
+  "legend": [],
+  "title": "x",
+  "laidOut": true
+ },
+ "layout: bad pins": {
+  "problems": {
+   "errors": [
+    {
+     "code": "E-layout",
+     "line": null,
+     "message": "Pin \"a\": \"along\" must be an integer"
+    },
+    {
+     "code": "E-layout",
+     "line": null,
+     "message": "Pin \"b\": unknown key \"x\""
+    },
+    {
+     "code": "E-layout",
+     "line": null,
+     "message": "Pin \"c\" must be an object {lane, along, across}"
+    }
+   ],
+   "warnings": [
+    {
+     "code": "W-no-lane",
+     "line": 2,
+     "message": "\"u1\" is not in any subgraph"
+    }
+   ]
+  },
+  "config": {
+   "version": 1,
+   "title": null,
+   "lanes": null,
+   "styles": [],
+   "nodes": {}
+  },
+  "pins": {},
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "l1",
+     "label": "One"
+    },
+    {
+     "id": "l2",
+     "label": "Two"
+    },
+    {
+     "id": "_unassigned",
+     "label": "Unassigned"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "u1",
+     "label": "Loose",
+     "kind": "step",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "a",
+     "label": "A",
+     "kind": "step",
+     "lane": "l1"
+    },
+    {
+     "id": "b",
+     "label": "B?",
+     "kind": "decision",
+     "lane": "l1"
+    },
+    {
+     "id": "c",
+     "label": "C",
+     "kind": "terminal",
+     "lane": "l2"
+    }
+   ],
+   "edges": [
+    {
+     "id": "a->b",
+     "source": "a",
+     "target": "b",
+     "label": null
+    },
+    {
+     "id": "b->c",
+     "source": "b",
+     "target": "c",
+     "label": "yes"
+    },
+    {
+     "id": "b->a",
+     "source": "b",
+     "target": "a",
+     "label": "no"
+    },
+    {
+     "id": "a->c",
+     "source": "a",
+     "target": "c",
+     "label": null
+    },
+    {
+     "id": "a->c#2",
+     "source": "a",
+     "target": "c",
+     "label": null
+    }
+   ]
+  },
+  "styles": {
+   "u1": {},
+   "a": {},
+   "b": {},
+   "c": {}
+  },
+  "legend": [],
+  "title": "x",
+  "laidOut": true
+ },
+ "layout: missing nodes, version 2": {
+  "problems": {
+   "errors": [
+    {
+     "code": "E-layout",
+     "line": null,
+     "message": "Layout file \"version\" must be 1 (found 2)"
+    },
+    {
+     "code": "E-layout",
+     "line": null,
+     "message": "Layout file \"nodes\" must be an object of pins"
+    }
+   ],
+   "warnings": [
+    {
+     "code": "W-no-lane",
+     "line": 2,
+     "message": "\"u1\" is not in any subgraph"
+    }
+   ]
+  },
+  "config": {
+   "version": 1,
+   "title": null,
+   "lanes": null,
+   "styles": [],
+   "nodes": {}
+  },
+  "pins": {},
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "l1",
+     "label": "One"
+    },
+    {
+     "id": "l2",
+     "label": "Two"
+    },
+    {
+     "id": "_unassigned",
+     "label": "Unassigned"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "u1",
+     "label": "Loose",
+     "kind": "step",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "a",
+     "label": "A",
+     "kind": "step",
+     "lane": "l1"
+    },
+    {
+     "id": "b",
+     "label": "B?",
+     "kind": "decision",
+     "lane": "l1"
+    },
+    {
+     "id": "c",
+     "label": "C",
+     "kind": "terminal",
+     "lane": "l2"
+    }
+   ],
+   "edges": [
+    {
+     "id": "a->b",
+     "source": "a",
+     "target": "b",
+     "label": null
+    },
+    {
+     "id": "b->c",
+     "source": "b",
+     "target": "c",
+     "label": "yes"
+    },
+    {
+     "id": "b->a",
+     "source": "b",
+     "target": "a",
+     "label": "no"
+    },
+    {
+     "id": "a->c",
+     "source": "a",
+     "target": "c",
+     "label": null
+    },
+    {
+     "id": "a->c#2",
+     "source": "a",
+     "target": "c",
+     "label": null
+    }
+   ]
+  },
+  "styles": {
+   "u1": {},
+   "a": {},
+   "b": {},
+   "c": {}
+  },
+  "legend": [],
+  "title": "x",
+  "laidOut": true
+ },
+ "config: warnings of every v1.0 kind": {
+  "problems": {
+   "errors": [],
+   "warnings": [
+    {
+     "code": "W-no-lane",
+     "line": 2,
+     "message": "\"u1\" is not in any subgraph"
+    },
+    {
+     "code": "W-config-key",
+     "line": null,
+     "message": "Unknown config key \"extra_top\" (ignored)"
+    },
+    {
+     "code": "W-config-key",
+     "line": null,
+     "message": "Unknown key \"colour\" in lanes entry \"l2\" (ignored)"
+    },
+    {
+     "code": "W-config-key",
+     "line": null,
+     "message": "Unknown key \"note\" in style rule 1 (ignored)"
+    },
+    {
+     "code": "W-style",
+     "line": null,
+     "message": "style rule 1: bad value (an integer 1 to 4) for \"border_width\" (ignored)"
+    },
+    {
+     "code": "W-style",
+     "line": null,
+     "message": "style rule 1: bad value (solid, dashed or dotted) for \"border_style\" (ignored)"
+    },
+    {
+     "code": "W-style",
+     "line": null,
+     "message": "style rule 1: bad colour (use #rgb, #rrggbb or {light, dark}) for \"fill\" (ignored)"
+    },
+    {
+     "code": "W-style",
+     "line": null,
+     "message": "style rule 1: unknown style property \"glow\" (ignored)"
+    },
+    {
+     "code": "W-style",
+     "line": null,
+     "message": "style rule 2: bad colour (use #rgb, #rrggbb or {light, dark}) for \"fill\" (ignored)"
+    },
+    {
+     "code": "W-config-unknown-node",
+     "line": null,
+     "message": "Config has metadata for \"ghost\", which is not in the diagram"
+    },
+    {
+     "code": "W-config-unknown-lane",
+     "line": null,
+     "message": "Config lanes lists \"nope\", which is not a lane in the diagram"
+    },
+    {
+     "code": "W-config-unknown-lane",
+     "line": null,
+     "message": "Config lanes lists \"_unassigned\", which is never listed (it always shows last)"
+    }
+   ]
+  },
+  "config": {
+   "version": 1,
+   "title": "Warnings",
+   "lanes": [
+    {
+     "id": "l2",
+     "extra": {
+      "colour": "red"
+     }
+    },
+    {
+     "id": "nope",
+     "extra": {}
+    },
+    {
+     "id": "_unassigned",
+     "extra": {}
+    }
+   ],
+   "styles": [
+    {
+     "legend": "Bad props",
+     "match": [],
+     "style": {},
+     "rawStyle": {
+      "border_width": 5,
+      "border_style": "wavy",
+      "fill": "red",
+      "glow": 1,
+      "badge": ""
+     }
+    },
+    {
+     "legend": "Dark only",
+     "match": [
+      {
+       "field": "kind",
+       "op": "equals",
+       "value": "decision"
+      }
+     ],
+     "style": {
+      "text_color": {
+       "light": "#aabbcc",
+       "dark": "#123456"
+      }
+     },
+     "rawStyle": {
+      "fill": {
+       "dark": "#000"
+      },
+      "text_color": {
+       "light": "#ABC",
+       "dark": "#123456"
+      }
+     }
+    },
+    {
+     "legend": null,
+     "match": [
+      {
+       "field": "lane",
+       "op": "equals",
+       "value": "l1"
+      },
+      {
+       "field": "id",
+       "op": "equals",
+       "value": "a"
+      }
+     ],
+     "style": {
+      "border_color": "#ff9966",
+      "font_style": "italic",
+      "border_width": 3,
+      "badge": "2"
+     },
+     "rawStyle": {
+      "border_color": "#F96",
+      "font_style": "italic",
+      "border_width": 3,
+      "badge": 2
+     }
+    },
+    {
+     "legend": "Listed",
+     "match": [
+      {
+       "field": "tags",
+       "op": "equals",
+       "value": "x"
+      },
+      {
+       "field": "missing",
+       "op": "absent",
+       "value": "absent"
+      },
+      {
+       "field": "owner",
+       "op": "present",
+       "value": "present"
+      }
+     ],
+     "style": {
+      "border_style": "dotted"
+     },
+     "rawStyle": {
+      "border_style": "dotted"
+     }
+    }
+   ],
+   "nodes": {
+    "a": {
+     "tags": [
+      "x",
+      "y"
+     ],
+     "owner": "sam"
+    },
+    "ghost": {
+     "kind": "wait"
+    },
+    "b": {
+     "kind": "wait"
+    }
+   }
+  },
+  "pins": {},
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "l2",
+     "label": "Two"
+    },
+    {
+     "id": "l1",
+     "label": "One"
+    },
+    {
+     "id": "_unassigned",
+     "label": "Unassigned"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "u1",
+     "label": "Loose",
+     "kind": "step",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "a",
+     "label": "A",
+     "kind": "step",
+     "lane": "l1"
+    },
+    {
+     "id": "b",
+     "label": "B?",
+     "kind": "decision",
+     "lane": "l1"
+    },
+    {
+     "id": "c",
+     "label": "C",
+     "kind": "terminal",
+     "lane": "l2"
+    }
+   ],
+   "edges": [
+    {
+     "id": "a->b",
+     "source": "a",
+     "target": "b",
+     "label": null
+    },
+    {
+     "id": "b->c",
+     "source": "b",
+     "target": "c",
+     "label": "yes"
+    },
+    {
+     "id": "b->a",
+     "source": "b",
+     "target": "a",
+     "label": "no"
+    },
+    {
+     "id": "a->c",
+     "source": "a",
+     "target": "c",
+     "label": null
+    },
+    {
+     "id": "a->c#2",
+     "source": "a",
+     "target": "c",
+     "label": null
+    }
+   ]
+  },
+  "styles": {
+   "u1": {},
+   "a": {
+    "border_color": "#ff9966",
+    "font_style": "italic",
+    "border_width": 3,
+    "badge": "2",
+    "border_style": "dotted"
+   },
+   "b": {},
+   "c": {}
+  },
+  "legend": [
+   {
+    "text": "Bad props",
+    "style": {}
+   },
+   {
+    "text": "Dark only",
+    "style": {
+     "text_color": {
+      "light": "#aabbcc",
+      "dark": "#123456"
+     }
+    }
+   },
+   {
+    "text": "Listed",
+    "style": {
+     "border_style": "dotted"
+    }
+   }
+  ],
+  "title": "Warnings",
+  "laidOut": true
+ },
+ "config: E-config wrong types": {
+  "problems": {
+   "errors": [
+    {
+     "code": "E-config",
+     "line": null,
+     "message": "Config \"lanes\" must be a list"
+    },
+    {
+     "code": "E-config",
+     "line": null,
+     "message": "Config style rule 1 has no \"style\""
+    },
+    {
+     "code": "E-config",
+     "line": null,
+     "message": "Config style rule 1: match value for \"a\" must be a single value, not a list or map"
+    },
+    {
+     "code": "E-config",
+     "line": null,
+     "message": "Config \"nodes\" must be a map of node ids"
+    }
+   ],
+   "warnings": [
+    {
+     "code": "W-no-lane",
+     "line": 2,
+     "message": "\"u1\" is not in any subgraph"
+    }
+   ]
+  },
+  "config": null,
+  "pins": {},
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "l1",
+     "label": "One"
+    },
+    {
+     "id": "l2",
+     "label": "Two"
+    },
+    {
+     "id": "_unassigned",
+     "label": "Unassigned"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "u1",
+     "label": "Loose",
+     "kind": "step",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "a",
+     "label": "A",
+     "kind": "step",
+     "lane": "l1"
+    },
+    {
+     "id": "b",
+     "label": "B?",
+     "kind": "decision",
+     "lane": "l1"
+    },
+    {
+     "id": "c",
+     "label": "C",
+     "kind": "terminal",
+     "lane": "l2"
+    }
+   ],
+   "edges": [
+    {
+     "id": "a->b",
+     "source": "a",
+     "target": "b",
+     "label": null
+    },
+    {
+     "id": "b->c",
+     "source": "b",
+     "target": "c",
+     "label": "yes"
+    },
+    {
+     "id": "b->a",
+     "source": "b",
+     "target": "a",
+     "label": "no"
+    },
+    {
+     "id": "a->c",
+     "source": "a",
+     "target": "c",
+     "label": null
+    },
+    {
+     "id": "a->c#2",
+     "source": "a",
+     "target": "c",
+     "label": null
+    }
+   ]
+  },
+  "styles": {
+   "u1": {},
+   "a": {},
+   "b": {},
+   "c": {}
+  },
+  "legend": [],
+  "title": "x",
+  "laidOut": true
+ },
+ "config: invalid YAML": {
+  "problems": {
+   "errors": [
+    {
+     "code": "E-config",
+     "line": null,
+     "message": "Config is not valid YAML: Flow sequence in block collection must be sufficiently indented and end with a ] at line 2, column 1:\n\nstyles: [oops\n\n^\n"
+    }
+   ],
+   "warnings": [
+    {
+     "code": "W-no-lane",
+     "line": 2,
+     "message": "\"u1\" is not in any subgraph"
+    }
+   ]
+  },
+  "config": null,
+  "pins": {},
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "l1",
+     "label": "One"
+    },
+    {
+     "id": "l2",
+     "label": "Two"
+    },
+    {
+     "id": "_unassigned",
+     "label": "Unassigned"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "u1",
+     "label": "Loose",
+     "kind": "step",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "a",
+     "label": "A",
+     "kind": "step",
+     "lane": "l1"
+    },
+    {
+     "id": "b",
+     "label": "B?",
+     "kind": "decision",
+     "lane": "l1"
+    },
+    {
+     "id": "c",
+     "label": "C",
+     "kind": "terminal",
+     "lane": "l2"
+    }
+   ],
+   "edges": [
+    {
+     "id": "a->b",
+     "source": "a",
+     "target": "b",
+     "label": null
+    },
+    {
+     "id": "b->c",
+     "source": "b",
+     "target": "c",
+     "label": "yes"
+    },
+    {
+     "id": "b->a",
+     "source": "b",
+     "target": "a",
+     "label": "no"
+    },
+    {
+     "id": "a->c",
+     "source": "a",
+     "target": "c",
+     "label": null
+    },
+    {
+     "id": "a->c#2",
+     "source": "a",
+     "target": "c",
+     "label": null
+    }
+   ]
+  },
+  "styles": {
+   "u1": {},
+   "a": {},
+   "b": {},
+   "c": {}
+  },
+  "legend": [],
+  "title": "x",
+  "laidOut": true
+ },
+ "config: version string": {
+  "problems": {
+   "errors": [
+    {
+     "code": "E-config",
+     "line": null,
+     "message": "Config version must be 1 (found \"1\")"
+    }
+   ],
+   "warnings": [
+    {
+     "code": "W-no-lane",
+     "line": 2,
+     "message": "\"u1\" is not in any subgraph"
+    }
+   ]
+  },
+  "config": null,
+  "pins": {},
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "l1",
+     "label": "One"
+    },
+    {
+     "id": "l2",
+     "label": "Two"
+    },
+    {
+     "id": "_unassigned",
+     "label": "Unassigned"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "u1",
+     "label": "Loose",
+     "kind": "step",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "a",
+     "label": "A",
+     "kind": "step",
+     "lane": "l1"
+    },
+    {
+     "id": "b",
+     "label": "B?",
+     "kind": "decision",
+     "lane": "l1"
+    },
+    {
+     "id": "c",
+     "label": "C",
+     "kind": "terminal",
+     "lane": "l2"
+    }
+   ],
+   "edges": [
+    {
+     "id": "a->b",
+     "source": "a",
+     "target": "b",
+     "label": null
+    },
+    {
+     "id": "b->c",
+     "source": "b",
+     "target": "c",
+     "label": "yes"
+    },
+    {
+     "id": "b->a",
+     "source": "b",
+     "target": "a",
+     "label": "no"
+    },
+    {
+     "id": "a->c",
+     "source": "a",
+     "target": "c",
+     "label": null
+    },
+    {
+     "id": "a->c#2",
+     "source": "a",
+     "target": "c",
+     "label": null
+    }
+   ]
+  },
+  "styles": {
+   "u1": {},
+   "a": {},
+   "b": {},
+   "c": {}
+  },
+  "legend": [],
+  "title": "x",
+  "laidOut": true
+ },
+ "config: null keys and entries": {
+  "problems": {
+   "errors": [],
+   "warnings": [
+    {
+     "code": "W-no-lane",
+     "line": 2,
+     "message": "\"u1\" is not in any subgraph"
+    }
+   ]
+  },
+  "config": {
+   "version": 1,
+   "title": null,
+   "lanes": null,
+   "styles": [],
+   "nodes": {
+    "a": {}
+   }
+  },
+  "pins": {},
+  "graph": {
+   "direction": "LR",
+   "lanes": [
+    {
+     "id": "l1",
+     "label": "One"
+    },
+    {
+     "id": "l2",
+     "label": "Two"
+    },
+    {
+     "id": "_unassigned",
+     "label": "Unassigned"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "u1",
+     "label": "Loose",
+     "kind": "step",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "a",
+     "label": "A",
+     "kind": "step",
+     "lane": "l1"
+    },
+    {
+     "id": "b",
+     "label": "B?",
+     "kind": "decision",
+     "lane": "l1"
+    },
+    {
+     "id": "c",
+     "label": "C",
+     "kind": "terminal",
+     "lane": "l2"
+    }
+   ],
+   "edges": [
+    {
+     "id": "a->b",
+     "source": "a",
+     "target": "b",
+     "label": null
+    },
+    {
+     "id": "b->c",
+     "source": "b",
+     "target": "c",
+     "label": "yes"
+    },
+    {
+     "id": "b->a",
+     "source": "b",
+     "target": "a",
+     "label": "no"
+    },
+    {
+     "id": "a->c",
+     "source": "a",
+     "target": "c",
+     "label": null
+    },
+    {
+     "id": "a->c#2",
+     "source": "a",
+     "target": "c",
+     "label": null
+    }
+   ]
+  },
+  "styles": {
+   "u1": {},
+   "a": {},
+   "b": {},
+   "c": {}
+  },
+  "legend": [],
+  "title": "x",
+  "laidOut": true
+ },
+ "lane-free diagram with a pin": {
+  "problems": {
+   "errors": [],
+   "warnings": [
+    {
+     "code": "W-no-lane",
+     "line": 2,
+     "message": "\"a\" is not in any subgraph"
+    },
+    {
+     "code": "W-no-lane",
+     "line": 3,
+     "message": "\"b\" is not in any subgraph"
+    }
+   ]
+  },
+  "config": {
+   "version": 1,
+   "title": "Free",
+   "lanes": null,
+   "styles": [],
+   "nodes": {}
+  },
+  "pins": {
+   "a": {
+    "lane": "_unassigned",
+    "along": -10,
+    "across": -20
+   }
+  },
+  "graph": {
+   "direction": "TB",
+   "lanes": [
+    {
+     "id": "_unassigned",
+     "label": "Unassigned"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "a",
+     "label": "A",
+     "kind": "step",
+     "lane": "_unassigned"
+    },
+    {
+     "id": "b",
+     "label": "B",
+     "kind": "step",
+     "lane": "_unassigned"
+    }
+   ],
+   "edges": [
+    {
+     "id": "a->b",
+     "source": "a",
+     "target": "b",
+     "label": null
+    }
+   ]
+  },
+  "styles": {
+   "a": {},
+   "b": {}
+  },
+  "legend": [],
+  "title": "Free",
+  "laidOut": true
+ }
+}

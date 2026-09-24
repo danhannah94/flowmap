@@ -306,3 +306,132 @@ export function outlineInset(kind: ShapeKind, width: number, height: number, sid
     }
   }
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// v1.1: resizing (§5 sizes, §6 L4 and L9 "needs")
+
+const needsCache = new Map<string, { minWidth: number; height: number }>();
+
+/** Smallest box height whose text area is at least `textH` tall (the text area's height never depends on the width). */
+function heightFor(kind: ShapeKind, width: number, textH: number): number {
+  let h = Math.max(1, textH);
+  while (textArea(kind, width, h).height < textH) h++;
+  return h;
+}
+
+/** Does the label, wrapped at the text area's width, fit a box of this size? */
+function fits(label: string, kind: ShapeKind, width: number, height: number): boolean {
+  const a = textArea(kind, width, height);
+  return a.width > 0 && wrapLabel(label, a.width).length * LH <= a.height;
+}
+
+/**
+ * The height a label needs in a box `width` wide: the smallest height from which on every taller box holds the label,
+ * wrapped at its text area's width (a stored height may be anything above the need, §5). Only round ends make the text
+ * area's width depend on the height (narrower as the box gets taller, until the radius reaches ROUND_MAX at a height of
+ * 2 × ROUND_MAX); from there on, fitting is monotone in the height.
+ */
+function neededHeight(label: string, kind: ShapeKind, width: number): number {
+  const round = kind === 'terminal' || kind === 'delay';
+  if (!round) {
+    const tw = textArea(kind, width, 100000).width;
+    return heightFor(kind, width, LH * (tw > 0 ? wrapLabel(label, tw).length : Math.max(1, label.length)));
+  }
+  // The smallest fixed point of h → the height the lines at h need (monotone, so iterating from below finds it) ...
+  let h = heightFor(kind, width, LH);
+  for (let guard = 0; guard < 100; guard++) {
+    const tw = textArea(kind, width, h).width;
+    const next = heightFor(kind, width, LH * (tw > 0 ? wrapLabel(label, tw).length : Math.max(1, label.length)));
+    if (next <= h) break;
+    h = next;
+  }
+  // ... then past any taller height that doesn't fit, up to where the radius stops growing.
+  for (let H = h; H <= 2 * SHAPE_GEOMETRY.roundMax || !fits(label, kind, width, H); H++) {
+    if (!fits(label, kind, width, H)) h = H + 1;
+    if (H > 100000) break;
+  }
+  return h;
+}
+
+/** Width of the widest word of a label (0 for an empty label). */
+function widestWord(label: string): number {
+  let w = 0;
+  for (const word of label.split(/\s+/)) if (word) w = Math.max(w, textWidth(word));
+  return w;
+}
+
+/**
+ * What a label needs (§6 L9, v1.1), for resizing (UI34) and for a stored size (§5):
+ * - `minWidth`: the block's narrowest width, the one at which its longest word still fits on a line of the text area
+ *   (at the height the label then needs), never less than 40;
+ * - `height`: the height of the label wrapped at the text area of a box `width` wide (at least `minWidth`), plus the
+ *   shape's insets.
+ * Integers. The effective size of a block with a stored size is, per dimension, the larger of the two (`effectiveSize`).
+ */
+export function labelNeeds(label: string, kind: ShapeKind, width: number): { minWidth: number; height: number } {
+  const w0 = Math.max(1, Math.ceil(width));
+  const key = `${kind}\u0000${w0}\u0000${label}`;
+  const hit = needsCache.get(key);
+  if (hit) return { ...hit };
+  const ww = widestWord(label);
+  // The text area is at most as wide as the box. Only round ends make its width depend on the height, and a taller box
+  // never has a wider one; a block may be made as tall as anyone likes, so the word must fit a very tall box too.
+  let minWidth = Math.max(40, ww);
+  while (textArea(kind, minWidth, 100000).width < ww) minWidth++;
+  const out = { minWidth, height: neededHeight(label, kind, Math.max(w0, minWidth)) };
+  if (needsCache.size > 20000) needsCache.clear();
+  needsCache.set(key, out);
+  return { ...out };
+}
+
+/**
+ * A block's box size (§5): its automatic size (`nodeSize`) without a stored size; with one, per dimension the larger
+ * of the stored size and what the label needs (the height need is taken at the effective width).
+ */
+export function effectiveSize(label: string, kind: ShapeKind, stored: { width: number; height: number } | null): { width: number; height: number } {
+  if (!stored) return nodeSize(label, kind);
+  const sw = Math.round(stored.width);
+  const sh = Math.round(stored.height);
+  const width = Math.max(sw, labelNeeds(label, kind, sw).minWidth);
+  return { width, height: Math.max(sh, labelNeeds(label, kind, width).height) };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// v1.1: notes and the title (§4, §6 "Notes and title", §7)
+
+/** The title's font (as drawn above the diagram by the UI and the SVG export). */
+export const TITLE_FONT = { size: 20, lineHeight: 28, weight: 700 } as const;
+/** Bold Inter runs about 6% wider than regular; used to size bold text from the regular metrics. */
+const BOLD_FACTOR = 1.06;
+
+/** Width in px of `text` in Inter at `size` px, regular or bold (scaled from the 13 px metrics, same safety margin). */
+export function textWidthAt(text: string, size: number, bold: boolean): number {
+  if (text.length === 0) return 0;
+  let sum = 0;
+  for (const ch of text) sum += charWidth(ch.codePointAt(0)!);
+  return Math.ceil(sum * (size / LABEL_FONT.size) * (bold ? BOLD_FACTOR : 1) * WIDTH_FACTOR + WIDTH_PAD);
+}
+
+/** Line height of a note at a font size: 1.4 × the size, rounded (14 px text: 20 px lines). */
+export function noteLineHeight(fontSize: number): number {
+  return Math.round(fontSize * 1.4);
+}
+
+/** A note's lines: its text split at line breaks (a blank line counts). */
+export function noteLines(text: string): string[] {
+  return text.split(/\r\n|\r|\n/);
+}
+
+/** A note's box: the width of its longest line and one line height per line (integers, at least 1 px wide). */
+export function noteSize(text: string, fontSize: number, bold: boolean): { width: number; height: number } {
+  const lines = noteLines(text);
+  return {
+    width: Math.max(1, ...lines.map((l) => textWidthAt(l, fontSize, bold))),
+    height: lines.length * noteLineHeight(fontSize),
+  };
+}
+
+/** The title's box: one line of TITLE_FONT (at least 1 px wide). */
+export function titleSize(text: string): { width: number; height: number } {
+  return { width: Math.max(1, textWidthAt(text, TITLE_FONT.size, true)), height: TITLE_FONT.lineHeight };
+}

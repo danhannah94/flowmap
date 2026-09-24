@@ -1,5 +1,5 @@
 // The parsed `.flow.yaml` config (§4).
-import type { ResolvedStyle } from '../types';
+import type { ResolvedStyle, ThemedColor } from '../types';
 
 /** Metadata for one node: any keys, any YAML values (§4 `nodes`). */
 export type NodeMeta = Record<string, unknown>;
@@ -28,18 +28,44 @@ export interface StyleRule {
   rawStyle: Record<string, unknown>;
 }
 
+/** A note (§4 v1.1): free text on the canvas. Only valid properties are kept (bad ones warned `W-style`). */
+export interface ConfigNote {
+  /** Non-empty, not only whitespace; may hold line breaks (trailing ones are dropped when read). */
+  text: string;
+  /** An integer from 10 to 48; absent means the default, 14. */
+  font_size?: number;
+  /** Absent means the default, false. */
+  bold?: boolean;
+  /** Colours normalised to lowercase #rrggbb; absent means the theme's text colour. */
+  color?: ThemedColor;
+}
+
 export interface FlowConfig {
   version: 1;
   title: string | null;
   /** The `lanes` list in order, or null when the config has no `lanes` key. */
   lanes: ConfigLane[] | null;
   styles: StyleRule[];
+  /** Metadata by node id, as written (a block's own `style` included). */
   nodes: Record<string, NodeMeta>;
+  /** v1.1: each node's own `style` (§4 "A block's own style"), valid properties only, for nodes that have one. */
+  nodeStyles: Record<string, ResolvedStyle>;
+  /** v1.1: notes by id, in file order. */
+  notes: Record<string, ConfigNote>;
+  /** v1.1: false only for `show_title: false`. */
+  showTitle: boolean;
 }
 
 export function emptyConfig(): FlowConfig {
-  return { version: 1, title: null, lanes: null, styles: [], nodes: {} };
+  return { version: 1, title: null, lanes: null, styles: [], nodes: {}, nodeStyles: {}, notes: {}, showTitle: true };
 }
+
+/** v1.1 note defaults (§4). */
+export const NOTE_FONT_SIZE = 14;
+export const NOTE_FONT_MIN = 10;
+export const NOTE_FONT_MAX = 48;
+/** The metadata key that holds a block's own style (§4); reserved: never a field, never matched. */
+export const BLOCK_STYLE_KEY = 'style';
 
 export const STYLE_PROPS = [
   'fill', 'border_color', 'text_color', 'border_style', 'border_width', 'font_style', 'badge',

@@ -13,7 +13,7 @@ const codes = (text: string | null) => {
 describe('parseConfig', () => {
   test('no file: an empty config, no problems', () => {
     const r = parseConfig(null);
-    expect(r.config).toEqual({ version: 1, title: null, lanes: null, styles: [], nodes: {} });
+    expect(r.config).toEqual({ version: 1, title: null, lanes: null, styles: [], nodes: {}, nodeStyles: {}, notes: {}, showTitle: true });
     expect(r.problems).toEqual({ errors: [], warnings: [] });
   });
 
@@ -66,7 +66,7 @@ describe('parseConfig', () => {
   test('missing version means 1; null top-level keys and null node entries are empty', () => {
     const r = parseConfig('title:\nlanes:\nstyles:\nnodes:\n  n1:\n');
     expect(r.problems.errors).toEqual([]);
-    expect(r.config).toEqual({ version: 1, title: null, lanes: null, styles: [], nodes: { n1: {} } });
+    expect(r.config).toEqual({ version: 1, title: null, lanes: null, styles: [], nodes: { n1: {} }, nodeStyles: {}, notes: {}, showTitle: true });
     expect(parseConfig('').config).not.toBeNull();
     expect(parseConfig('# only a comment\n').config).not.toBeNull();
   });

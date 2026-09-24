@@ -152,7 +152,7 @@ describe('loadDocument: no config or layout file at all', () => {
   const doc = loadDocument(mmd, null, null, 'diagram.mmd');
 
   it('gives an empty, non-null config', () => {
-    expect(doc.config).toEqual({ version: 1, title: null, lanes: null, styles: [], nodes: {} });
+    expect(doc.config).toEqual({ version: 1, title: null, lanes: null, styles: [], nodes: {}, nodeStyles: {}, notes: {}, showTitle: true });
   });
 
   it('has no problems', () => {

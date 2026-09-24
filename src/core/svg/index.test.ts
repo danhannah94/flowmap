@@ -42,6 +42,10 @@ vi.mock('../measure', () => ({
   textArea: stubTextArea,
   nodeSize: stubNodeSize,
   BADGE_FONT: { size: 10, weight: 600, height: 16, padX: 6 },
+  TITLE_FONT: { size: 20, lineHeight: 28, weight: 700 },
+  titleSize: (text: string) => ({ width: stubTextWidth(text) * 2, height: 28 }),
+  noteLines: (text: string) => text.split('\n'),
+  noteLineHeight: (size: number) => Math.round(size * 1.4),
   badgeBox: (_kind: ShapeKind, width: number, _height: number, text: string) => {
     const w = stubTextWidth(text) + 12;
     return { x: width - 10 - w, y: -10, width: w, height: 16 };
@@ -102,13 +106,13 @@ const layout: LayoutResult = {
     { id: 'n8', lane: 'process', kind: 'delay', label: 'Wait for freight quote', x: 620, y: 240, width: 150, height: 60, pinned: false },
   ],
   edges: [
-    { id: 'n1->n2', source: 'n1', target: 'n2', label: 'Yes', points: [[180, 70], [220, 70]], label_pos: [200, 60] },
-    { id: 'n2->n3', source: 'n2', target: 'n3', label: null, points: [[360, 90], [420, 90]], label_pos: null },
-    { id: 'n3->n4', source: 'n3', target: 'n4', label: 'Escalate & notify "boss"', points: [[560, 70], [620, 70]], label_pos: [590, 50] },
-    { id: 'n4->n5', source: 'n4', target: 'n5', label: null, points: [[700, 100], [700, 240]], label_pos: null },
-    { id: 'n5->n6', source: 'n5', target: 'n6', label: 'Sync', points: [[180, 275], [220, 275]], label_pos: [200, 260] },
-    { id: 'n6->n7', source: 'n6', target: 'n7', label: null, points: [[370, 270], [420, 270]], label_pos: null },
-    { id: 'n7->n8', source: 'n7', target: 'n8', label: 'Send', points: [[570, 275], [620, 275]], label_pos: [600, 260] },
+    { id: 'n1->n2', source: 'n1', target: 'n2', label: 'Yes', points: [[180, 70], [220, 70]], label_pos: [200, 60], manual: false, source_side: 'right', target_side: 'left' },
+    { id: 'n2->n3', source: 'n2', target: 'n3', label: null, points: [[360, 90], [420, 90]], label_pos: null, manual: false, source_side: 'right', target_side: 'left' },
+    { id: 'n3->n4', source: 'n3', target: 'n4', label: 'Escalate & notify "boss"', points: [[560, 70], [620, 70]], label_pos: [590, 50], manual: false, source_side: 'right', target_side: 'left' },
+    { id: 'n4->n5', source: 'n4', target: 'n5', label: null, points: [[700, 100], [700, 240]], label_pos: null, manual: false, source_side: 'right', target_side: 'left' },
+    { id: 'n5->n6', source: 'n5', target: 'n6', label: 'Sync', points: [[180, 275], [220, 275]], label_pos: [200, 260], manual: false, source_side: 'right', target_side: 'left' },
+    { id: 'n6->n7', source: 'n6', target: 'n7', label: null, points: [[370, 270], [420, 270]], label_pos: null, manual: false, source_side: 'right', target_side: 'left' },
+    { id: 'n7->n8', source: 'n7', target: 'n8', label: 'Send', points: [[570, 275], [620, 275]], label_pos: [600, 260], manual: false, source_side: 'right', target_side: 'left' },
   ],
 };
 

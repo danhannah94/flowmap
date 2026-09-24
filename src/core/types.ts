@@ -61,18 +61,108 @@ export interface GraphEdge {
   label: string | null;
 }
 
-/** One pin from the .layout.json file (§5). */
+/** One pin from the .layout.json file (§5). Bend points (v1.1) have the same form. */
 export interface Pin {
   lane: string;
   along: number;
   across: number;
 }
 
+/** A block side (§5 v1.1): a line leaves or enters a block at the side's port (§6 L12). */
+export type Side = 'top' | 'right' | 'bottom' | 'left';
+export const SIDES: readonly Side[] = ['top', 'right', 'bottom', 'left'];
+
+/** A block size a person chose by resizing (§5 v1.1): integers of at least 40. */
+export interface Size {
+  width: number;
+  height: number;
+}
+
+/** A position in pixels (§5 v1.1 notes and title): the top-left corner, x horizontal and y vertical. */
+export interface XY {
+  x: number;
+  y: number;
+}
+
+/**
+ * One `nodes` entry of the layout file (§5), exactly as in the JSON: a pin (`lane`, `along`, `across`, all three or
+ * none), a size (`width`, `height`, both or none), or both; never empty. `pinOf` and `sizeOf` read the two halves.
+ */
+export interface LayoutNodeEntry extends Partial<Pin>, Partial<Size> {}
+
+/** The pin half of a `nodes` entry, or null when it has none. */
+export function pinOf(entry: LayoutNodeEntry | undefined): Pin | null {
+  if (!entry || entry.lane === undefined || entry.along === undefined || entry.across === undefined) return null;
+  return { lane: entry.lane, along: entry.along, across: entry.across };
+}
+
+/** The size half of a `nodes` entry, or null when it has none. */
+export function sizeOf(entry: LayoutNodeEntry | undefined): Size | null {
+  if (!entry || entry.width === undefined || entry.height === undefined) return null;
+  return { width: entry.width, height: entry.height };
+}
+
+/** One `edges` entry of the layout file (§5 v1.1), keyed by edge id; never empty. */
+export interface LayoutEdgeEntry {
+  source_side?: Side;
+  target_side?: Side;
+  /** Bend points from source to target, lane-relative like pins (`lane` may be `_unassigned`). Present = manual. */
+  points?: Pin[];
+  /** Where the label's centre sits along the drawn line, 0 to 1 (at most two decimals). */
+  label_at?: number;
+}
+
 export interface LayoutFile {
   version: 1;
-  nodes: Record<string, Pin>;
+  nodes: Record<string, LayoutNodeEntry>;
+  /** v1.1: absent when the file has none (an empty map is never written). */
+  edges?: Record<string, LayoutEdgeEntry>;
+  /** v1.1: note positions by note id. */
+  notes?: Record<string, XY>;
+  /** v1.1: the title's position. */
+  title?: XY;
   /** Builder-defined layout-stability hints (§5). Opaque outside the layout module. */
   hints?: unknown;
+}
+
+/** A note from the config (§4 v1.1), with defaults applied (`font_size` 14, `bold` false); bad properties dropped. */
+export interface NoteInput {
+  id: string;
+  text: string;
+  font_size: number;
+  bold: boolean;
+  /** Absent: the theme's text colour. Only the SVG and UI read it; the layout doesn't. */
+  color?: ThemedColor;
+}
+
+/**
+ * Everything the layout function reads (§6). `file` is the parsed layout file, or null when there is none or it has
+ * errors (then nothing in it applies). Entries for unknown ids, stale pins and point sets with a missing lane are
+ * ignored by the layout itself.
+ * - `notes`: the config's notes in config order. Omitted: the result has no `notes` (a v1.0-style caller).
+ * - `title`: the shown title's text, or null when hidden (`show_title: false`). Omitted: the result has no `title`.
+ */
+export interface LayoutInput {
+  graph: Graph;
+  file: LayoutFile | null;
+  notes?: NoteInput[];
+  title?: string | null;
+}
+
+export interface LayoutResultEdge {
+  id: string; source: string; target: string; label: string | null;
+  points: [number, number][]; label_pos: [number, number] | null;
+  /** v1.1: drawn through its bend points (§6 L11). */
+  manual: boolean;
+  /** v1.1: the sides actually used, stored or chosen by the layout. */
+  source_side: Side;
+  target_side: Side;
+}
+
+/** A note or title box in diagram coordinates (x and y may be negative). */
+export interface LayoutTextBox {
+  text: string;
+  x: number; y: number; width: number; height: number;
 }
 
 /** `flowmap layout --json` output (§7). All numbers are integers. */
@@ -85,10 +175,11 @@ export interface LayoutResult {
     id: string; lane: string; kind: ShapeKind; label: string;
     x: number; y: number; width: number; height: number; pinned: boolean;
   }[];
-  edges: {
-    id: string; source: string; target: string; label: string | null;
-    points: [number, number][]; label_pos: [number, number] | null;
-  }[];
+  edges: LayoutResultEdge[];
+  /** v1.1: every note, in config order. Present whenever the caller passed `notes`. */
+  notes?: ({ id: string } & LayoutTextBox)[];
+  /** v1.1: the title's box, or null when hidden. Present whenever the caller passed `title`. */
+  title?: LayoutTextBox | null;
 }
 
 /** A colour as written in the config: one value, or per theme (§4). */
