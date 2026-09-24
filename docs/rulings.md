@@ -15,6 +15,8 @@ rule 3. Newest at the bottom.
 | R8 | 2026-09-24 | Dan (CEO) | Can a person make a generic flowchart without lanes? | Yes: amendment A4 in `design.md` §12. | Build B: in its starting context |
 | R9 | 2026-09-24 | A | UI43 says what happens to a block whose centre is before the start of the flow axis. What about after its end (right of everything in `LR`)? | The same: it stays in the lane its centre is across from, with its `along` stored as dropped. Only the across axis decides between lanes, the first lane and Unassigned. | Build B: in its starting context |
 | R10 | 2026-09-24 | acceptance suite | v1.1 edge cases the contract leaves open (list below). | Adopted as listed below. | Build B: in its starting context |
+| R11 | 2026-09-24 | A | v1.1 edge cases from Build A's core wave (list below). | Adopted as listed below. | Build B: in its starting context |
+| R12 | 2026-09-24 | A | Reordering lanes, adding a lane to a lane-free diagram, or deleting the first lane can leave a negative `across` in a lane that is no longer first, which §5 forbids. | Any operation that changes which lane is displayed first first re-expresses the old first lane's pins and bend points with its growth U added to every `across`, so all values are at least 0 and nothing moves on screen, in the same write. | Build B: in its starting context |
 
 ## R4: parser edge cases
 
@@ -92,3 +94,19 @@ rule 3. Newest at the bottom.
 4. A hand-written note text with trailing line breaks is read with them removed, with no warning.
 5. An empty `edges` or `notes` map in a hand-written layout file is accepted (the UI never writes one).
 6. `W-layout-unknown-note` is not reported while the config has `E-config`, in `flowmap validate` as well as in the UI.
+
+## R11: v1.1 edge cases from Build A's core wave
+
+1. `points: []` in the layout file is `E-layout` (a manual line needs a bend point; the UI removes `points` instead).
+2. A note's `text` must be a string (a number is `E-config`). An unknown key inside a note is `W-config-key`.
+   `show_title` that isn't `true` or `false` is `E-config`. A note-id clash makes the whole config "has errors"
+   (default styles, no notes, title shown).
+3. `W-layout-unknown-node` also covers entries that hold only a size.
+4. When re-keying edge entries, a live edge's entry that lands on an orphaned entry's key replaces it.
+5. The title's and unplaced notes' default positions shift with the frame (T and U), like stored positions, so they
+   don't jump on screen when something is dropped left of or above everything.
+6. Centre lines and side midlines are `x + floor(width / 2)` (and likewise for y); diamond ports are always at the
+   vertices.
+7. On a manual line, an end with no stored side faces its nearest bend point (the first for the source, the last for
+   the target).
+8. The layout JSON `points` of a manual line drop repeated points but keep bend points that lie in a straight row.

@@ -3,7 +3,7 @@
 // `.mmd` with errors refuses everything; several blocks are handled in file declaration order) and check that the
 // blocks exist.
 import type { ColorProp, ConfigDoc, EditResult, FieldValue, MatchInput, StyleProp } from '../config';
-import { removePin } from '../layoutfile';
+import { removeEdgeEntries, removeNodeEntries, removeNoteEntries } from '../layoutfile';
 import { run, type Ctx, type Files, type OpResult } from './context';
 
 function configOp(files: Files, edit: (doc: ConfigDoc, ctx: Ctx) => EditResult): OpResult {
@@ -96,6 +96,29 @@ export function replaceStyles(files: Files, yamlText: string): OpResult {
   return configOp(files, (doc) => doc.replaceStyles(yamlText));
 }
 
+// ---- UI35 Block colours (a block's own `style`, §4)
+
+/**
+ * UI35: set one colour (`fill`, `border_color`, `text_color`) of each block's own style from its light and dark inputs,
+ * in file declaration order. Both empty clears it (and `style`, then the entry, if that empties them); a dark colour
+ * without a light one is refused; equal light and dark are one colour.
+ */
+export function setBlockColors(
+  files: Files, ids: readonly string[], prop: ColorProp, light: string | null, dark: string | null,
+): OpResult {
+  return configOp(files, (doc, ctx) => doc.setBlockColor(ctx.sortByDeclaration(ids), prop, light, dark));
+}
+
+/** UI35 swatch: sets only the fill of each block, to the swatch's light and dark values (one colour if equal). */
+export function applySwatch(files: Files, ids: readonly string[], light: string, dark: string | null): OpResult {
+  return configOp(files, (doc, ctx) => doc.applySwatch(ctx.sortByDeclaration(ids), light, dark));
+}
+
+/** UI35 "Reset colours": remove `fill`, `border_color` and `text_color` from each block's own style. */
+export function resetBlockColors(files: Files, ids: readonly string[]): OpResult {
+  return configOp(files, (doc, ctx) => doc.resetBlockColors(ctx.sortByDeclaration(ids)));
+}
+
 // ---- UI27 Orphans
 
 /** UI27: delete a config `nodes` entry (`W-config-unknown-node`). */
@@ -108,10 +131,26 @@ export function deleteOrphanLaneEntry(files: Files, id: string): OpResult {
   return configOp(files, (doc) => doc.deleteLaneEntry(id));
 }
 
-/** UI27: delete a pin (`W-layout-unknown-node`). */
+/** UI27 (v1.1): delete a layout entry for a line that doesn't exist (`W-layout-unknown-edge`). */
+export function deleteOrphanEdgeEntry(files: Files, edgeId: string): OpResult {
+  return run(files, (ctx) => {
+    ctx.editLayout('always', (file) => removeEdgeEntries(file, [edgeId]));
+    return {};
+  });
+}
+
+/** UI27 (v1.1): delete a layout position for a note that doesn't exist (`W-layout-unknown-note`). */
+export function deleteOrphanNoteEntry(files: Files, noteId: string): OpResult {
+  return run(files, (ctx) => {
+    ctx.editLayout('always', (file) => removeNoteEntries(file, [noteId]));
+    return {};
+  });
+}
+
+/** UI27: delete an orphaned node entry, pin and size (`W-layout-unknown-node`). */
 export function deleteOrphanPin(files: Files, id: string): OpResult {
   return run(files, (ctx) => {
-    ctx.editLayout('always', (file) => removePin(file, id));
+    ctx.editLayout('always', (file) => removeNodeEntries(file, [id]));
     return {};
   });
 }

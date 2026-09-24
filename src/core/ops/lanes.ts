@@ -1,6 +1,6 @@
 // Lane operations (design.md §8.2 UI18–UI21).
 import { laneOrder } from '../config';
-import { removePins, renameLaneInPins } from '../layoutfile';
+import { dropPointsInLanes, removePins, renameLane as renameLaneInLayout } from '../layoutfile';
 import { isReservedId, type Lane } from '../mmd';
 import { UNASSIGNED } from '../types';
 import { checkBlockLabel, refuse, run, type Ctx, type Files, type OpResult } from './context';
@@ -60,7 +60,8 @@ export function setLaneLabel(files: Files, id: string, label: string): OpResult 
 
 /**
  * UI19: rename a lane's id everywhere: the subgraph, the config `lanes` entry (in place; a stale entry for the new id
- * is removed, R5.13), style rules matching `lane` with the old value, and the `lane` of every pin.
+ * is removed, R5.13), style rules matching `lane` with the old value, and the `lane` of every pin and (v1.1) bend
+ * point.
  */
 export function renameLane(files: Files, oldId: string, newId: string): OpResult {
   return run(files, (ctx) => {
@@ -70,7 +71,7 @@ export function renameLane(files: Files, oldId: string, newId: string): OpResult
     lane.id = newId;
     ctx.editConfig([oldId, newId], (doc) => doc.deleteLaneEntry(newId));
     ctx.editConfig([oldId], (doc) => doc.renameLane(oldId, newId));
-    ctx.editLayout([oldId], (file) => renameLaneInPins(file, oldId, newId));
+    ctx.editLayout([oldId], (file) => renameLaneInLayout(file, oldId, newId));
     return {};
   });
 }
@@ -122,7 +123,8 @@ export type DeleteLaneMode =
  * UI21: delete a lane: its subgraph (with the comments above its `subgraph` line and above its `end`) and its
  * config `lanes` entry. `empty` refuses a lane that still has blocks; `move` appends each block, with its attached
  * comments, to `target` (a lane or `_unassigned`) in order, dropping its pin; `delete` deletes the blocks as UI14
- * does (their edges, comments and pins; never their config metadata).
+ * does (their edges, comments and layout entries; never their config metadata). In every mode (v1.1 §8.2) the
+ * `points` of every line with a bend point in the lane are removed.
  */
 export function deleteLane(files: Files, id: string, how: DeleteLaneMode): OpResult {
   return run(files, (ctx) => {
@@ -143,6 +145,7 @@ export function deleteLane(files: Files, id: string, how: DeleteLaneMode): OpRes
     }
     ctx.d.lanes = ctx.d.lanes.filter((l) => l !== lane);
     ctx.editConfig([id], (doc) => doc.deleteLaneEntry(id));
+    ctx.editLayout([id], (file) => dropPointsInLanes(file, id));
     return {};
   });
 }

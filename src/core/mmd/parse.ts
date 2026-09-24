@@ -4,7 +4,7 @@
 // whole token (keywords, §3.1) and otherwise parsed as node declarations and edges by a small scanner. A line with a
 // syntax error is reported and skipped, and parsing carries on, so every error in the file is reported (§3.1, §7).
 // Cross-line rules (duplicates, lanes, unclosed subgraphs, edges to subgraphs, W-no-lane) are applied as lines are
-// read or at the end.
+// read or at the end. A file with no subgraphs at all gives no W-no-lane (amendment A5).
 
 import type { Direction, Problem, Problems, ShapeKind } from '../types';
 import type { Comment, Diagram, Edge, Lane, NodeDecl } from './model';
@@ -452,7 +452,11 @@ export function parse(text: string): ParseResult {
     return decl;
   };
 
+  /** A5: whether the file has any `subgraph` statement (even a broken one). */
+  let sawSubgraph = false;
+
   const handleSubgraph = (stmt: string, line: number): void => {
+    sawSubgraph = true;
     if (stack.length > 0) {
       // §3.1: one level only. The inner block still opens (and its `end` closes it); its nodes stay in the outer lane.
       error('E-nested', line, 'a subgraph inside a subgraph');
@@ -571,7 +575,9 @@ export function parse(text: string): ParseResult {
   }
 
   diagram.trailingComments = takePending();
+  // Amendment A5: a file with no subgraphs is a plain flowchart; none of its nodes gets W-no-lane.
+  const kept = sawSubgraph ? warnings : warnings.filter((w) => w.code !== 'W-no-lane');
   errors.sort((a, b) => (a.line ?? 0) - (b.line ?? 0));
-  warnings.sort((a, b) => (a.line ?? 0) - (b.line ?? 0));
-  return { diagram, problems: { errors, warnings } };
+  kept.sort((a, b) => (a.line ?? 0) - (b.line ?? 0));
+  return { diagram, problems: { errors, warnings: kept } };
 }

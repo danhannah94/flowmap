@@ -1355,13 +1355,7 @@
      "message": "Config is not valid YAML: Block collections are not allowed within flow collections at line 2, column 19:\n\nstyles: [this is: not: valid\n                  ^\n"
     }
    ],
-   "warnings": [
-    {
-     "code": "W-no-lane",
-     "line": 2,
-     "message": "\"a\" is not in any subgraph"
-    }
-   ]
+   "warnings": []
   },
   "config": null,
   "pins": {},
@@ -1399,13 +1393,7 @@
      "message": "\"a\" is declared again differently (first at line 2)"
     }
    ],
-   "warnings": [
-    {
-     "code": "W-no-lane",
-     "line": 2,
-     "message": "\"a\" is not in any subgraph"
-    }
-   ]
+   "warnings": []
   },
   "config": {
    "version": 1,
@@ -1449,18 +1437,7 @@
      "message": "arrow not supported: \"-.-> b\""
     }
    ],
-   "warnings": [
-    {
-     "code": "W-no-lane",
-     "line": 2,
-     "message": "\"a\" is not in any subgraph"
-    },
-    {
-     "code": "W-no-lane",
-     "line": 3,
-     "message": "\"b\" is not in any subgraph"
-    }
-   ]
+   "warnings": []
   },
   "config": {
    "version": 1,
@@ -1511,18 +1488,7 @@
      "message": "bad header \"flowchart RL\": expected \"flowchart LR\" or \"flowchart TB\""
     }
    ],
-   "warnings": [
-    {
-     "code": "W-no-lane",
-     "line": 2,
-     "message": "\"a\" is not in any subgraph"
-    },
-    {
-     "code": "W-no-lane",
-     "line": 2,
-     "message": "\"b\" is not in any subgraph"
-    }
-   ]
+   "warnings": []
   },
   "config": {
    "version": 1,
@@ -1624,18 +1590,7 @@
      "message": "shape not supported: \"(…\""
     }
    ],
-   "warnings": [
-    {
-     "code": "W-no-lane",
-     "line": 2,
-     "message": "\"a\" is not in any subgraph"
-    },
-    {
-     "code": "W-no-lane",
-     "line": 4,
-     "message": "\"b\" is never declared, so it is not in any subgraph"
-    }
-   ]
+   "warnings": []
   },
   "config": {
    "version": 1,
@@ -1693,13 +1648,7 @@
      "message": "unexpected \"is not mermaid\""
     }
    ],
-   "warnings": [
-    {
-     "code": "W-no-lane",
-     "line": 2,
-     "message": "\"a\" is not in any subgraph"
-    }
-   ]
+   "warnings": []
   },
   "config": {
    "version": 1,
@@ -4390,18 +4339,7 @@
  "lane-free diagram with a pin": {
   "problems": {
    "errors": [],
-   "warnings": [
-    {
-     "code": "W-no-lane",
-     "line": 2,
-     "message": "\"a\" is not in any subgraph"
-    },
-    {
-     "code": "W-no-lane",
-     "line": 3,
-     "message": "\"b\" is not in any subgraph"
-    }
-   ]
+   "warnings": []
   },
   "config": {
    "version": 1,

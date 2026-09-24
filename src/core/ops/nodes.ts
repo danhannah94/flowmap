@@ -1,9 +1,14 @@
-// Block operations (design.md §8.2 UI6–UI14).
-import { clearPins, pinFromDrop, removePins, renamePinNode, setPins } from '../layoutfile';
-import { pinTranslation, type Translation } from '../layout';
+// Block operations (design.md §8.2 UI6–UI14, and v1.1 UI34 resize and UI40's "add a block here").
+import {
+  clearPinsAndPoints, MIN_SIZE, pinFromDrop, removeNodeEntries, removePins, renameNode as renameInLayout, roundPx,
+  setPins, setSizes, sizeOf,
+} from '../layoutfile';
+import type { LayoutOutput, Translation } from '../layout';
+import { labelNeeds, nodeSize } from '../measure';
 import { findNode, type NodeDecl } from '../mmd';
-import { SHAPE_KINDS, UNASSIGNED, type LayoutResult, type Pin, type ShapeKind } from '../types';
+import { SHAPE_KINDS, UNASSIGNED, type LayoutResult, type Pin, type ShapeKind, type Size, type XY } from '../types';
 import { checkBlockLabel, refuse, run, type Ctx, type Files, type OpResult } from './context';
+import { bandStart, blockLaneAt, checkXY, storedCorner, viewOf, type LayoutArg } from './frame';
 
 /** UI6: the starting label of a new block, per shape. */
 export const NEW_BLOCK_LABELS: Record<ShapeKind, string> = {
@@ -107,7 +112,9 @@ export function renameNode(files: Files, oldId: string, newId: string): OpResult
       if (edge.target === oldId) edge.target = newId;
     }
     ctx.editConfig([oldId], (doc) => doc.renameNode(oldId, newId));
-    ctx.editLayout([oldId], (file) => renamePinNode(file, oldId, newId));
+    // §8.2: the node entry (in place) and the keys of its lines' entries; the new id is unused, so no repeat number
+    // changes and this is the same as re-keying by position.
+    ctx.editLayout([oldId], (file) => renameInLayout(file, oldId, newId));
     return {};
   });
 }
@@ -181,10 +188,13 @@ export function unpinNodes(files: Files, ids: readonly string[]): OpResult {
   });
 }
 
-/** UI12 "Re-layout all": every pin cleared; the file becomes `{"version": 1, "nodes": {}}`, keeping `hints`. */
+/**
+ * UI12 "Re-layout all": every pin and every line's `points` cleared; sizes, sides, `label_at`, notes, the title
+ * position and `hints` stay (v1.1). Emptied entries go.
+ */
 export function clearAllPins(files: Files): OpResult {
   return run(files, (ctx) => {
-    ctx.editLayout('always', (file) => clearPins(file));
+    ctx.editLayout('always', (file) => clearPinsAndPoints(file));
     return {};
   });
 }
@@ -218,28 +228,34 @@ export function positionInLane(
 export function duplicateNodes(
   files: Files,
   ids: readonly string[],
-  layout: Pick<LayoutResult, 'direction' | 'lanes' | 'nodes'>,
+  layout: Pick<LayoutResult, 'direction' | 'lanes' | 'nodes'> | LayoutOutput,
 ): OpResult<{ ids: string[]; from: string[] }> {
   return run(files, (ctx) => {
     const ordered = ctx.sortByDeclaration(ids);
     const newIds: string[] = [];
     const pins: [string, Pin][] = [];
-    // The pins that apply (their lane is still the node's), for the layout's frame (negative pins, §6).
-    const applying = Object.entries(ctx.layout?.nodes ?? {}).filter(([id, p]) => ctx.hasNode(id) && p.lane === ctx.laneOf(id));
-    const shift = pinTranslation(applying.map(([, p]) => p), layout.lanes[0]?.id);
+    const sizes: [string, Size][] = [];
+    // The layout's frame (§6): its own translation when given, else worked out from the pins and bend points that
+    // apply, as the layout function does (a frame from pins alone is wrong once a bend point is negative).
+    const shift = 'result' in layout ? layout.translation : ctx.frame();
+    const drawn = 'result' in layout ? layout.result : layout;
     for (const id of ordered) {
       const found = findNode(ctx.d, id);
       const lane = found?.lane ?? UNASSIGNED;
       const src = found?.node ?? { shape: 'step' as const, label: id, className: null };
-      const pos = positionInLane(layout, id, shift);
+      const pos = positionInLane(drawn, id, shift);
       if (!pos) refuse(`The layout has no position for "${id}"`);
       const copy = ctx.nextNodeId();
       ctx.declsOf(lane).push({ id: copy, shape: src.shape, label: src.label, className: src.className, comments: [] });
       pins.push([copy, pinFromDrop(lane, pos.along + 24, pos.across + 24, ctx.firstLane())]);
+      // v1.1 UI13: the copy keeps its original's stored size.
+      const size = sizeOf(ctx.layoutIn && Object.hasOwn(ctx.layoutIn.nodes, id) ? ctx.layoutIn.nodes[id] : undefined);
+      if (size) sizes.push([copy, size]);
       newIds.push(copy);
     }
     ordered.forEach((id, k) => ctx.editConfig([id], (doc) => doc.copyNode(id, newIds[k]!)));
     if (pins.length) ctx.editLayout('always', (file) => setPins(file, pins));
+    if (sizes.length) ctx.editLayout('always', (file) => setSizes(file, sizes));
     return { ids: newIds, from: ordered };
   });
 }
@@ -247,9 +263,10 @@ export function duplicateNodes(
 // ---- UI14 Delete
 
 /**
- * UI14: delete blocks and lines. A deleted block takes its declaration, every edge touching it, its pin and the
- * comments attached to those statements with it; its config metadata is never touched (UI27). `edges` are edge ids
- * (§3.4) of the files as given.
+ * UI14: delete blocks and lines. A deleted block takes its declaration, every edge touching it, its layout entry (pin
+ * and size) and the comments attached to those statements with it; its config metadata is never touched (UI27). A
+ * deleted line takes its layout entry, and the other lines' entries are re-keyed by position (§8.2). `edges` are edge
+ * ids (§3.4) of the files as given.
  */
 export function deleteItems(
   files: Files,
@@ -272,5 +289,111 @@ export function deleteBlocksAndEdges(ctx: Ctx, nodeIds: readonly string[], edgeI
     !dropEdges.has(edgeIdsNow[k]!) && !dropNodes.has(edge.source) && !dropNodes.has(edge.target)
   ));
   for (const id of nodes) ctx.removeDecl(id);
-  if (nodes.length) ctx.editLayout(nodes, (file) => removePins(file, nodes));
+  ctx.rekeyEdgeEntries();
+  if (nodes.length) ctx.editLayout(nodes, (file) => removeNodeEntries(file, nodes));
+}
+
+// ---- UI40 Add a block at a spot (the canvas context menu)
+
+/**
+ * UI40 `add-<shape kind>`: add a block with its top-left corner at `at` (diagram coordinates), pinned there, in the
+ * lane its centre falls in by UI43's rules (before the first lane: the first lane; after the last: Unassigned; along
+ * the flow nothing decides the lane). Declared as the last declaration of that lane, with the first free id and the
+ * shape's starting label. Returns the id and the lane.
+ */
+export function addNodeAt(
+  files: Files, shape: ShapeKind, at: XY, layout: LayoutArg,
+): OpResult<{ id: string; lane: string }> {
+  return run(files, (ctx) => {
+    checkShape(shape);
+    checkXY(at);
+    ctx.requireLayout();
+    const view = viewOf(ctx, layout);
+    const size = nodeSize(NEW_BLOCK_LABELS[shape], shape);
+    const lane = blockLaneAt(view.result, at.x + size.width / 2, at.y + size.height / 2);
+    const id = ctx.nextNodeId();
+    ctx.declsOf(lane).push({ id, shape, label: NEW_BLOCK_LABELS[shape], className: null, comments: [] });
+    const corner = storedCorner(view, lane, at.x, at.y);
+    const pin = pinFromDrop(lane, corner.along, corner.across, ctx.firstLane());
+    ctx.editLayout('always', (file) => setPins(file, [[id, pin]]));
+    return { id, lane };
+  });
+}
+
+// ---- UI34 Resize
+
+/** A resize handle (§8.3 `data-resize`): the side or corner being dragged. */
+export type ResizeHandle = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw';
+const HANDLES: readonly ResizeHandle[] = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
+
+/**
+ * UI34: drag a resize handle of block `id` by `delta` (diagram pixels). Writes the block's `width` and `height` (both,
+ * even if only one changed). The opposite edge or corner stays where it is in `layout`; only the moved edge is
+ * rounded to a whole pixel (halves toward −∞). The handle stops at the block's narrowest width and at the height its
+ * label needs at the new width (§6 L9), and a width-only drag keeps the height at least that need too, so a stored
+ * size is never smaller than the label needs (§8.1). A top or left handle also moves the block, so it writes the pin
+ * (pinning a block that wasn't) in the block's lane. Outside the first lane the handle stops at the lane's start
+ * edge on the across axis, where a pin's `across` is 0 (§5).
+ */
+export function resizeNode(
+  files: Files, layout: LayoutArg, id: string, handle: ResizeHandle, delta: { dx: number; dy: number },
+): OpResult<{ size: Size }> {
+  return run(files, (ctx) => {
+    ctx.requireNode(id);
+    if (!HANDLES.includes(handle)) refuse(`Unknown resize handle "${String(handle)}"`);
+    ctx.requireLayout();
+    if (!delta || !Number.isFinite(delta.dx) || !Number.isFinite(delta.dy)) refuse('A drag needs a finite dx and dy');
+    const view = viewOf(ctx, layout);
+    const node = view.result.nodes.find((n) => n.id === id);
+    if (!node) return refuse(`The layout has no block "${id}"; try again`);
+    const lane = ctx.laneOf(id);
+    const LR = view.result.direction !== 'TB';
+    const [n, s, e, w] = ['n', 's', 'e', 'w'].map((c) => handle.includes(c));
+
+    // Across the flow, a top (LR) or left (TB) edge can't go before a later lane's start edge.
+    const li = view.result.lanes.findIndex((l) => l.id === lane);
+    const floor = li > 0 ? bandStart(view.result, view.result.lanes[li]!) : -Infinity;
+    const right = node.x + node.width;
+    const bottom = node.y + node.height;
+
+    let left = node.x;
+    let width = node.width;
+    if (e) width = roundPx(right + delta.dx) - node.x;
+    if (w) {
+      left = Math.min(roundPx(node.x + delta.dx), right - 1);
+      if (!LR) left = Math.max(left, floor);
+      width = right - left;
+    }
+    width = Math.max(width, labelNeeds(node.label, node.kind, Math.max(1, width)).minWidth, MIN_SIZE);
+    if (w) left = right - width;
+
+    const need = Math.max(labelNeeds(node.label, node.kind, width).height, MIN_SIZE);
+    let top = node.y;
+    let height = node.height;
+    if (s) height = roundPx(bottom + delta.dy) - node.y;
+    if (n) {
+      top = Math.min(roundPx(node.y + delta.dy), bottom - 1);
+      if (LR) top = Math.max(top, floor);
+      height = bottom - top;
+    }
+    height = Math.max(height, need);
+    if (n) top = bottom - height;
+
+    const size = { width, height };
+    ctx.editLayout('always', (file) => setSizes(file, [[id, size]]));
+    if (n || w) {
+      const corner = storedCorner(view, lane, left, top);
+      ctx.editLayout('always', (file) => setPins(file, [[id, pinFromDrop(lane, corner.along, corner.across, ctx.firstLane())]]));
+    }
+    return { size };
+  });
+}
+
+/** UI34 "Reset size" (UI40: on every selected block): remove the stored sizes; pins stay. */
+export function resetSize(files: Files, ids: readonly string[]): OpResult {
+  return run(files, (ctx) => {
+    const ordered = ctx.sortByDeclaration(ids);
+    ctx.editLayout(ordered, (file) => setSizes(file, ordered.map((id) => [id, null])));
+    return {};
+  });
 }

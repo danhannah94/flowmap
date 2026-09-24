@@ -3,18 +3,28 @@
 // exist) or a refusal. The `.mmd` is always written in canonical form (§3.3); the config keeps every untouched byte
 // (UI26); the layout file is rewritten only when its content changes.
 export { mentions, type Files, type OpResult } from './context';
+export { type LayoutArg } from './frame';
 export {
-  NEW_BLOCK_LABELS, addNode, changeShape, clearAllPins, deleteItems, duplicateNodes, moveNodesToLane, pinNodes,
-  positionInLane, renameNode, setNodeLabel, unpinNodes, type DropPosition,
+  NEW_BLOCK_LABELS, addNode, addNodeAt, changeShape, clearAllPins, deleteItems, duplicateNodes, moveNodesToLane,
+  pinNodes, positionInLane, renameNode, resetSize, resizeNode, setNodeLabel, unpinNodes, type DropPosition,
+  type ResizeHandle,
 } from './nodes';
-export { connect, reconnect, setEdgeLabel } from './edges';
+export { connect, reconnect, setEdgeLabel, type ConnectSides } from './edges';
+export {
+  STUB, addBend, dragBend, dragSegment, makeManual, removeBend, resetLabelAt, resetLine, setLabelAt,
+} from './lines';
+export {
+  addNote, deleteNote, hideTitle, moveNote, moveTitle, resetTitlePosition, setNoteStyle, setNoteText, showTitle,
+  type NoteStyle,
+} from './notes';
 export {
   addLane, deleteLane, displayLaneOrder, laneSlug, moveLane, renameLane, reorderLanes, setLaneLabel,
   type DeleteLaneMode,
 } from './lanes';
 export { setDirection, setTitle } from './diagram';
 export {
-  addRule, deleteOrphanLaneEntry, deleteOrphanNodeEntry, deleteOrphanPin, deleteRule, editMatchCondition, moveRule,
-  removeFieldFromNodes, removeMatchCondition, removeNodeField, replaceNodeEntry, replaceStyles, setFieldOnNodes,
+  addRule, applySwatch, deleteOrphanEdgeEntry, deleteOrphanLaneEntry, deleteOrphanNodeEntry, deleteOrphanNoteEntry,
+  deleteOrphanPin, deleteRule, editMatchCondition, moveRule, removeFieldFromNodes, removeMatchCondition,
+  removeNodeField, replaceNodeEntry, replaceStyles, resetBlockColors, setBlockColors, setFieldOnNodes,
   setMatchCondition, setNodeField, setRuleLegend, setStyleColor, setStyleProp,
 } from './config';
