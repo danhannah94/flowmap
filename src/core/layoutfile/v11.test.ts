@@ -3,7 +3,7 @@
 import {
   checkLayoutRefs, checkRanges, clearPins, clearPinsAndPoints, dropPointsInLanes, effectivePlacements, flipDirection,
   movePointsToLane, parseLayoutFile, rekeyEdges, rekeyEdgesByPosition, removeEdgeEntries, removeNodeEntries,
-  removeNoteEntries, removePins, renameLane, renameLaneInPins, renameNode, renamePinNode, resetEdge,
+  removeNoteEntries, removePins, renameLane, renameLaneInPins, renameNode, renameNodeEntry, renamePinNode, resetEdge,
   serializeLayoutFile, setEdgePoints, setEdgeSide, setHints, setLabelAt, setNotePosition, setPin, setPins, setSize,
   setSizes, setTitlePosition, splitEdgeId, updateEdge, updateEdges,
 } from './index';
@@ -382,6 +382,24 @@ describe('writers: renaming a node or a lane', () => {
   test('a node with no entry but with line entries', () => {
     const f = renameNode({ version: 1, nodes: {}, edges: { 'x->y': { label_at: 0 } } }, 'y', 'z')!;
     expect(Object.keys(f.edges!)).toEqual(['x->z']);
+  });
+  test('a renamed line entry landing on another entry\'s key replaces it, before or after it in the file (R11.4)', () => {
+    const live = { source_side: 'right' as const, points: [P('side', 600, 20)] };
+    for (const edges of [{ 'x->d': live, 'b->d': { label_at: 0.75 } }, { 'b->d': { label_at: 0.75 }, 'x->d': live }]) {
+      const f = renameNode({ version: 1, nodes: {}, edges }, 'x', 'b')!;
+      expect(f.edges).toEqual({ 'b->d': live });
+    }
+  });
+  test('a node entry alone (renameNodeEntry): edge entries untouched', () => {
+    const f = renameNodeEntry(base, 'r01', 'intake')!;
+    expect(Object.keys(f.nodes)).toEqual(['a', 'intake', 'c']);
+    expect(f.edges).toEqual(base.edges);
+    expect(renameNodeEntry(base, 'zz', 'y')).toBe(base);
+  });
+  test('dropPointsInLanes with live lines: only their points go, orphans\' stay', () => {
+    const f = dropPointsInLanes(base, 'l1', ['r01->c'])!;
+    expect(f.edges!['r01->c']).toBeUndefined();
+    expect(dropPointsInLanes(base, 'l1', [])!.edges).toEqual(base.edges);
   });
   test('a lane: pins and bend points', () => {
     const f = renameLane(base, 'l1', 'intake-lane')!;

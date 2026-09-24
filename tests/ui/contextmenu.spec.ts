@@ -223,6 +223,127 @@ test('block delete removes it with its lines; undo brings everything back', asyn
   expect(await onDisk(page, d, (x) => x.mmd === MENUS.mmd && x.layout === MENUS.layout)).toEqual(MENUS);
 });
 
+// ---- The side column never hides a block (the acceptance suite's U14.08) -----------------------------------------
+// At fit, the last column of blocks sits where the side column opens. Selecting a block (a right-click, or duplicate,
+// which selects the copy) opens the column; every block must still be on screen and right-clickable at its centre.
+
+/** Steps, then one block of each shape in the last column, at the canvas's right edge at fit (as polish.spec.ts). */
+const LAST_COLUMN: Files = {
+  mmd: canon(`flowchart LR
+  subgraph work [Work]
+    s1["One"]
+    s2["Two"]
+    s3["Three"]
+    s4["Four"]
+    s5["Five"]
+    s6["Six"]
+    a["A step"]
+    b{"Decide"}
+    c(["The end"])
+    d[["Subprocess"]]
+    e[("ERP")]
+    g[/"The form"/]
+    f@{ shape: doc, label: "Vendor quote" }
+    h@{ shape: delay, label: "Wait for it" }
+  end
+  s1 --> s2
+  s2 --> s3
+  s3 --> s4
+  s4 --> s5
+  s5 --> s6
+  s6 --> a
+  s6 --> b
+  s6 --> c
+  s6 --> d
+  s6 --> e
+  s6 --> g
+  s6 --> f
+  s6 --> h
+`),
+  config: null,
+  layout: null,
+};
+
+/** Right-click a block's centre; it must open the block's own menu. On failure, says what covers the centre. */
+async function rightClickBlock(page: Page, id: string): Promise<void> {
+  const b = (await node(page, id).boundingBox())!;
+  const p = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+  const under = await page.evaluate(({ x, y }) => {
+    const el = document.elementFromPoint(x, y);
+    const n = el?.closest('[data-node-id]');
+    return n ? `block ${n.getAttribute('data-node-id')}` : el ? `${el.tagName.toLowerCase()}.${el.getAttribute('class') ?? ''}` : 'nothing (off screen)';
+  }, p);
+  await page.mouse.click(p.x, p.y, { button: 'right' });
+  await expect(menu(page), `right-clicking block ${id} did not open data-testid="context-menu" (UI40); under its centre: ${under}`).toBeVisible();
+  await expect(node(page, id)).toHaveAttribute('data-selected', 'true');
+}
+
+const blockIds = (page: Page) =>
+  page.locator('[data-node-id]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.nodeId!));
+
+for (const first of ['s1', 's6', 'f', 'h']) {
+  test(`block items with the side column open: duplicate ${first}, then every block's menu opens; delete f`, async ({ page }, info) => {
+    const d = makeDiagram(info, LAST_COLUMN);
+    await open(page, d);
+    const ids = await blockIds(page);
+    // At fit, f is where the side column opens.
+    const canvas = (await page.getByTestId('canvas').boundingBox())!;
+    const f0 = (await node(page, 'f').boundingBox())!;
+    expect(f0.x + f0.width).toBeGreaterThan(canvas.x + canvas.width - 340);
+    await rightClickBlock(page, first);
+    await item(page, 'duplicate').click();
+    await onDisk(page, d, (x) => x.mmd.includes('n1'));
+    await expect(node(page, 'n1')).toHaveAttribute('data-selected', 'true');
+    await expect(page.getByTestId('inspector')).toBeVisible();
+    // With the copy selected and the column open, every other block still opens its own menu at its centre.
+    for (const id of ids) {
+      if (id === first) continue; // the copy sits 24 px along and across, over its original's centre
+      await rightClickBlock(page, id);
+      await page.keyboard.press('Escape');
+      await expect(menu(page)).toHaveCount(0);
+    }
+    if (first === 'f') {
+      const b = (await node(page, 'f').boundingBox())!;
+      await page.mouse.click(b.x + 6, b.y + 6, { button: 'right' }); // f's corner, clear of the copy
+      await expect(menu(page)).toBeVisible();
+      await expect(node(page, 'f')).toHaveAttribute('data-selected', 'true');
+    } else {
+      await rightClickBlock(page, 'f');
+    }
+    await item(page, 'delete').click();
+    const after = await onDisk(page, d, (x) => !/^\s+f@/m.test(x.mmd));
+    expect(after.mmd).not.toContain('s6 --> f');
+    await expect(node(page, 'f')).toHaveCount(0);
+    await expect(node(page, 'n1')).toHaveCount(1);
+  });
+}
+
+// A left click or drag never moves the view (only to keep the clicked block itself in view), so after one the column
+// may cover the last column; the menu's own flow (right-click, then items) keeps everything reachable.
+test('every block of every shape opens its menu at its centre: nothing selected, itself clicked, another right-clicked', async ({ page }, info) => {
+  const d = makeDiagram(info, LAST_COLUMN);
+  await open(page, d);
+  const ids = await blockIds(page);
+  for (const selected of ['none', 'self', 'other']) {
+    for (const id of ids) {
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('inspector')).toHaveCount(0);
+      await page.getByTestId('fit').click();
+      if (selected === 'self') {
+        const b = (await node(page, id).boundingBox())!;
+        await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+        await expect(page.getByTestId('inspector')).toBeVisible();
+      } else if (selected === 'other') {
+        await rightClickBlock(page, id === 's1' ? 's2' : 's1');
+        await page.keyboard.press('Escape');
+        await expect(page.getByTestId('inspector')).toBeVisible();
+      }
+      await rightClickBlock(page, id);
+    }
+  }
+});
+
 // ---- Several blocks ----------------------------------------------------------------------------------------------
 
 test('on a block that is one of several selected: only the items for all of them, applied to all', async ({ page }, info) => {

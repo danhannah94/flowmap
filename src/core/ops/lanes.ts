@@ -124,7 +124,7 @@ export type DeleteLaneMode =
  * config `lanes` entry. `empty` refuses a lane that still has blocks; `move` appends each block, with its attached
  * comments, to `target` (a lane or `_unassigned`) in order, dropping its pin; `delete` deletes the blocks as UI14
  * does (their edges, comments and layout entries; never their config metadata). In every mode (v1.1 §8.2) the
- * `points` of every line with a bend point in the lane are removed.
+ * `points` of every (live) line with a bend point in the lane are removed; orphaned entries' points are left for R12.
  */
 export function deleteLane(files: Files, id: string, how: DeleteLaneMode): OpResult {
   return run(files, (ctx) => {
@@ -145,7 +145,10 @@ export function deleteLane(files: Files, id: string, how: DeleteLaneMode): OpRes
     }
     ctx.d.lanes = ctx.d.lanes.filter((l) => l !== lane);
     ctx.editConfig([id], (doc) => doc.deleteLaneEntry(id));
-    ctx.editLayout([id], (file) => dropPointsInLanes(file, id));
+    // Live lines only: an orphaned entry's bend points in the lane are leftovers (R14.3, R15), which the first-lane
+    // re-expression in `commit` gives U (or removes if still negative); in a later lane they are simply stale.
+    const live = ctx.edgeIds();
+    ctx.editLayout([id], (file) => dropPointsInLanes(file, id, live));
     return {};
   });
 }

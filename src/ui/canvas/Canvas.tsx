@@ -66,7 +66,27 @@ export function Canvas() {
   // One gesture at a time; moves and the release are routed to it through pointer capture.
   const gesture = useRef<{ g: Gesture; pointerId: number } | null>(null);
 
+  // Whether a press is down (the store never moves the view under one) and where the last right-click was (the side
+  // column opening from its menu keeps the diagram in view around it). A press ends after its gesture's handlers ran.
+  useEffect(() => {
+    let timer = 0;
+    const end = () => {
+      clearTimeout(timer);
+      timer = window.setTimeout(() => store.endPress(), 0);
+    };
+    window.addEventListener('pointerup', end, true);
+    window.addEventListener('pointercancel', end, true);
+    window.addEventListener('blur', end);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('pointerup', end, true);
+      window.removeEventListener('pointercancel', end, true);
+      window.removeEventListener('blur', end);
+    };
+  }, [store]);
+
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    store.notePress(ctx.local(e), e.button);
     if (gesture.current) return;
     const native = e.nativeEvent;
     const hit: Hit = hitTest(e.target);
@@ -155,7 +175,10 @@ export function Canvas() {
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
       onDoubleClick={onDoubleClickCapture}
-      onContextMenu={(e) => e.preventDefault()}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        store.noteContextMenu(ctx.local(e));
+      }}
     >
       <div className="fm-world" style={{ transform: world }}>
         {layout && shown ? (

@@ -280,11 +280,11 @@ describe('P28 keeping the layout file in step (§8.2)', () => {
       mmd: SHAPE_MMD.replace('a["Alpha"]', 'alpha["Alpha"]').replace(/^ {2}a --/gm, '  alpha --'),
       layout: editJson(SHAPED.layout, (js) => {
         js.nodes = { alpha: js.nodes.a, b: js.nodes.b, c: js.nodes.c, d: js.nodes.d };
-        js.edges = { 'alpha->c': js.edges['a->c'], 'c->d': js.edges['c->d'], 'alpha->d': js.edges['a->d'], 'alpha->zz': js.edges['a->zz'] };
+        js.edges = { 'alpha->c': js.edges['a->c'], 'c->d': js.edges['c->d'], 'alpha->d': js.edges['a->d'], 'a->zz': js.edges['a->zz'] };
       }),
     });
     expect(Object.keys(layoutJs(after).nodes)).toEqual(['alpha', 'b', 'c', 'd']);
-    expect(Object.keys(layoutJs(after).edges)).toEqual(['alpha->c', 'c->d', 'alpha->d', 'alpha->zz']);
+    expect(Object.keys(layoutJs(after).edges)).toEqual(['alpha->c', 'c->d', 'alpha->d', 'a->zz']);
   });
 
   test('delete a lane that holds a bend point (moving its blocks): those lines lose their points, moved blocks their pins', () => {

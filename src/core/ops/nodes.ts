@@ -1,6 +1,6 @@
 // Block operations (design.md §8.2 UI6–UI14, and v1.1 UI34 resize and UI40's "add a block here").
 import {
-  clearPinsAndPoints, MIN_SIZE, pinFromDrop, removeNodeEntries, removePins, renameNode as renameInLayout, roundPx,
+  clearPinsAndPoints, MIN_SIZE, pinFromDrop, removeNodeEntries, removePins, renameNodeEntry, roundPx,
   setPins, setSizes, sizeOf,
 } from '../layoutfile';
 import type { LayoutOutput, Translation } from '../layout';
@@ -112,9 +112,11 @@ export function renameNode(files: Files, oldId: string, newId: string): OpResult
       if (edge.target === oldId) edge.target = newId;
     }
     ctx.editConfig([oldId], (doc) => doc.renameNode(oldId, newId));
-    // §8.2: the node entry (in place) and the keys of its lines' entries; the new id is unused, so no repeat number
-    // changes and this is the same as re-keying by position.
-    ctx.editLayout([oldId], (file) => renameInLayout(file, oldId, newId));
+    // §8.2: the node entry (in place), and the keys of its lines' entries by re-keying by position. Only live lines are
+    // re-keyed: an orphaned entry that merely names the node keeps its key, and one sitting on a line's new key is
+    // replaced by that line's entry (R11.4), wherever the two are in the file.
+    ctx.editLayout([oldId], (file) => renameNodeEntry(file, oldId, newId));
+    ctx.rekeyEdgeEntries();
     return {};
   });
 }

@@ -264,23 +264,31 @@ export function splitEdgeId(id: string): { source: string; target: string; suffi
   return m ? { source: m[1]!, target: m[2]!, suffix: m[3] ?? '' } : null;
 }
 
+/** UI9: rename a node's entry (pin and size) in place. Edge entries are untouched. No file stays no file. */
+export function renameNodeEntry(file: LayoutFile | null, oldId: string, newId: string): LayoutFile | null {
+  if (!file || oldId === newId || !Object.hasOwn(file.nodes, oldId)) return file;
+  const nodes = mapEntries(file.nodes, (id, v) => (id === newId ? { value: undefined } : { key: id === oldId ? newId : id, value: v }));
+  return build({ ...partsOf(file), nodes });
+}
+
 /**
- * UI9: rename a node in the layout file: its node entry (in place) and the keys of its edges' entries (a line's id
- * follows its endpoints, §3.4; the new id is unused, so repeat numbers don't change). No file stays no file.
+ * UI9 on the layout file alone: rename a node's entry (in place) and the keys of the edge entries that name it (a
+ * line's id follows its endpoints, §3.4; the new id is unused, so repeat numbers don't change). Without the diagram it
+ * can't tell a line's entry from an orphan's, so every key naming the node is taken to be one of its lines; a renamed
+ * entry that lands on a key another entry already holds replaces it (R11.4), wherever the two sit in the file. The
+ * operations layer (`ops.renameNode`) re-keys by position instead, which leaves orphans alone. No file stays no file.
  */
 export function renameNode(file: LayoutFile | null, oldId: string, newId: string): LayoutFile | null {
   if (!file || oldId === newId) return file;
-  const touches = (id: string) => { const s = splitEdgeId(id); return !!s && (s.source === oldId || s.target === oldId); };
-  if (!Object.hasOwn(file.nodes, oldId) && !Object.keys(file.edges ?? {}).some(touches)) return file;
-  const nodes = mapEntries(file.nodes, (id, v) => (id === newId && Object.hasOwn(file.nodes, oldId) ? { value: undefined } : { key: id === oldId ? newId : id, value: v }));
-  const edges = mapEntries(file.edges, (id, v) => {
+  const renamed = (id: string): string | null => {
     const s = splitEdgeId(id);
-    if (!s || (s.source !== oldId && s.target !== oldId)) return { value: v };
-    const src = s.source === oldId ? newId : s.source;
-    const tgt = s.target === oldId ? newId : s.target;
-    return { key: `${src}->${tgt}${s.suffix}`, value: v };
-  });
-  return build({ ...partsOf(file), nodes, edges });
+    if (!s || (s.source !== oldId && s.target !== oldId)) return null;
+    return `${s.source === oldId ? newId : s.source}->${s.target === oldId ? newId : s.target}${s.suffix}`;
+  };
+  const mapping = new Map<string, string>();
+  for (const id of Object.keys(file.edges ?? {})) { const to = renamed(id); if (to !== null) mapping.set(id, to); }
+  if (!Object.hasOwn(file.nodes, oldId) && mapping.size === 0) return file;
+  return rekeyEdges(renameNodeEntry(file, oldId, newId), mapping);
 }
 
 /** v1.0 name of `renameNode`. */
@@ -304,12 +312,20 @@ export function renameLane(file: LayoutFile | null, oldLane: string, newLane: st
 /** v1.0 name of `renameLane` (it now renames bend points too). */
 export const renameLaneInPins = renameLane;
 
-/** UI21: remove the `points` of every line with a bend point in any of these lanes (emptied entries go). */
-export function dropPointsInLanes(file: LayoutFile | null, lanes: string | Iterable<string>): LayoutFile | null {
+/**
+ * UI21 (§8.2): remove the `points` of every line with a bend point in any of these lanes (emptied entries go). With
+ * `liveEdges`, only the entries of those lines are touched: an orphaned entry's bend points are leftovers (R14.3,
+ * R15), kept as they are for the first-lane re-expression (R12) to deal with.
+ */
+export function dropPointsInLanes(
+  file: LayoutFile | null, lanes: string | Iterable<string>, liveEdges?: Iterable<string>,
+): LayoutFile | null {
   if (!file) return null;
   const set = new Set(typeof lanes === 'string' ? [lanes] : lanes);
-  const edges = mapEntries(file.edges, (_id, e) => (
-    e.points && e.points.some((p) => set.has(p.lane)) ? { value: patchEntry(e, { points: null }) } : { value: e }
+  const live = liveEdges === undefined ? null : new Set(liveEdges);
+  const edges = mapEntries(file.edges, (id, e) => (
+    (live === null || live.has(id)) && e.points && e.points.some((p) => set.has(p.lane))
+      ? { value: patchEntry(e, { points: null }) } : { value: e }
   ));
   return build({ ...partsOf(file), edges });
 }

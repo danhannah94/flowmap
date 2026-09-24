@@ -13,7 +13,7 @@ import type { Files, OpResult } from '../../core/ops';
 import type { LayoutResult, ShapeKind } from '../../core/types';
 import { fetchDiagram, putDiagram, sameVersions, subscribeChanges, type Snapshot, type Versions } from '../api';
 import { derive, originMove, sameFiles, withHints, type Derived } from './derive';
-import { fitViewport, zoomAround, type Rect, type Viewport } from '../canvas/viewport';
+import { fitViewport, zoomAround, type Point, type Rect, type Viewport } from '../canvas/viewport';
 import { notesRowBottom, withAnnotations } from '../notes/geometry';
 
 export type ThemeName = 'light' | 'dark';
@@ -188,6 +188,15 @@ export class Store {
   private generation = 0;
   private unsubscribe: (() => void) | null = null;
   private fitPending = false;
+  /**
+   * Where the last right-click on the canvas was (canvas px), while its menu session lasts (until the next primary
+   * press on the canvas): what the menu opened on, and where it did, stays put when the side column opens.
+   */
+  private menuAnchor: Point | null = null;
+  /** A press on the canvas is down: the view never moves under it. */
+  private pressing = false;
+  /** The canvas size before it narrowed during a press (handled when the press ends). */
+  private narrowedFrom: { width: number; height: number } | null = null;
 
   constructor() {
     if (typeof matchMedia === 'function') {
@@ -471,7 +480,9 @@ export class Store {
   /**
    * The canvas element's size: the visible area, which ends at the side column's edge (the column is a sibling, so
    * opening it narrows the canvas). When the canvas shrinks, the view pans the least amount that keeps the block
-   * being edited or the one selected block in view.
+   * being edited or the one selected block in view. When a right-click (or an item of its menu) opened the column, the
+   * whole diagram stays in view if it was (`keepContentInView`): what the column would cover could no longer be
+   * clicked or right-clicked, and the menu is the way to work on any block in turn.
    */
   setViewportSize(width: number, height: number): void {
     const cur = this.state.viewportSize;
@@ -481,7 +492,89 @@ export class Store {
       this.maybeFit();
       return;
     }
-    if (cur.width > 0 && (width < cur.width || height < cur.height)) this.revealFocus();
+    if (cur.width > 0 && (width < cur.width || height < cur.height)) {
+      if (this.menuAnchor && width < cur.width) {
+        if (this.pressing) {
+          this.narrowedFrom ??= cur; // never move the world under a press: handled when it ends
+          return;
+        }
+        if (this.keepContentInView(cur, this.menuAnchor)) return;
+      }
+      this.revealFocus();
+    }
+  }
+
+  /** The canvas saw a press (`button`: 0 primary, 2 secondary…) at this point (canvas px). */
+  notePress(_p: Point, button: number): void {
+    this.pressing = true;
+    if (button === 0) this.menuAnchor = null; // a click or drag on the canvas ends the menu session
+  }
+
+  /** The canvas saw a right-click (a context menu) at this point (canvas px). */
+  noteContextMenu(p: Point): void {
+    this.menuAnchor = { x: p.x, y: p.y };
+  }
+
+  /** The press on the canvas is over (its gesture has ended): apply a narrowing of the canvas that happened during it. */
+  endPress(): void {
+    this.pressing = false;
+    const from = this.narrowedFrom;
+    this.narrowedFrom = null;
+    if (!from || this.state.drag || this.state.marquee) return;
+    if (this.menuAnchor && this.keepContentInView(from, this.menuAnchor)) return;
+    this.revealFocus();
+  }
+
+  /**
+   * The canvas narrowed from `from`. If the whole diagram was in view before, keep it all in view: zoom out (never in)
+   * around `anchor` (the right-click), so the block the menu is on, or a block the menu added at that spot, stays where
+   * it is. If that would shrink it to less than half of what fitting needs, or the anchor is under the column, fit it
+   * instead, moving the anchor as little as possible. The margins are `fit`'s, clear of the zoom controls at the bottom.
+   * Returns false (nothing done) when the diagram wasn't all in view.
+   */
+  private keepContentInView(from: { width: number; height: number }, anchor: Point): boolean {
+    const s = this.state;
+    const v = s.viewport;
+    const size = s.viewportSize;
+    const b = contentBounds(s.shown);
+    if (!b || size.width === 0) return false;
+    const edges = (vp: Viewport) => ({
+      x0: b.x * vp.zoom + vp.x,
+      x1: (b.x + b.width) * vp.zoom + vp.x,
+      y0: b.y * vp.zoom + vp.y,
+      y1: (b.y + b.height) * vp.zoom + vp.y,
+    });
+    const c = edges(v);
+    const TOL = 1;
+    if (c.x0 < -TOL || c.y0 < -TOL || c.x1 > from.width + TOL || c.y1 > from.height + TOL) return false;
+    if (c.x1 <= size.width + TOL && c.y1 <= size.height + TOL) return true; // still all in view
+    const M = 40;
+    const lo = { x: Math.min(c.x0, PALETTE_INSET + M), y: Math.min(c.y0, M) };
+    const hi = { x: Math.max(lo.x + 1, size.width - M), y: Math.max(lo.y + 1, size.height - ZOOM_CONTROLS.height) };
+    // The largest factor (at most 1) that, zooming around p, keeps [c0, c1] inside [l, h]; 0 when none does.
+    const around = (p: number, c0: number, c1: number, l: number, h: number) => {
+      let k = 1;
+      if (c1 > h) k = p < h ? Math.min(k, (h - p) / (c1 - p)) : 0;
+      if (c0 < l) k = p > l ? Math.min(k, (p - l) / (p - c0)) : 0;
+      return Math.max(0, k);
+    };
+    const kFit = Math.min(1, (hi.x - lo.x) / Math.max(1, c.x1 - c.x0), (hi.y - lo.y) / Math.max(1, c.y1 - c.y0));
+    const kAnchor = Math.min(around(anchor.x, c.x0, c.x1, lo.x, hi.x), around(anchor.y, c.y0, c.y1, lo.y, hi.y));
+    let next: Viewport;
+    if (kAnchor > 0 && kAnchor >= kFit / 2) {
+      next = zoomAround(v, kAnchor, anchor);
+    } else {
+      const z = zoomAround(v, kFit, anchor);
+      const n = edges(z);
+      const shift = (c0: number, c1: number, l: number, h: number) => {
+        if (c1 > h) return Math.max(h - c1, l - c0);
+        if (c0 < l) return l - c0;
+        return 0;
+      };
+      next = { ...z, x: z.x + shift(n.x0, n.x1, lo.x, hi.x), y: z.y + shift(n.y0, n.y1, lo.y, hi.y) };
+    }
+    this.set({ viewport: next });
+    return true;
   }
 
   /** The world rect the person is working on: the open editor's target, else the one selected block. */
@@ -501,8 +594,9 @@ export class Store {
   }
 
   /**
-   * Pan (never zoom) the least amount that brings a world rect into the visible area, clear of the palette. With
-   * `onlyIfOffscreen`, a rect that is at least partly visible is left where it is.
+   * Pan (never zoom) the least amount that brings a world rect into the visible area, clear of the palette on the left
+   * and the zoom controls at the bottom right (a block revealed there could not be clicked). With `onlyIfOffscreen`, a
+   * rect that is at least partly visible is left where it is.
    */
   reveal(r: Rect, opts: { margin?: number; onlyIfOffscreen?: boolean } = {}): void {
     const { viewport: v, viewportSize: size } = this.state;
@@ -521,7 +615,12 @@ export class Store {
     const x0 = r.x * v.zoom + v.x;
     const y0 = r.y * v.zoom + v.y;
     const dx = shift(x0, x0 + r.width * v.zoom, PALETTE_INSET + 8, size.width - margin);
-    const dy = shift(y0, y0 + r.height * v.zoom, margin, size.height - margin);
+    let dy = shift(y0, y0 + r.height * v.zoom, margin, size.height - margin);
+    // Its right end in the zoom controls' column: keep its bottom above them.
+    const x1 = x0 + dx + r.width * v.zoom;
+    if (x1 > size.width - ZOOM_CONTROLS.width && size.height - ZOOM_CONTROLS.height - margin > margin) {
+      dy = shift(y0, y0 + r.height * v.zoom, margin, size.height - ZOOM_CONTROLS.height);
+    }
     if (dx || dy) this.set({ viewport: { ...v, x: v.x + dx, y: v.y + dy } });
   }
 
@@ -649,6 +748,9 @@ function annotationExists(a: Annotation | null | undefined, layout: LayoutResult
 
 /** Room the floating shape palette takes at the canvas's left edge (fit keeps the diagram clear of it). */
 export const PALETTE_INSET = 92;
+
+/** Room the zoom controls take in the canvas's bottom-right corner (styles.css `.fm-zoom`: 116 × 36 px, 12 px in), plus a gap. */
+export const ZOOM_CONTROLS = { width: 136, height: 56 };
 
 /** Title band above the diagram and legend below it, in world coordinates (shared with the canvas). */
 export const TITLE_BAND = 64;
