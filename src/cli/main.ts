@@ -9,6 +9,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { loadDocument } from '../core/document';
 import { format as formatMmd, parse as parseMmd } from '../core/mmd';
 import { renderSvg } from '../core/svg';
+import { serve } from '../server/index';
 import type { Problem } from '../core/types';
 
 const USAGE = `flowmap: a local flowchart tool
@@ -155,7 +156,9 @@ async function cmdFmt(argv: string[]): Promise<void> {
   const canonical = formatMmd(diagram);
   if (flags.stdout) process.stdout.write(canonical);
   if (flags.check) {
-    process.exitCode = canonical === mmdText ? 0 : 1;
+    const isCanonical = canonical === mmdText;
+    if (!isCanonical) process.stderr.write(`not canonical: ${mmdPath}\n`);
+    process.exitCode = isCanonical ? 0 : 1;
     return;
   }
   if (!flags.stdout) await writeAtomic(mmdPath, canonical);
@@ -235,26 +238,25 @@ async function renderPng(svg: string): Promise<Buffer> {
   }
 }
 
-async function cmdExport(argv: string[]): Promise<void> {
-  const { positional, flags } = parseArgs(argv, [], ['format', 'theme', 'out']);
-  const paths = diagramPaths(requirePositional(positional, 'export'));
-
-  const formatArg = flags.format;
-  if (formatArg !== 'svg' && formatArg !== 'png') usageError('export needs --format svg or png');
-  const format = formatArg as 'svg' | 'png';
-  const themeArg = flags.theme ?? 'light';
-  if (themeArg !== 'light' && themeArg !== 'dark') usageError('--theme must be light or dark');
-  const theme = themeArg as 'light' | 'dark';
-
+/**
+ * Render a diagram to `exports/<name>.<format>` beside the `.mmd` (or `out`) and return the path written. Shared by
+ * `flowmap export` and the server's export endpoint (UI32), so both write the same bytes. Throws `ExportRefused`
+ * when the `.mmd` has errors (§7: they stop `export`).
+ */
+async function exportDiagram(
+  mmdPath: string,
+  format: 'svg' | 'png',
+  theme: 'light' | 'dark',
+  out?: string,
+  onProblem?: (line: string) => void,
+): Promise<string> {
+  const paths = diagramPaths(mmdPath);
   const doc = await loadDoc(paths);
-  if (doc.layout === null) {
-    // §7: a `.mmd` error stops `export`: exit 1, no output.
-    process.exitCode = 1;
-    return;
+  if (doc.layout === null) throw new ExportRefused('the .mmd file has errors; fix them before exporting');
+  if (onProblem) {
+    for (const e of doc.problems.errors) if (!MMD_CODES.has(e.code)) onProblem(`error ${formatProblem(e)}`);
+    for (const w of doc.problems.warnings) if (!MMD_CODES.has(w.code)) onProblem(`warning ${formatProblem(w)}`);
   }
-  for (const e of doc.problems.errors) if (!MMD_CODES.has(e.code)) process.stderr.write(`error ${formatProblem(e)}\n`);
-  for (const w of doc.problems.warnings) if (!MMD_CODES.has(w.code)) process.stderr.write(`warning ${formatProblem(w)}\n`);
-
   const svg = renderSvg({
     title: doc.title,
     graph: doc.graph,
@@ -263,47 +265,67 @@ async function cmdExport(argv: string[]): Promise<void> {
     legend: doc.legend,
     theme,
   });
-
   const name = basename(paths.mmd).replace(/\.mmd$/i, '');
-  const outArg = flags.out as string | undefined;
-  const outPath = outArg ? resolve(outArg) : join(dirname(paths.mmd), 'exports', `${name}.${format}`);
+  const outPath = out ? resolve(out) : join(dirname(paths.mmd), 'exports', `${name}.${format}`);
   const contents = format === 'svg' ? svg : await renderPng(svg);
   await writeAtomic(outPath, contents);
-  process.stdout.write(`${outPath}\n`);
-  process.exitCode = 0;
+  return outPath;
+}
+
+class ExportRefused extends Error {}
+
+async function cmdExport(argv: string[]): Promise<void> {
+  const { positional, flags } = parseArgs(argv, [], ['format', 'theme', 'out']);
+  const mmdPath = requirePositional(positional, 'export');
+
+  const formatArg = flags.format;
+  if (formatArg !== 'svg' && formatArg !== 'png') usageError('export needs --format svg or png');
+  const format = formatArg as 'svg' | 'png';
+  const themeArg = flags.theme ?? 'light';
+  if (themeArg !== 'light' && themeArg !== 'dark') usageError('--theme must be light or dark');
+  const theme = themeArg as 'light' | 'dark';
+
+  try {
+    const outPath = await exportDiagram(mmdPath, format, theme, flags.out as string | undefined, (line) =>
+      process.stderr.write(`${line}\n`),
+    );
+    process.stdout.write(`${outPath}\n`);
+    process.exitCode = 0;
+  } catch (e) {
+    // §7: a `.mmd` error stops `export`: exit 1, no output.
+    if (e instanceof ExportRefused) {
+      process.exitCode = 1;
+      return;
+    }
+    throw e;
+  }
 }
 
 // ---- serve ---------------------------------------------------------------------------------------------------------
 
-interface ServerModule {
-  main?: (dir: string, port: number) => Promise<void>;
-}
-
-function isModuleNotFound(e: unknown): boolean {
-  const code = (e as NodeJS.ErrnoException | undefined)?.code;
-  return code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND';
-}
-
 async function cmdServe(argv: string[]): Promise<void> {
   const { positional, flags } = parseArgs(argv, [], ['port']);
-  const dir = requirePositional(positional, 'serve');
+  const dir = resolve(requirePositional(positional, 'serve'));
   const port = flags.port ? Number(flags.port) : 4870;
+  if (!Number.isInteger(port) || port < 0 || port > 65535) usageError('--port must be a port number');
 
-  // src/server/ doesn't exist yet (another engineer's work). This dispatches to it once it does, without esbuild
-  // trying to bundle a module that isn't there yet: the specifier is a variable, not a string literal, so esbuild
-  // leaves the `import()` call alone instead of resolving it at build time.
-  const specifier = '../server/index.js';
-  try {
-    const mod = (await import(specifier)) as ServerModule;
-    if (typeof mod.main === 'function') {
-      await mod.main(dir, port);
-      return;
-    }
-  } catch (e) {
-    if (!isModuleNotFound(e)) throw e;
-  }
-  process.stderr.write('serve: not implemented yet\n');
-  process.exitCode = 1;
+  const handle = await serve({
+    dir,
+    port,
+    exportFn: (mmdPath, format, theme) => exportDiagram(mmdPath, format, theme),
+  });
+  process.stdout.write(`flowmap: serving ${dir} on http://127.0.0.1:${handle.port}\n`);
+
+  // Run until stopped, then close the server (SSE connections and the directory watcher included).
+  await new Promise<void>((resolveStop) => {
+    const stop = () => {
+      process.off('SIGINT', stop);
+      process.off('SIGTERM', stop);
+      void handle.close().finally(resolveStop);
+    };
+    process.on('SIGINT', stop);
+    process.on('SIGTERM', stop);
+  });
 }
 
 // ---- dispatch ------------------------------------------------------------------------------------------------------

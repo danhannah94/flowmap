@@ -1,0 +1,69 @@
+// Lanes: full-width bands (§6 L1) in display order, each with its header in the LANE_HEADER strip at the start of
+// the flow (left for LR, top for TB). The header is the lane's handle for later features (rename, menu, reorder).
+import { memo } from 'react';
+import { LANE_HEADER } from '../../core/layout';
+import type { Theme } from '../../core/theme';
+import type { Direction, LayoutResult } from '../../core/types';
+import { useStoreState } from '../store/hooks';
+import type { LayoutLane } from './geometry';
+
+interface LaneProps {
+  lane: LayoutLane;
+  index: number;
+  direction: Direction;
+  selected: boolean;
+  fill: string;
+  editing: boolean;
+  /** Extra header content (the lane menu, added by lane features). */
+  headerExtras?: React.ReactNode;
+}
+
+const LaneView = memo(function LaneView({ lane, index, direction, selected, fill, editing, headerExtras }: LaneProps) {
+  const header = direction === 'TB'
+    ? { left: 0, top: 0, width: lane.width, height: LANE_HEADER }
+    : { left: 0, top: 0, width: LANE_HEADER, height: lane.height };
+  return (
+    <div
+      className={`fm-lane fm-${direction}`}
+      data-lane-id={lane.id}
+      data-selected={selected ? 'true' : 'false'}
+      data-index={index}
+      style={{ left: lane.x, top: lane.y, width: lane.width, height: lane.height, background: fill }}
+    >
+      <div className="fm-lane-header" data-lane-header={lane.id} style={header}>
+        <span className="fm-lane-label" title={lane.label} style={{ visibility: editing ? 'hidden' : undefined }}>
+          {lane.label}
+        </span>
+        {headerExtras}
+      </div>
+    </div>
+  );
+});
+
+/** Hook point for lane features: content rendered inside each lane header (e.g. the lane menu button). */
+export type LaneHeaderExtras = (lane: LayoutLane) => React.ReactNode;
+let laneHeaderExtras: LaneHeaderExtras | null = null;
+export function setLaneHeaderExtras(fn: LaneHeaderExtras | null): void {
+  laneHeaderExtras = fn;
+}
+
+export function LanesLayer({ layout, theme }: { layout: LayoutResult; theme: Theme }) {
+  const selectedLane = useStoreState((s) => s.selection.lane);
+  const editingLane = useStoreState((s) => (s.editing?.target.kind === 'lane' ? s.editing.target.id ?? null : null));
+  return (
+    <div className="fm-lanes">
+      {layout.lanes.map((lane, i) => (
+        <LaneView
+          key={lane.id}
+          lane={lane}
+          index={i}
+          direction={layout.direction}
+          selected={selectedLane === lane.id}
+          fill={theme.laneFill[i % 2]!}
+          editing={editingLane === lane.id}
+          headerExtras={laneHeaderExtras?.(lane)}
+        />
+      ))}
+    </div>
+  );
+}

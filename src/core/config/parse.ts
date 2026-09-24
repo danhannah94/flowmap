@@ -31,8 +31,12 @@ export function parseConfig(text: string | null): ConfigParse {
   const problems: Problems = { errors: [], warnings: [] };
   if (text === null) return { config: emptyConfig(), problems };
   const doc = parseDocument(text, { uniqueKeys: true });
-  if (doc.errors.length) {
-    for (const e of doc.errors) problems.errors.push(err(`Config is not valid YAML: ${e.message}`));
+  const [firstYamlError] = doc.errors;
+  if (firstYamlError) {
+    // The yaml library can report several cascading parse errors for one malformed file (for example an
+    // unclosed flow collection produces both a "block collections not allowed" and a follow-on "must end with
+    // ]" error). One invalid file is one error (§4), so only the first is reported.
+    problems.errors.push(err(`Config is not valid YAML: ${firstYamlError.message}`));
     return { config: null, problems };
   }
   let js: unknown;

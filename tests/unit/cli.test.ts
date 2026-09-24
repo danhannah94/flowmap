@@ -1,7 +1,7 @@
 // End-to-end tests for the real CLI (design.md §7): builds `dist/cli.js` once, then drives it as a subprocess the
 // way the grader does (`node dist/cli.js <command> …`), against the fixtures.
-import { spawnSync } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -144,6 +144,65 @@ describe('fmt: .mmd errors print to stderr and exit 1, writing nothing', () => {
   });
 });
 
+describe('fmt --check: a non-canonical file prints a helpful line on stderr (§7)', () => {
+  it('reports "not canonical: <file>" and exits 1, writing nothing', () => {
+    const dir = tmpDir('fmt-not-canonical');
+    const target = join(dir, 'edge-cases.mmd');
+    cpSync(join(FIXTURES, 'syntax', 'edge-cases.mmd'), target);
+    const before = readFileSync(target, 'utf8');
+    const { status, stderr } = run(['fmt', target, '--check']);
+    expect(status).toBe(1);
+    expect(stderr).toBe(`not canonical: ${target}\n`);
+    expect(readFileSync(target, 'utf8')).toBe(before);
+  });
+});
+
+// ---- C3.103: E-config (and E-layout) don't stop fmt, layout or export (§7) ------------------------------------------
+
+describe('a broken config beside a canonical .mmd does not stop fmt, layout or export (§7)', () => {
+  function setupBrokenConfig(): { dir: string; mmd: string } {
+    const dir = tmpDir('broken-config');
+    const mmd = join(dir, 'cfg.mmd');
+    cpSync(join(FIXTURES, 'syntax', 'edge-cases.canonical.mmd'), mmd);
+    // An invalid `.flow.yaml` beside an otherwise-canonical `.mmd` (design.md §4: invalid YAML is `E-config`).
+    writeFileSync(join(dir, 'cfg.flow.yaml'), 'version: 1\nstyles: [this is: not: valid\n');
+    return { dir, mmd };
+  }
+
+  it('fmt --check reads only the .mmd: exits 0 with nothing on stderr', () => {
+    const { mmd } = setupBrokenConfig();
+    const { status, stderr } = run(['fmt', mmd, '--check']);
+    expect(status).toBe(0);
+    expect(stderr).toBe('');
+  });
+
+  it('fmt (rewrite) reads only the .mmd: exits 0, leaves the canonical file unchanged', () => {
+    const { mmd } = setupBrokenConfig();
+    const before = readFileSync(mmd, 'utf8');
+    const { status, stderr } = run(['fmt', mmd]);
+    expect(status).toBe(0);
+    expect(stderr).toBe('');
+    expect(readFileSync(mmd, 'utf8')).toBe(before);
+  });
+
+  it('layout exits 0 and reports the config problem on stderr', () => {
+    const { mmd } = setupBrokenConfig();
+    const { status, stdout, stderr } = run(['layout', mmd]);
+    expect(status).toBe(0);
+    expect(JSON.parse(stdout).direction).toBeDefined();
+    expect(stderr).toMatch(/E-config/);
+  });
+
+  it('export exits 0 and reports the config problem on stderr', () => {
+    const { dir, mmd } = setupBrokenConfig();
+    const out = join(dir, 'cfg.svg');
+    const { status, stdout, stderr } = run(['export', mmd, '--format', 'svg', '--out', out]);
+    expect(status).toBe(0);
+    expect(stdout.trim()).toBe(out);
+    expect(stderr).toMatch(/E-config/);
+  });
+});
+
 // ---- layout (§6, §7) -------------------------------------------------------------------------------------------------
 
 describe('layout: purchase-request respects its pin', () => {
@@ -258,14 +317,38 @@ describe('export --format png', () => {
   }, 30_000);
 });
 
-// ---- serve: stubbed (§7) ----------------------------------------------------------------------------------------
+// ---- serve (§7): starts the server on loopback, serves the API and the UI, stops on SIGTERM ---------------------------
 
 describe('serve', () => {
-  it('prints "not implemented yet" and exits 1', () => {
-    const { status, stderr } = run(['serve', FIXTURES]);
-    expect(status).toBe(1);
-    expect(stderr).toBe('serve: not implemented yet\n');
-  });
+  it('serves the diagrams in a directory until stopped', async () => {
+    const dir = tmpDir('serve');
+    cpSync(join(FIXTURES, 'purchase-request'), dir, { recursive: true });
+    const port = 20000 + Math.floor(Math.random() * 20000);
+    const child = spawn('node', [CLI, 'serve', dir, '--port', String(port)], { cwd: ROOT });
+    try {
+      let out = '';
+      await new Promise<void>((resolveUp, reject) => {
+        const timer = setTimeout(() => reject(new Error(`serve did not start: ${out}`)), 10_000);
+        child.stdout.on('data', (d: Buffer) => {
+          out += d.toString();
+          if (out.includes('serving')) {
+            clearTimeout(timer);
+            resolveUp();
+          }
+        });
+        child.on('exit', (code) => reject(new Error(`serve exited early (${code}): ${out}`)));
+      });
+      const list = (await (await fetch(`http://127.0.0.1:${port}/api/diagrams`)).json()) as { files: string[] };
+      expect(list.files).toContain('purchase-request.mmd');
+      const page = await fetch(`http://127.0.0.1:${port}/`);
+      expect(page.status).toBe(200);
+      expect(await page.text()).toContain('flowmap');
+    } finally {
+      const exited = new Promise((r) => child.on('exit', r));
+      child.kill('SIGTERM');
+      await exited;
+    }
+  }, 30_000);
 });
 
 // ---- R1: `pnpm exec flowmap` works from the repo root ----------------------------------------------------------------

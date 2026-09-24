@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>flowmap</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='9' width='12' height='14' rx='3' fill='%236366f1'/%3E%3Cpath d='M14 16h6' stroke='%2394a3b8' stroke-width='2.5'/%3E%3Cpath d='M20 16l6-7v14z' fill='%2394a3b8'/%3E%3C/svg%3E" />
+    <script>
+      // Paint the right theme before the bundle loads (no light flash for a dark-mode user).
+      (function () {
+        try {
+          var pref = localStorage.getItem('flowmap.theme');
+          var dark = pref ? pref === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/ui/main.tsx"></script>
+  </body>
+</html>
