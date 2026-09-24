@@ -11,8 +11,8 @@
 // - Undo of created files: a file that was `null` (absent) and isn't written stays `null`, so a snapshot of the
 //   input restores "no file".
 
-import { ConfigDoc, parseConfig, type EditResult, type FlowConfig } from '../config';
-import { parseLayoutFile, serializeLayoutFile } from '../layoutfile';
+import { ConfigDoc, laneOrder, parseConfig, type EditResult, type FlowConfig } from '../config';
+import { checkPinRanges, firstLaneOf, parseLayoutFile, serializeLayoutFile } from '../layoutfile';
 import {
   declaredNodes, edgeIds, findNode, format, isIdForm, isReservedId, parse, undeclaredNodes,
   type Diagram, type NodeDecl,
@@ -69,9 +69,16 @@ export class Ctx {
     this.config = cfg.config;
     this.configBroken = cfg.config === null;
     const lay = parseLayoutFile(input.layout);
-    this.layoutBroken = input.layout !== null && lay.file === null;
-    this.layoutIn = lay.file;
-    this.layout = lay.file === null ? null : structuredClone(lay.file);
+    // A file that parses but has a value out of range for this diagram (§5 Values) is a file with errors too.
+    const file = lay.file && checkPinRanges(lay.file, this.firstLane()).length === 0 ? lay.file : null;
+    this.layoutBroken = input.layout !== null && file === null;
+    this.layoutIn = file;
+    this.layout = file === null ? null : structuredClone(file);
+  }
+
+  /** The first displayed lane now (§6 L1; `_unassigned` in a lane-free diagram): the only one whose `across` may be < 0. */
+  firstLane(): string {
+    return firstLaneOf(laneOrder(this.config, this.d.lanes.map((l) => l.id)));
   }
 
   // ---- files with errors

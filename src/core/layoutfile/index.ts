@@ -18,12 +18,13 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-const isCoord = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0;
+/** A pin coordinate: an integer, possibly negative (v1.1 §5: a block dropped before or above everything). */
+const isCoord = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
 
 /**
  * Parse a layout file. `E-layout` (line null) for invalid JSON or anything outside the §5 shape: a top-level object with
- * `version: 1` and a `nodes` object of pins, each exactly `{lane: string, along, across}` with integer coordinates of
- * at least 0. `hints` may hold anything and is passed through untouched.
+ * `version: 1` and a `nodes` object of pins, each exactly `{lane: string, along, across}` with integer coordinates
+ * (negative allowed: the layout translates, §6). `hints` may hold anything and is passed through untouched.
  */
 export function parseLayoutFile(text: string | null): LayoutParse {
   const problems: Problems = { errors: [], warnings: [] };
@@ -53,8 +54,8 @@ export function parseLayoutFile(text: string | null): LayoutParse {
       const bad: string[] = [];
       if (extra.length) bad.push(`unknown key${extra.length > 1 ? 's' : ''} ${extra.map((k) => `"${k}"`).join(', ')}`);
       if (typeof pin.lane !== 'string') bad.push('"lane" must be a lane id');
-      if (!isCoord(pin.along)) bad.push('"along" must be an integer of at least 0');
-      if (!isCoord(pin.across)) bad.push('"across" must be an integer of at least 0');
+      if (!isCoord(pin.along)) bad.push('"along" must be an integer');
+      if (!isCoord(pin.across)) bad.push('"across" must be an integer');
       if (bad.length) { problems.errors.push(err(`Pin "${id}": ${bad.join('; ')}`)); continue; }
       nodes[id] = { lane: pin.lane as string, along: pin.along as number, across: pin.across as number };
     }
@@ -104,14 +105,42 @@ function withNodes(file: LayoutFile, nodes: Record<string, Pin>): LayoutFile {
   return out;
 }
 
-/** UI10 drop: positions rounded to whole pixels, `along` at least 0 and `across` at least 12. */
-export function pinFromDrop(lane: string, along: number, across: number): Pin {
-  return { lane, along: Math.max(0, Math.round(along)), across: Math.max(12, Math.round(across)) };
+/** UI10: round to a whole pixel, halves toward −∞ (never −0). */
+export function roundPx(v: number): number {
+  return Math.ceil(v - 0.5) + 0;
+}
+
+/**
+ * UI10/UI43 drop: exactly where the block was dropped, rounded to whole pixels. `along` may be negative (before the
+ * start of the flow axis), and so may `across` in the first displayed lane (`firstLane`: before the first lane, or the
+ * top of a lane-free diagram); the layout's frame translates to contain them (§6). In any other lane `across` is at
+ * least 0: a block dropped across a later lane's start edge lands on that edge (§5 Values).
+ */
+export function pinFromDrop(lane: string, along: number, across: number, firstLane: string): Pin {
+  const c = roundPx(across);
+  return { lane, along: roundPx(along), across: lane === firstLane ? c : Math.max(0, c) };
+}
+
+/**
+ * §5 Values: `across` may be negative only in the first displayed lane (`firstLane`; `_unassigned` in a lane-free
+ * diagram). Anything else is out of range: `E-layout` (line null), and the diagram lays out with none of the file's
+ * placements.
+ */
+export function checkPinRanges(file: LayoutFile | null, firstLane: string): Problem[] {
+  if (!file) return [];
+  return Object.entries(file.nodes)
+    .filter(([, pin]) => pin.across < 0 && pin.lane !== firstLane)
+    .map(([id]) => err(`Pin "${id}": "across" must be at least 0 outside the first lane`));
+}
+
+/** The first displayed lane (§6 L1): the first in display order, or `_unassigned` when the diagram has no lanes. */
+export function firstLaneOf(laneOrderIds: readonly string[]): string {
+  return laneOrderIds[0] ?? '_unassigned';
 }
 
 function checkPin(pin: Pin): void {
   if (typeof pin.lane !== 'string' || !isCoord(pin.along) || !isCoord(pin.across)) {
-    throw new Error(`invalid pin ${JSON.stringify(pin)}: along/across must be integers >= 0`);
+    throw new Error(`invalid pin ${JSON.stringify(pin)}: along/across must be integers`);
   }
 }
 

@@ -75,17 +75,17 @@ describe('P1 add a block (UI6)', () => {
     });
   });
 
-  test('dragged from the palette: pinned where dropped, rounded and clamped', () => {
+  test('dragged from the palette: pinned where dropped, rounded (negative kept, v1.1)', () => {
     const r = addNode(PR, { shape: 'decision', lane: 'manager', pin: { along: 812.5, across: 4.2 } });
     expectParity(r, PR, {
       mmd: edit(PR.mmd, ['    m03["Tell the requester why not"]\n', '    m03["Tell the requester why not"]\n    n1{"New decision"}\n']),
-      layout: editJson(PR.layout, (js) => { js.nodes.n1 = pin('manager', 813, 12); }),
+      layout: editJson(PR.layout, (js) => { js.nodes.n1 = pin('manager', 812, 4); }),
     });
     // Dropped into Unassigned, with the rich files' pins (new pin last, hints kept).
     const u = addNode(RICH, { shape: 'step', lane: '_unassigned', pin: { along: -3, across: 40.4 } });
     const after = expectParity(u, RICH, {
       mmd: edit(RICH_MMD, ['stray{"Stray question?"}:::hot\n', 'stray{"Stray question?"}:::hot\nn3["New step"]\n']),
-      layout: editJson(RICH.layout, (js) => { js.nodes.n3 = pin('_unassigned', 0, 40); }),
+      layout: editJson(RICH.layout, (js) => { js.nodes.n3 = pin('_unassigned', -3, 40); }),
     });
     expect(Object.keys(JSON.parse(after.layout!).nodes)).toEqual(['r01', 'stray', 'n2', 'f02', 'n3']);
   });
@@ -303,7 +303,7 @@ describe('P9 move a block to another lane (UI11)', () => {
       mmd: edit(RICH_MMD,
         ['  %% the form is a spreadsheet\n  r01["Fill the form"];\n', ''],
         ['  f02[/"Invoice #35;quot; copy"/]\n', '  f02[/"Invoice #35;quot; copy"/]\n  %% the form is a spreadsheet\n  r01["Fill the form"]\n']),
-      layout: editJson(RICH.layout, (js) => { js.nodes.r01 = pin('finance', 411, 12); }),
+      layout: editJson(RICH.layout, (js) => { js.nodes.r01 = pin('finance', 411, 2); }),
     });
     expect(Object.keys(JSON.parse(after.layout!).nodes)[0]).toBe('r01');
   });
@@ -346,9 +346,9 @@ describe('P9 move a block to another lane (UI11)', () => {
 });
 
 describe('P10 pin, nudge, unpin, re-layout all (UI10, UI12)', () => {
-  test('pin by drag: rounded, along >= 0, across >= 12, the node\'s lane recorded; new pins last', () => {
+  test('pin by drag: rounded and otherwise exact (negative too, v1.1), the node\'s lane recorded; new pins last', () => {
     expectParity(pinNodes(RICH, [{ id: 'm02', along: 123.5, across: 11.4 }, { id: 'loose', along: -8, across: 60.49 }]), RICH, {
-      layout: editJson(RICH.layout, (js) => { js.nodes.loose = pin('_unassigned', 0, 60); js.nodes.m02 = pin('manager', 124, 12); }),
+      layout: editJson(RICH.layout, (js) => { js.nodes.loose = pin('_unassigned', -8, 60); js.nodes.m02 = pin('manager', 123, 11); }),
     });
   });
 

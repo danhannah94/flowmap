@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  checkLayoutRefs, clearPins, effectivePins, parseLayoutFile, pinFromDrop, removePin, removePins, renameLaneInPins,
-  renamePinNode, serializeLayoutFile, setHints, setPin, setPins,
+  checkLayoutRefs, checkPinRanges, clearPins, effectivePins, firstLaneOf, parseLayoutFile, pinFromDrop, removePin,
+  removePins, renameLaneInPins, renamePinNode, roundPx, serializeLayoutFile, setHints, setPin, setPins,
 } from './index';
 import type { LayoutFile } from '../types';
 
@@ -36,8 +36,7 @@ describe('parseLayoutFile', () => {
     ['missing nodes', '{"version": 1}'],
     ['nodes a list', '{"version": 1, "nodes": []}'],
     ['pin not an object', '{"version": 1, "nodes": {"a": [1, 2]}}'],
-    ['negative along', '{"version": 1, "nodes": {"a": {"lane": "l", "along": -1, "across": 0}}}'],
-    ['negative across', '{"version": 1, "nodes": {"a": {"lane": "l", "along": 0, "across": -5}}}'],
+    ['non-integer negative', '{"version": 1, "nodes": {"a": {"lane": "l", "along": -1.5, "across": 0}}}'],
     ['non-integer', '{"version": 1, "nodes": {"a": {"lane": "l", "along": 1.5, "across": 0}}}'],
     ['string coordinate', '{"version": 1, "nodes": {"a": {"lane": "l", "along": "1", "across": 0}}}'],
     ['missing lane', '{"version": 1, "nodes": {"a": {"along": 1, "across": 0}}}'],
@@ -52,8 +51,12 @@ describe('parseLayoutFile', () => {
     expect(r.problems.errors.every((p) => p.code === 'E-layout' && p.line === null)).toBe(true);
   });
   test('every bad pin is reported', () => {
-    const r = parseLayoutFile('{"version": 1, "nodes": {"a": {"lane": "l", "along": -1, "across": 0}, "b": 3, "c": {"lane": "l", "along": 0, "across": 0}}}');
+    const r = parseLayoutFile('{"version": 1, "nodes": {"a": {"lane": "l", "along": 0.5, "across": 0}, "b": 3, "c": {"lane": "l", "along": 0, "across": 0}}}');
     expect(r.problems.errors).toHaveLength(2);
+  });
+  test('negative coordinates are fine (v1.1: a block dropped before or above everything; the layout translates)', () => {
+    expect(parseLayoutFile('{"version": 1, "nodes": {"a": {"lane": "l", "along": -1, "across": 0}, "b": {"lane": "l", "along": 0, "across": -5}}}').file)
+      .toEqual(file({ a: P('l', -1, 0), b: P('l', 0, -5) }));
   });
   test('zero coordinates and a big integer written as 840.0 are fine', () => {
     expect(parseLayoutFile('{"version": 1, "nodes": {"a": {"lane": "l", "along": 0, "across": 0}, "b": {"lane": "_unassigned", "along": 840.0, "across": 3}}}').file)
@@ -84,12 +87,28 @@ describe('writes', () => {
     expect(base.nodes.a).toEqual(P('l1', 10, 20)); // inputs are not mutated
     expect(setPin(null, 'n1', P('l', 0, 12))).toEqual(file({ n1: P('l', 0, 12) }));
     expect(setPins(base, [['b', P('l2', 1, 1)], ['z', P('l2', 2, 2)]]).nodes).toEqual({ a: P('l1', 10, 20), b: P('l2', 1, 1), z: P('l2', 2, 2) });
-    expect(() => setPin(base, 'x', P('l', -1, 0))).toThrow();
+    expect(setPin(base, 'x', P('l', -1, -30)).nodes.x).toEqual(P('l', -1, -30));
     expect(() => setPin(base, 'x', P('l', 1.5, 0))).toThrow();
   });
-  test('drop positions are rounded, along >= 0, across >= 12', () => {
-    expect(pinFromDrop('l', 10.6, 3.2)).toEqual(P('l', 11, 12));
-    expect(pinFromDrop('l', -4, 40.4)).toEqual(P('l', 0, 40));
+  test('drop positions: rounded (halves toward −∞), negative along anywhere, negative across only in the first lane (v1.1 UI10, §5)', () => {
+    expect(pinFromDrop('l', 10.6, 3.2, 'l')).toEqual(P('l', 11, 3));
+    expect(pinFromDrop('l', -4, 40.4, 'first')).toEqual(P('l', -4, 40));
+    expect(pinFromDrop('l', -0.2, -120.6, 'l')).toEqual(P('l', 0, -121));
+    expect(pinFromDrop('l', 2.5, -2.5, 'l')).toEqual(P('l', 2, -3));
+    expect(pinFromDrop('l', -2.5, 7.5, 'l')).toEqual(P('l', -3, 7));
+    // Any other lane: `across` is at least 0 (the block sits on the lane's start edge).
+    expect(pinFromDrop('l', -30, -40, 'first')).toEqual(P('l', -30, 0));
+    expect(Object.is(pinFromDrop('l', -0.2, 0, 'l').along, 0)).toBe(true);
+  });
+  test('a negative across outside the first lane is out of range (E-layout, line null)', () => {
+    const f = file({ a: P('first', -5, -5), b: P('other', -5, 0), c: P('other', 3, -1) });
+    expect(checkPinRanges(f, 'first').map((p) => [p.code, p.line])).toEqual([['E-layout', null]]);
+    expect(checkPinRanges(f, 'first')[0]!.message).toContain('"c"');
+    expect(checkPinRanges(null, 'first')).toEqual([]);
+    expect(firstLaneOf(['x', 'y'])).toBe('x');
+    expect(firstLaneOf([])).toBe('_unassigned');
+    expect(roundPx(-0.4)).toBe(0);
+    expect(Object.is(roundPx(-0.4), 0)).toBe(true);
   });
   test('remove pins; no file stays no file', () => {
     expect(removePin(base, 'a')).toEqual(file({ b: P('l2', 30, 40) }, { keep: true }));

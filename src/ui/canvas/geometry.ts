@@ -1,7 +1,7 @@
 // Canvas geometry in layout (world) coordinates: lanes under a point, drop positions as pins (§5), edge paths.
 import { outlineInset } from '../../core/measure';
-import { MIN_LANE } from '../../core/layout';
-import { UNASSIGNED, type LayoutResult, type ShapeKind } from '../../core/types';
+import { MIN_LANE, type Translation } from '../../core/layout';
+import { isLaneFree, UNASSIGNED, type LayoutResult, type ShapeKind } from '../../core/types';
 import type { DropPosition } from '../../core/ops';
 import type { Point, Rect } from './viewport';
 
@@ -18,12 +18,21 @@ export function laneAt(layout: LayoutResult, p: Point): LayoutLane | null {
 }
 
 /**
- * The lane a block whose centre is at `p` is dropped into (UI11, amendment A4): the lane under it, or Unassigned when
- * it is outside every lane (beyond the last lane, or outside the lanes' extent along the flow). In a lane-free
- * diagram every block is unlaned, so a drop anywhere keeps it there.
+ * The lane a block whose centre is at `p` is dropped into (UI11, amendment A4). Lanes are bands across the flow that
+ * reach as far along it as the diagram needs (§6 L1), so only the across position counts: the lane whose band holds
+ * it, even before or after the diagram along the flow; the first lane above everything (the block gets a negative
+ * `across` and the lane grows toward its start); Unassigned below the last lane. In a lane-free diagram every block
+ * is unlaned, so a drop anywhere keeps it there.
  */
 export function dropLaneAt(layout: LayoutResult, p: Point): string {
-  return laneAt(layout, p)?.id ?? UNASSIGNED;
+  const lanes = layout.lanes;
+  if (lanes.length === 0 || isLaneFree(lanes)) return UNASSIGNED;
+  const tb = layout.direction === 'TB';
+  const at = tb ? p.x : p.y;
+  const start = (l: LayoutLane) => (tb ? l.x : l.y);
+  const size = (l: LayoutLane) => (tb ? l.width : l.height);
+  if (at < start(lanes[0]!)) return lanes[0]!.id;
+  return lanes.find((l) => at >= start(l) && at < start(l) + size(l))?.id ?? UNASSIGNED;
 }
 
 /**
@@ -41,12 +50,17 @@ export function dropBand(layout: LayoutResult, lane: string): LayoutLane {
 
 /**
  * Where a box whose top-left is at `topLeft` would be pinned in `lane` (§5): `along` the flow from the diagram's
- * origin, `across` from the lane's start edge. Unrounded; the ops round and clamp (UI10).
+ * origin, `across` from the lane's zero line. `shift` is the layout's frame (`pinTranslation`, §6): the origin is T
+ * (`shift.along`) into the output, and the first lane's zero line U (`shift.across`) after its start edge. Unrounded,
+ * and possibly negative (dropped before or above everything); the ops round, and keep `across` ≥ 0 outside the first
+ * lane (UI10, UI43).
  */
-export function dropPosition(layout: LayoutResult, lane: LayoutLane, topLeft: Point): DropPosition {
+export function dropPosition(layout: LayoutResult, lane: LayoutLane, topLeft: Point, shift?: Translation): DropPosition {
+  const ta = shift?.along ?? 0;
+  const tc = lane.id === layout.lanes[0]?.id ? (shift?.across ?? 0) : 0;
   return layout.direction === 'TB'
-    ? { along: topLeft.y, across: topLeft.x - lane.x }
-    : { along: topLeft.x, across: topLeft.y - lane.y };
+    ? { along: topLeft.y - ta, across: topLeft.x - lane.x - tc }
+    : { along: topLeft.x - ta, across: topLeft.y - lane.y - tc };
 }
 
 export function centre(r: Rect): Point {

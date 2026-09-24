@@ -9,7 +9,9 @@
 //    (so a chain and a decision's main branch run straight), else the nearest free row.
 // 5. Coordinates: columns and rows sized by their largest node (never smaller than the hinted size), nodes centred
 //    in their cell; unpinned nodes that would collide with a pinned node slide across within their lane (L3, which
-//    never disturbs L5); lanes grow to hold their nodes and pins (L1, L2, L4).
+//    never disturbs L5); lanes grow to hold their nodes and pins (L1, L2, L4). Pins may be negative (a block dropped
+//    before or above everything, v1.1 §5): all of this is computed in stored coordinates, then translated (§6 Frame,
+//    `pinTranslation`) so the output starts at 0 and the first lane grows toward its start to hold its pins.
 // 6. Ports per node side (decisions use their four corners), then the orthogonal A* router (router.ts), then edge
 //    labels next to the source (L8).
 // Everything from step 2 on works in abstract coordinates: x along the flow, y across it; the output maps them to
@@ -42,6 +44,28 @@ const ALT_SIDE = 90; // router cost of using a side other than the planned one
 /** Length along the flow of the lane-label strip in a layout: LANE_HEADER, or 0 for a lane-free diagram (A4). */
 export function headerLength(layout: Pick<LayoutResult, 'lanes'>): number {
   return isLaneFree(layout.lanes) ? 0 : LANE_HEADER;
+}
+
+/**
+ * The layout's frame (v1.1 §6 Frame): how stored pin positions are translated so the output starts at 0. `along` is
+ * T = max(0, −(smallest applied pin `along`)), added to every flow-axis position. `across` is U = max(0, −(smallest
+ * applied `across` in the first displayed lane `firstLane`)): the first lane's zero line lies U after its start edge
+ * and the lane is U thicker; every other lane's zero line is its start edge (their `across` is never negative, §5).
+ * Both 0 when nothing is negative (every v1.0 file), which leaves the output unchanged. `pins`: the pins that apply.
+ */
+export interface Translation {
+  along: number;
+  across: number;
+}
+
+export function pinTranslation(pins: Iterable<Pin>, firstLane: string | undefined): Translation {
+  let along = 0;
+  let across = 0;
+  for (const p of pins) {
+    along = Math.max(along, -p.along);
+    if (p.lane === firstLane) across = Math.max(across, -p.across);
+  }
+  return { along: along + 0, across: across + 0 };
 }
 
 export interface LayoutOutput {
@@ -97,7 +121,6 @@ export function layout(graph: Graph, pins: Record<string, Pin>, hintsIn?: unknow
   }
   // Amendment A4: no subgraphs means no lane labels, so no header strip; the first column moves up to the start.
   const head = isLaneFree(laneList) ? 0 : LANE_HEADER;
-  const FIRST = head + LEAD; // along position of the first column
 
   // ---- Nodes.
   const byId = new Map<string, number>();
@@ -111,11 +134,16 @@ export function layout(graph: Graph, pins: Record<string, Pin>, hintsIn?: unknow
       sa: dir === 'LR' ? size.width : size.height,
       sc: dir === 'LR' ? size.height : size.width,
       pinned,
-      pinA: pinned ? Math.max(0, Math.round(pin!.along)) : 0,
-      pinC: pinned ? Math.max(0, Math.round(pin!.across)) : 0,
+      pinA: pinned ? Math.round(pin!.along) : 0,
+      pinC: pinned ? Math.round(pin!.across) : 0,
       rank: 0, row: -1, x: 0, y: 0, c: 0,
     };
   });
+  // Negative pins: translate along (everything), and across in the first lane (§6 Frame).
+  const shift = pinTranslation(
+    nodes.filter((v) => v.pinned).map((v) => ({ lane: v.laneId, along: v.pinA, across: v.pinC })), laneList[0]?.id,
+  );
+  const FIRST = head + LEAD + shift.along; // along position of the first column
   const edges: E[] = [];
   graph.edges.forEach((ge, i) => {
     const s = byId.get(ge.source);
@@ -269,7 +297,7 @@ export function layout(graph: Graph, pins: Record<string, Pin>, hintsIn?: unknow
     const placed: { a: number; c: number; sa: number; sc: number }[] = [];
     for (const v of members) {
       if (!v.pinned) continue;
-      v.x = v.pinA;
+      v.x = v.pinA + shift.along;
       v.c = v.pinC;
       placed.push({ a: v.x, c: v.c, sa: v.sa, sc: v.sc });
       laneThick[li] = Math.max(laneThick[li]!, v.c + v.sc + PIN_PAD);
@@ -281,6 +309,12 @@ export function layout(graph: Graph, pins: Record<string, Pin>, hintsIn?: unknow
       v.c = slide(v.x, v.sa, v.sc, want, placed);
       placed.push({ a: v.x, c: v.c, sa: v.sa, sc: v.sc });
       laneThick[li] = Math.max(laneThick[li]!, v.c + v.sc + LANE_PAD);
+    }
+    // The first lane's across-zero line sits U after its start edge, so the lane grows toward its start.
+    const u = li === 0 ? shift.across : 0;
+    if (u > 0) {
+      for (const v of members) v.c += u;
+      laneThick[li] = laneThick[li]! + u;
     }
   }
   const laneStart: number[] = [];

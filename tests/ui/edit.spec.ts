@@ -142,8 +142,8 @@ test('add a block: drag a shape from the palette into a lane; it lands pinned', 
   const pin = pins(files.layout).n1!;
   expect(pin.lane).toBe('manager');
   expect(Math.abs(pin.along - (world.x - n1.width / 2))).toBeLessThanOrEqual(1);
-  // (`across` is saved as at least 12, UI10.)
-  expect(Math.abs(pin.across - Math.max(12, world.y - n1.height / 2 - laneY))).toBeLessThanOrEqual(1);
+  // (Exactly where dropped, with no clamping: v1.1 UI10.)
+  expect(Math.abs(pin.across - (world.y - n1.height / 2 - laneY))).toBeLessThanOrEqual(1);
   await expect(node(page, 'n1')).toHaveAttribute('data-pinned', 'true');
   await expectMatchesCli(page, d);
 });

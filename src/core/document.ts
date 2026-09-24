@@ -6,7 +6,7 @@ import type { Diagram } from './mmd';
 import { parse, toGraph } from './mmd';
 import type { FlowConfig } from './config';
 import { checkReferences, diagramTitle, laneOrder, legend, parseConfig, resolveStyle } from './config';
-import { checkLayoutRefs, effectivePins, parseLayoutFile } from './layoutfile';
+import { checkLayoutRefs, checkPinRanges, effectivePins, firstLaneOf, parseLayoutFile } from './layoutfile';
 import { layout } from './layout';
 import type { LayoutOutput } from './layout';
 import type { Graph, LegendItem, Pin, Problems, ResolvedStyle } from './types';
@@ -43,11 +43,16 @@ export function loadDocument(
 ): FlowDocument {
   const mmdParse = parse(mmdText);
   const configParse = parseConfig(configText);
-  const layoutParse = parseLayoutFile(layoutText);
+  const parsedLayout = parseLayoutFile(layoutText);
 
   const fileLaneIds = mmdParse.diagram.lanes.map((lane) => lane.id);
   const order = laneOrder(configParse.config, fileLaneIds);
   const graph = toGraph(mmdParse.diagram, order);
+  // §5 Values: a negative `across` outside the first displayed lane is out of range (E-layout: no placements).
+  const rangeErrors = checkPinRanges(parsedLayout.file, firstLaneOf(order));
+  const layoutParse = rangeErrors.length
+    ? { file: null, problems: { errors: [...parsedLayout.problems.errors, ...rangeErrors], warnings: parsedLayout.problems.warnings } }
+    : parsedLayout;
 
   const configRefWarnings = checkReferences(
     configParse.config,

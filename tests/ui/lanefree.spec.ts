@@ -1,5 +1,6 @@
 // Amendment A4, diagrams without lanes: (a) a `.mmd` with no subgraphs draws as a plain flowchart; (b) adding blocks
-// to it; (c) in a diagram with lanes, a block dropped outside every lane moves to Unassigned, pinned at the drop;
+// to it; (c) in a diagram with lanes, a block dropped below every lane moves to Unassigned, pinned at the drop (v1.1:
+// before or after the lanes along the flow it stays in the lane under it, and above them it joins the first lane);
 // (d) the home page's Flowchart / Swimlanes choice. Plus style badges, which must never cover a block's label.
 // Driven through the §8.3 attributes; edits are checked on disk.
 import { expect, test, type Page } from '@playwright/test';
@@ -254,30 +255,28 @@ test('A4c: a block dropped below the last lane moves to Unassigned, pinned at th
   expect(await onDisk(d, (f) => f.mmd === LANES.mmd && f.layout === null)).toEqual(LANES);
 });
 
-test('A4c: a block dropped beyond the lanes along the flow moves to Unassigned too', async ({ page }, info) => {
+test('v1.1: a block dropped beyond the lanes along the flow stays in the lane under it, exactly where dropped', async ({ page }, info) => {
   const d = makeDiagram(info, LANES);
   await open(page, d);
   const b1 = await attrs(node(page, 'b1'));
   const t = await viewTransform(page, 'b1');
   const cli = d.cliLayout();
-  // Same height (inside Beta's band), but past the end of the lanes.
+  // Same height (inside Beta's band), but past the end of the lanes: lanes reach as far along the flow as needed.
   const dropWorld = { x: cli.width + 120, y: b1.y + b1.height / 2 };
   const to = t.toScreen(dropWorld);
   expect(inside(to, await canvasBox(page))).toBe(true);
   const from = t.toScreen({ x: b1.x + b1.width / 2, y: b1.y + b1.height / 2 });
   await dragFromTo(page, from, to);
-  const files = await onDisk(d, (f) => declaredLane(f.mmd, 'b1') === '_unassigned');
-  expect(declaredLane(files.mmd, 'b1')).toBe('_unassigned');
+  const files = await onDisk(d, (f) => !!pins(f.layout).b1);
+  expect(declaredLane(files.mmd, 'b1')).toBe('beta');
   await saved(page);
   const moved = await attrs(node(page, 'b1'));
-  expect(moved.lane).toBe('_unassigned');
+  expect(moved.lane).toBe('beta');
   expect(moved.pinned).toBe(true);
-  // Along the flow exactly at the drop; across, the Unassigned lane is last, so it sits at its start (UI10: >= 12).
   expect(Math.abs(moved.x + moved.width / 2 - dropWorld.x)).toBeLessThanOrEqual(1);
-  const pin = pins(files.layout).b1!;
-  expect(pin.lane).toBe('_unassigned');
-  expect(pin.along).toBe(moved.x);
-  expect(pin.across).toBe(12);
+  expect(Math.abs(moved.y + moved.height / 2 - dropWorld.y)).toBeLessThanOrEqual(1);
+  const beta = d.cliLayout().lanes.find((l) => l.id === 'beta')!;
+  expect(pins(files.layout).b1).toEqual({ lane: 'beta', along: moved.x, across: moved.y - beta.y });
   await expectMatchesCli(page, d);
 });
 

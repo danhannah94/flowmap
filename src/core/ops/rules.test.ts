@@ -99,7 +99,8 @@ describe('files with errors (§8.2, UI31)', () => {
   });
 
   // A negative coordinate is E-layout; the text still mentions r01, stray, n2, f02 and the lanes.
-  const BAD_LAYOUT = { ...RICH, layout: RICH.layout!.replace('"along": 700', '"along": -700') };
+  // A non-integer coordinate is malformed (negative ones are allowed since v1.1).
+  const BAD_LAYOUT = { ...RICH, layout: RICH.layout!.replace('"along": 700', '"along": 700.5') };
   const LAYOUT_WRITERS = new Set([
     'addNode pinned', 'renameNode', 'pinNodes', 'moveNodesToLane', 'moveNodesToLane dragged', 'unpinNodes',
     'clearAllPins', 'duplicateNodes', 'deleteItems', 'renameLane', 'deleteLane move', 'deleteLane delete',

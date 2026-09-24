@@ -142,7 +142,8 @@ test('E-config: default styles, the diagram stays editable, the config is untouc
 });
 
 test('E-layout: drawn without pins; dragging and nudging are off; the layout file is untouched', async ({ page }, info) => {
-  const layout = '{"version": 1, "nodes": {"closed": {"lane": "requester", "along": -5, "across": 40}}}\n';
+  // A non-integer coordinate is malformed (negative ones are allowed since v1.1).
+  const layout = '{"version": 1, "nodes": {"closed": {"lane": "requester", "along": 5.5, "across": 40}}}\n';
   const d = makeDiagram(info, { ...PR, layout });
   await open(page, d);
   await expect(page.locator('[data-testid="errors"] [data-code="E-layout"]')).toBeVisible();

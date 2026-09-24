@@ -1,4 +1,8 @@
-# flowmap: design and build contract (v1.0-draft 5, 2026-09-23)
+# flowmap: design and build contract (v1.1, 2026-09-24)
+
+> **v1.1** adds shaping by hand (resize, per-block colours, bent lines, connection sides, draggable line labels,
+> snap guides, context menus, free notes, a movable title) and folds in amendments A1–A5. `CHANGES-v1.1.md` lists
+> every change against v1.0. Sections and requirements marked "(v1.1)" are new.
 
 A local flowchart tool for process maps that two authors share: a person working in a visual editor and an AI working
 in text. Both edit the same files. This document is the contract for building it: what the files look like, what the
@@ -29,7 +33,7 @@ A diagram is three files with the same base name, side by side:
 |---|---|---|---|
 | `<name>.mmd` | Topology: lanes, steps, decisions, edges, labels | Both: people via the UI, the AI by hand | `a["Check the order"] --> b{"Complete?"}` |
 | `<name>.flow.yaml` | Meaning and look: lane order, per-step metadata, style rules, title | Both: people via the UI (title, lane order, inspector, styles panel), the AI by hand | `confidence: single-source` → dashed |
-| `<name>.layout.json` | Positions the person pinned by dragging | The UI (hand edits allowed but rare) | `{"version": 1, "nodes": {"eq07": {"lane": "rep", "along": 840, "across": 30}}}` |
+| `<name>.layout.json` | Where things are and how lines run: pinned positions, block sizes, line bends and sides, label, note and title positions | The UI (hand edits allowed) | `{"version": 1, "nodes": {"eq07": {"lane": "rep", "along": 840, "across": 30}}}` |
 
 Why three files and not two: the layout file changes on every drag. Keeping it apart means the human-edited config
 never picks up noise from the UI's writes, and neither author's edits clobber the other's.
@@ -85,7 +89,7 @@ so that both authors can round-trip it without loss. Anything outside the subset
   with `end-` or `end_` (Mermaid's parser trips on them), are `E-syntax`.
   A line that is only a bare id (`a`) is `E-syntax`: in flowmap a node joins a lane by being declared there.
   Below, an id is **reserved** if it is in that list or starts with `end-` or `end_`, and **taken** if it is used as a
-  node or subgraph id in the `.mmd` or is a key under `nodes` in the config or layout file.
+  node or subgraph id in the `.mmd` or is a key under `nodes` or `notes` in the config or layout file (v1.1: notes).
 - **Labels** (node and edge alike): unquoted labels can't contain brackets, braces, parentheses, `|` or `"`; they are
   trimmed and runs of whitespace collapse to one space. Quoted labels can contain anything except a raw `"` and are
   kept exactly. A double quote inside a label is written `#quot;` and a literal `#` before text that would read as
@@ -111,7 +115,8 @@ inside a subgraph block do not assign lanes to nodes declared elsewhere. (Mermai
 subgraph that mentions it, even in an edge, so GitHub's rendering matches flowmap's only for canonical files, where
 all edges come after the lanes.) A node declared outside any subgraph, or never declared (it appears only in edges:
 its label is its id and its kind is `step`), has no lane: warning `W-no-lane` at its declaration line, or at its
-first mention if it is never declared. Its lane is `_unassigned` everywhere a lane id appears (`match`, the layout
+first mention if it is never declared. (A5: a file with no subgraphs at all is a plain flowchart, and none of its
+nodes gets `W-no-lane`.) Its lane is `_unassigned` everywhere a lane id appears (`match`, the layout
 JSON, the inspector, `data-lane`), and the UI shows it in the "Unassigned" lane. Listing `_unassigned` in the config's
 `lanes` is `W-config-unknown-lane`.
 
@@ -220,8 +225,28 @@ nodes:                     # metadata per node id; any keys; all are shown in th
   is warning `W-style` and that property is ignored.
 - **Legend**: every rule with a `legend` text appears in the legend, in rule order, with a sample swatch of its
   style. Rules without one don't.
-- **Top-level keys**: `version` (missing means 1; any other value is `E-config`), `title`, `lanes`, `styles`,
-  `nodes`. An unknown top-level key, or an unknown key in a rule or lane entry, is warning `W-config-key`.
+- **A block's own style** (v1.1): a node's metadata may hold a `style` map with the properties above. It applies
+  after every rule, to that node only, and never appears in the legend. `style` is reserved:
+  - it isn't evidence: the inspector shows it as the block's colours (UI35), not as a field row, and the field form
+    refuses `style` as a key;
+  - the node YAML editor (UI24) does include it;
+  - every `match` condition on `style` (including `present` and `absent`) is false.
+
+  Bad properties are `W-style` and ignored, as in rules.
+- **Notes** (v1.1): `notes` maps a note id to `{text, font_size?, bold?, color?}`: free text on the canvas that isn't
+  part of the flow.
+  - `text` is a non-empty string, not only whitespace, and may contain line breaks (it has no trailing line break).
+  - `font_size` is an integer from 10 to 48 (default 14), `bold` a boolean (default false), and `color` a colour or
+    `{light, dark}` (default: the theme's text colour). The UI writes a default value by removing its key.
+  - A missing or bad `text` is `E-config`; a bad `font_size`, `bold` or `color` is `W-style`, and that property is
+    ignored.
+  - Note ids follow the node id rules (§3.1) and count as taken. A note id that equals a node or subgraph id is
+    `E-config`. An emptied `notes` map is removed.
+  - A note's position is in the layout file.
+- **Title visibility** (v1.1): `show_title: false` hides the title in the UI and in exports. Absent means shown (the
+  UI never writes `show_title: true`). With no `title`, the shown title is the file's base name, as before.
+- **Top-level keys**: `version` (missing means 1; any other value is `E-config`), `title`, `show_title`, `lanes`,
+  `styles`, `nodes`, `notes`. An unknown top-level key, or an unknown key in a rule or lane entry, is warning `W-config-key`.
 - **No config, or no `title`**: the title is the `.mmd` file's base name.
 - Config entries for ids that are not in the `.mmd` are warning `W-config-unknown-node`; lanes listed that don't
   exist are `W-config-unknown-lane`. Deleting a block in the UI never deletes its config entry (it holds evidence);
@@ -242,28 +267,69 @@ nodes:                     # metadata per node id; any keys; all are shown in th
 
 ## 5. The `.layout.json` file
 
+Everything a person placed or shaped by hand. Everything here is optional; a missing file means automatic layout.
+
 ```json
 {
   "version": 1,
   "nodes": {
-    "n07": { "lane": "finance", "along": 840, "across": 30 }
-  }
+    "n07": { "lane": "finance", "along": 840, "across": 30, "width": 220, "height": 90 },
+    "n08": { "width": 200, "height": 80 }
+  },
+  "edges": {
+    "n07->n08": {
+      "source_side": "bottom", "target_side": "left",
+      "points": [{ "lane": "finance", "along": 900, "across": 140 }],
+      "label_at": 0.3
+    }
+  },
+  "notes": { "note1": { "x": 40, "y": -60 } },
+  "title": { "x": 0, "y": -48 }
 }
 ```
 
-A node listed here is **pinned**. `along` is the node's top-left position on the flow axis (x for `LR`, y for `TB`),
-in pixels from the diagram origin. `across` is the offset of its top-left corner from the start edge of its lane (y
-from the lane's top for `LR`, x from the lane's left for `TB`). Pins are relative to the lane so that when a lane
-above grows, pinned nodes move with their lane instead of spilling into a neighbour.
+**Nodes.** An entry holds a **pin** (`lane`, `along`, `across`, all three or none), a **size** (`width`, `height`, both
+or none), or both.
+- A node with a pin is **pinned**. `along` is the node's top-left position on the flow axis (x for `LR`, y for `TB`)
+  and `across` is the offset of its top-left corner from its lane's **zero line** (below). Pins are relative to the
+  lane so that when a lane above grows, pinned nodes move with their lane instead of spilling into a neighbour.
+- A size is the box a person chose by resizing (v1.1). The node's actual box is, per dimension, the larger of the
+  stored size and what its label needs at that width (§6 L9, "needs"), so a longer label never overflows a resized
+  box. Width and height are integers of at least 40.
+- If `lane` no longer matches the node's lane in the `.mmd` (someone moved it in text), the pin is ignored and the
+  node is placed automatically; its size still applies.
 
-`along` and `across` are integers of at least 0 (a negative value, like any other malformed content, is
-`E-layout`). If `lane` no longer matches the node's lane in the `.mmd` (someone moved it in
-text), the pin is ignored and the node is placed automatically. Entries for unknown ids are warning
-`W-layout-unknown-node`. A layout file that isn't valid JSON or doesn't have this shape is error `E-layout` (line
-null); the diagram still lays out, with no pins. The UI rewrites this file; hand edits are allowed but not expected.
-When nothing is pinned the file is `{"version": 1, "nodes": {}}`. The file may also hold a `hints` object in any
-shape the builder chooses (for example, last positions of unpinned nodes, to keep the layout stable between edits);
-the tests never read or write it, and it is still an input to the layout function (L10).
+**Edges** (v1.1). Keyed by edge id (§3.4). An entry holds any of:
+- `source_side`, `target_side`: `top`, `right`, `bottom` or `left`. The line leaves or enters the node at that side's
+  **port** (§6 L12). A side that isn't set is chosen by the layout.
+- `points`: the line's **bend points**, in order from source to target, each `{lane, along, across}` in the same frame
+  as a pin (`lane` may be `_unassigned`). A line with `points` is **manual**: it is drawn through its bend points
+  (§6 L11) instead of being routed automatically, and its bend points stay where they are when blocks move. If any
+  point's lane no longer exists, the points are ignored and the line is routed automatically. A bend point belongs to
+  the lane whose band contains it (each band includes its start edge and excludes its end edge); a point beyond the
+  last displayed lane belongs to that last lane, and one before the first lane belongs to the first.
+- `label_at`: where along the drawn line the label's centre sits, as a fraction of the line's length from its first
+  point to its last (the `points` of the layout JSON, §7): a number from 0 to 1 with at most two decimals.
+
+**Notes and title** (v1.1). `notes` maps a note id (§4) to its position `{x, y}`, and `title` is the title's position
+`{x, y}`: the top-left corner in pixels, x horizontal and y vertical whatever the direction. They aren't lane-relative:
+their zero is the diagram's top-left corner as it would be with no negative values, and they shift with the frame
+(§6, "Frame"). A note without a position, and a title without one, are placed by §6.
+
+**Values.** Every number is an integer, except `label_at`. `along` (of pins and bend points), note and title positions may be
+**negative**, and so may `across` in the **first** displayed lane: a person can put anything anywhere, including
+before the start of the flow axis or before the first lane, and the file stores exactly where it was put. In every
+other lane `across` is at least 0: a block or bend point that would start before its lane's zero line is stored at 0
+(it sits on the lane's start edge). Sizes are at least 40. An entry with no keys is never written: an operation that empties an entry
+removes it, and an empty `edges` or `notes` map is left out. When nothing is placed the file is
+`{"version": 1, "nodes": {}}`. The file may also hold a `hints` object in any shape the builder chooses (for example,
+last positions of unpinned nodes, to keep the layout stable between edits); the tests never read or write it, and it
+is still an input to the layout function (L10). The UI rewrites this file; hand edits are allowed.
+
+**Problems.** Entries for unknown ids are warnings `W-layout-unknown-node`, `W-layout-unknown-edge` and
+`W-layout-unknown-note`. A file that isn't valid JSON, has keys other than the ones above plus `hints`, has an empty
+entry, or has a value of the wrong type or range is error `E-layout` (line null); the diagram still lays out, with
+none of the file's placements.
 
 ## 6. Layout rules
 
@@ -281,22 +347,52 @@ stadiums). The result MUST satisfy:
   node's padding may be less if its pin says so).
 - **L3 No overlap**: no two node boxes overlap or come within 16 px of each other, except two pinned nodes, which
   are wherever their pins put them.
-- **L4 Pins are exact**: a pinned node's box is at exactly its pinned position (`along`, lane start + `across`). The
-  lane grows across its axis to contain it.
+- **Frame** (v1.1): stored values may be negative (§5), and the lanes always start at 0 in the output. Only pins and
+  bend points that are applied count (not orphans, ignored pins or ignored point sets).
+  - On the flow axis, T = max(0, −(the smallest applied `along`)). T is added to every computed flow-axis position:
+    pinned or automatic, nodes, lines, notes and the title.
+  - On the across axis, the first lane's zero line lies U after its start edge, where U = max(0, −(the smallest applied
+    `across` in the first lane)), so the first lane grows toward its start to hold what was put before it. Every other
+    lane's zero line is its start edge. U is added to every computed across-axis position in the first lane, and to
+    notes and the title.
+  - A lane's label header stays at the start of its band and may be covered by what was put there.
+  - With no negative values T = U = 0, exactly as in v1.0. Notes and the title may still sit at negative output
+    coordinates (above or left of the lanes).
+- **L4 Pins are exact**: a pinned node's box is at exactly its pinned position (`along` + T, the lane's zero line +
+  `across`, with U included for the first lane). The lane grows across its axis to contain it. A node with a stored size has exactly its effective size
+  (§5). Bend points are exact in the same way.
 - **L5 Flow direction**: for every edge whose endpoints are both unpinned and not in the same cycle (the same
   strongly connected component), the target's box starts at or after the source's box starts, on the flow axis (left
   to right for `LR`). Loops may go backwards.
 - **L6 Edges are orthogonal**: each edge is a polyline of horizontal and vertical segments, starting on the source
-  box's boundary and ending on the target box's boundary (within 2 px).
+  box's boundary and ending on the target box's boundary (within 2 px), or at a port (L12).
 - **L7 Edges avoid boxes**: no edge segment passes through the interior of a node box other than its own source and
-  target. (Edges touching a pinned node that overlaps another pinned node are exempt.)
+  target. (Exempt: edges touching a pinned node that overlaps another pinned node, and manual edges, which go where
+  their bend points say.)
 - **L8 Labels at the source**: an edge's label position is within 60 px of the source box's boundary. (This is what
-  makes a decision's yes/no readable.)
+  makes a decision's yes/no readable.) With `label_at` set, the label's centre is instead at that fraction of the
+  drawn line's length from the source, within 2 px.
 - **L9 Node size fits the label**: a node is at least wide and tall enough that its label, wrapped, fits inside at the
   UI's font size, inside the text area of its shape (the inscribed area for a diamond, between the bars for a
   subprocess, and so on). (Checked in the UI, where the
-  font is real: see U10.)
+  font is real: see U10.) What a label **needs** at a given width (v1.1, for resizing): the height of the label
+  wrapped at that width's text area, plus the shape's insets. A block's narrowest width is the one at which its
+  longest word still fits on a line, and never less than 40.
 - **L10 Deterministic**: the same three files always produce the same layout.
+- **L11 Manual lines** (v1.1): a manual edge is drawn as source port → each bend point in order → target port. A step
+  between two points that aren't lined up gets one elbow: from a port, first move perpendicular to the port's side;
+  into a port, arrive perpendicular to its side; between two bend points, move along the flow axis first
+  (horizontally for `LR`, vertically for `TB`). The result is still orthogonal (L6), and every bend point lies on the
+  drawn line.
+- **L12 Ports** (v1.1): each side of a block has one port, on the side's midline (the vertical line through the box's
+  centre for top and bottom, the horizontal line for left and right), where the block's drawn outline crosses that
+  line: on the box edge for most shapes, and at most 20 px inside it for slanted and curved outlines (a
+  parallelogram's left and right sides, a cylinder's top, a document's wavy bottom, round ends). Diamonds have their
+  ports at their four vertices. An edge with `source_side` or `target_side` starts or ends at that port, within 2 px,
+  whether it is manual or routed automatically.
+- **Notes and title** (v1.1) take no part in L1–L8: they may sit anywhere, over anything. Without a stored position,
+  the title sits above the diagram's top-left corner and unplaced notes sit in a row below the diagram, in the
+  config's order.
 - **Stability** (a goal, judged by a person as H5): a small edit (a rename, one added node or edge, one drag) should
   not visibly reshuffle unrelated nodes. The `hints` object in the layout file exists for this.
 
@@ -321,7 +417,7 @@ affect it.
 
 Error and warning codes: `E-header`, `E-nested`, `E-unclosed`, `E-shape`, `E-edge`, `E-duplicate`, `E-syntax`,
 `E-config`, `E-layout`; `W-no-lane`, `W-direction`, `W-style`, `W-config-key`, `W-config-unknown-node`,
-`W-config-unknown-lane`, `W-layout-unknown-node`. Every error found is reported. Line numbers are 1-based lines in
+`W-config-unknown-lane`, `W-layout-unknown-node`, and (v1.1) `W-layout-unknown-edge`, `W-layout-unknown-note`. Every error found is reported. Line numbers are 1-based lines in
 the `.mmd`; problems in the config or layout file have line null. Messages are free text; codes and lines are the
 contract.
 
@@ -335,25 +431,35 @@ Layout JSON (all numbers in px, origin top-left, the same coordinates as the UI 
   "nodes": [{"id": "n01", "lane": "requester", "kind": "terminal", "label": "Needs a part",
              "x": 40, "y": 50, "width": 160, "height": 60, "pinned": false}],
   "edges": [{"id": "n01->n02", "source": "n01", "target": "n02", "label": null,
-             "points": [[200, 80], [260, 80]], "label_pos": null}]
+             "points": [[200, 80], [260, 80]], "label_pos": null,
+             "manual": false, "source_side": "right", "target_side": "left"}],
+  "notes": [{"id": "note1", "text": "Freight is the long pole", "x": 40, "y": -60, "width": 180, "height": 20}],
+  "title": {"text": "Purchase request", "x": 0, "y": -48, "width": 210, "height": 24}
 }
 ```
 
 Nodes with no lane are in a lane with id `_unassigned` (label "Unassigned"), placed last. That lane exists only when at
 least one node has no lane. `kind` is the shape kind. All numbers are integers. `label_pos` is the centre of the label,
-or null when the edge has none.
+or null when the edge has none. (v1.1) `manual` says whether the edge has bend points; `source_side` and
+`target_side` are the sides actually used (stored or chosen by the layout). `notes` lists every note with its box in
+diagram coordinates (x and y may be negative), in the config's order. `title` is the title's box, or null when the title is
+hidden. `width` and `height` of the diagram cover the lanes; notes and the title may extend beyond them.
 
 ### 7.1 The SVG export (what the tests read)
 
 The tests parse the SVG as XML. Layout and drawing are otherwise the builder's choice.
 
-- The title is a `<text data-role="title">`.
+- The title is a `<text data-role="title">`, left out when the title is hidden (v1.1). The picture includes the
+  title and every note wherever they are placed.
+- Each note (v1.1) is a `<g data-note-id="<id>">` holding its text, one `<text>` or `<tspan>` per line. Each `<text>`
+  carries `font-size="<n>"` and `fill="#rrggbb"`, plus `font-weight="bold"` only when bold.
 - Each lane is a `<g data-lane-id="<id>">` containing a `<text>` with the lane label.
 - Each node is a `<g data-node-id="<id>" data-kind="<shape kind>">`. Its first shape child (`rect`, `polygon` or
   `path`) carries the style as presentation attributes: `fill`, `stroke`, `stroke-width`, and `stroke-dasharray`
   (absent or `none` for solid, `6 4` for dashed, `2 3` for dotted). Colours are lowercase `#rrggbb` (`#f96` is written
   `#ff9966`). Unstyled nodes use the theme's default colours. Italic and bold labels carry `font-style="italic"` or
-  `font-weight="bold"` on their `<text>`. A badge is a `<text data-role="badge">`. The node's full label, unwrapped,
+  `font-weight="bold"` on their `<text>`, and (v1.1) every label `<text>` carries its colour as `fill="#rrggbb"`. A
+  badge is a `<text data-role="badge">`. The node's full label, unwrapped,
   is also in a `<title>` child of the `<g>`.
 - Each edge is a `<g data-edge-id="<id>">` with a `<path>` or `<polyline>`, and, if it has a label, a `<title>` with
   the label.
@@ -381,7 +487,9 @@ Deliberately text-only (the UI keeps them intact but doesn't show or edit them):
   config's `lanes`, which the UI edits);
 - nodes that exist only in edges (every block the UI creates is declared; editing such a node's label in the UI
   declares it in the unlaned section);
-- pins with `across` below 12, and repairing a file that has errors (the error banner says where to look).
+- repairing a file that has errors (the error banner says where to look);
+- (v1.1) a stored size smaller than the label needs (the UI's handles stop at the need), renaming a note's id,
+  removing a note's stored position (it can be moved but not un-placed), and `label_at` on an edge with no label.
 
 Section 10, Part 3 lists every operation and how parity is checked.
 
@@ -421,12 +529,17 @@ Three rules apply to every operation below:
   Escape cancels. An empty block label is refused (the old label stays).
 - **UI9 Rename id**: from the inspector. The new id must follow the id rules and be neither reserved nor taken
   (section 3.1), or it is refused with a message. Every reference changes with it: the declaration, the edges, the config `nodes` key, the layout `nodes`
-  key, and any style rule that matches on `id` with the old value.
+  key, and any style rule that matches on `id` with the old value (v1.1: and the layout file's edge entries, see
+  "Keeping the layout file in step").
 - **UI10 Move and pin**: dragging a block moves it smoothly and pins it where it's dropped (saved within 1 s). Shift-
   click adds or removes a block from the selection; Shift-drag on the background draws a selection box; Cmd/Ctrl+A
-  selects everything. Dragging any selected block moves the whole selection together, and each moved block is pinned.
-  Arrow keys nudge the selection by 10 px (pinning it). On every drop the UI rounds positions to whole pixels, with no
-  snapping, and saves `across` as at least 12 and `along` as at least 0. Edges re-route to satisfy L6 and L7 when the
+  selects everything. Dragging any selected block moves the whole selection together, and each moved block is pinned. (v1.1) A selection
+  holds blocks and lines, as in v1.0; the selection box and Cmd/Ctrl+A select blocks only; a note or the title is
+  selected on its own.
+  Arrow keys nudge the selection by 10 px (pinning it). On every drop the UI snaps (UI39, v1.1; nudges don't snap), then
+  rounds the top-left corner to whole pixels (halves toward −∞), and saves it as it is, negative values included
+  where §5 allows them (UI43). Edges
+  re-route to satisfy L6 and L7 when the
   drag ends (live re-routing during the drag is nice but not required).
 - **UI11 Move across lanes**: a block dropped with its centre in a different lane moves to that lane: its declaration,
   with any comment attached to it, is appended as the last declaration of that subgraph (or of the unlaned section,
@@ -434,20 +547,22 @@ Three rules apply to every operation below:
   inspector's lane select, which always includes Unassigned (the only way to reach it when no block is unlaned and
   the Unassigned lane isn't showing); moved this way, its pin is dropped.
 - **UI12 Unpin**: selected blocks can be unpinned (back to automatic placement). "Re-layout all" clears every pin
-  after a confirmation (the layout file becomes `{"version": 1, "nodes": {}}`, keeping `hints` if present).
+  and every line's bend points after a confirmation, keeping sizes, sides, label positions, notes, the title position
+  and `hints` (v1.1; see "Keeping the layout file in step").
 - **UI13 Duplicate**: Cmd/Ctrl+D or the duplicate button copies each selected block: a new id (as in UI6), the same
   shape, label, class and lane, and a copy of its config metadata under the new id. Each copy is declared as the last
   declaration of its lane, in order (see the Order rule). Edges aren't copied. Each copy is
-  pinned 24 px along and 24 px across from its original's position, and becomes the new selection.
+  pinned 24 px along and 24 px across from its original's position, keeps its original's stored size (v1.1), and
+  becomes the new selection.
 - **UI14 Delete**: Delete, Backspace or the delete button removes the selected blocks and edges. Deleting a block
   deletes its edges, its pin, and any comments attached to the deleted statements, but never its config metadata
   (see UI27).
 
 **Lines**
 
-- **UI15 Connect**: drag from a block's connection handle to another block, or use the click path (select the source,
-  press connect, click the target) so it works without precise dragging. New edges are appended at the end of the
-  edge section.
+- **UI15 Connect**: drag from one of a block's connection handles to another block (v1.1: see UI38 for sides), or use
+  the click path (select the source, press connect, click the target) so it works without precise dragging. New edges
+  are appended at the end of the edge section.
 - **UI16 Reconnect**: select an edge and drag either end onto another block. The edge keeps its place in the file, its
   label and its comment; its id follows its new endpoints.
 - **UI17 Edge label**: double-click an edge to edit its label. Enter commits, Escape cancels, and an empty label removes
@@ -461,8 +576,8 @@ Three rules apply to every operation below:
   after the last one, and to the config `lanes` list if the config has one.
 - **UI19 Rename lane**: double-click a lane header to edit its label (rewrites the subgraph label). The lane menu can
   also rename its id (refused, with a message, if the new id breaks the id rules or is reserved or taken), which
-  changes every reference: the subgraph, the config `lanes` entry, the `lane` of every pin,
-  and any style rule that matches on `lane` with the old value.
+  changes every reference: the subgraph, the config `lanes` entry, the `lane` of every pin
+  and (v1.1) bend point, and any style rule that matches on `lane` with the old value.
 - **UI20 Reorder lanes**: drag a lane header, or use Move up / Move down in the lane menu. This writes the config
   `lanes` list with every lane in the `.mmd`, in the new order (creating the config file or list if needed). Existing
   entries keep any extra keys; entries for lanes that don't exist are dropped; Unassigned is never listed and always
@@ -477,7 +592,9 @@ Three rules apply to every operation below:
 - **UI22 Title**: double-click the title to edit it. This writes the config `title`, creating the config file if
   needed.
 - **UI23 Direction**: a toggle between left-to-right and top-to-bottom. It rewrites the header; pins keep their `along`
-  and `across` values.
+  and `across` values, and (v1.1) so do sizes, bend points and `label_at`. Sides rotate with the diagram (`right` ↔
+  `bottom`, `left` ↔ `top`), and note and title positions swap x and y, so everything keeps its place relative to the
+  flow.
 
 **Evidence and styles**
 
@@ -499,8 +616,9 @@ Three rules apply to every operation below:
   byte-for-byte. New node entries are appended at the end of `nodes`, new fields at the end of their entry. If the
   config on disk has errors, config editing is off (the diagram stays editable) until the file is fixed.
 - **UI27 Orphans**: config `nodes` entries for ids not in the `.mmd` (`W-config-unknown-node`), config `lanes`
-  entries for lanes that don't exist (`W-config-unknown-lane`) and pins for ids not in the `.mmd`
-  (`W-layout-unknown-node`) appear in the warnings list, each with a button that deletes that entry.
+  entries for lanes that don't exist (`W-config-unknown-lane`), and layout entries for nodes, edges and notes that
+  don't exist (`W-layout-unknown-node`, `W-layout-unknown-edge`, `W-layout-unknown-note`, v1.1) appear in the warnings
+  list, each with a button that deletes that entry.
 
 **Safety and sync**
 
@@ -517,12 +635,144 @@ Three rules apply to every operation below:
 - **UI31 Errors are safe**: if a file on disk has errors, the UI shows them (code, line, message) in the error banner
   and never overwrites a file it couldn't parse. With `.mmd` errors the diagram is read-only until the file is fixed.
   With only `E-config` it draws with default styles, the diagram stays editable, and config editing is off. With only
-  `E-layout` it draws unpinned, and dragging and pinning are off until the file is fixed.
+  `E-layout` it draws unpinned, and dragging and pinning are off until the file is fixed. (v1.1) Put generally: every
+  operation whose result would change a file with errors is off. With `E-layout` that includes connecting by a handle
+  (it writes a side), resizing, shaping lines, dragging labels, notes and the title, and adding a note (the click-path
+  connect and everything else that writes only the `.mmd` or config still work). With `E-config`, notes and
+  `show_title` can't be read, so notes aren't drawn, the title is shown, and `W-layout-unknown-note` isn't reported
+  (every note would look orphaned).
 - **UI32 Export**: buttons for SVG and PNG. The server writes `exports/<name>.svg|png` beside the `.mmd` and the UI
   shows the path. The export matches the CLI's: title, lanes, nodes, edges, legend, light theme by default.
 - **UI33 Keyboard**: Delete/Backspace deletes; Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z undo and redo; Cmd/Ctrl+D duplicates;
   Cmd/Ctrl+A selects all; Enter edits the selected block's label; Escape cancels an edit or clears the selection;
   the arrow keys nudge; `?` shows the list of shortcuts. Shortcuts don't fire while typing in an editor.
+
+**Shaping by hand** (v1.1)
+
+- **UI34 Resize**: a selected block shows resize handles on its four corners and four sides. Dragging one resizes
+  the block and writes its `width` and `height` (both, even if only one changed). The opposite edge or corner stays
+  fixed; only the moved edge is rounded to a whole pixel. Dragging a top or left handle also moves the block, so it
+  writes the pin too (pinning a block that wasn't pinned). The handle stops at the block's narrowest width and at the
+  height its label needs at the current width (§6 L9, "needs"). "Reset size" (context menu) removes the stored size.
+- **UI35 Block colours**: a block's fill, border colour and text colour can be set from the inspector and from the
+  block's context menu, with light and dark values like the styles panel, plus a row of preset swatches. A swatch
+  sets only the fill, to its light and dark values (a single colour if the two are equal). This writes the node's
+  `style` in the config (§4). "Reset colours" removes `fill`, `border_color` and `text_color` from it (and `style`
+  itself if that leaves it empty); other style properties written by hand stay. With several blocks selected, the
+  colours apply to all of them.
+- **UI36 Line shapes**: a selected line shows a handle at the middle of each segment of its drawn line and one at each
+  bend point. Segments are counted on the drawn line after merging (a zero-length segment is dropped, and two
+  segments in a straight row are one).
+  - **Becoming manual.** The first shaping edit on an automatic line first stores, as its `points`, every corner of
+    its drawn line except the two ends (the layout JSON's `points` without the first and last). It also stores the
+    sides the line uses, so redrawing through L11 and L12 gives exactly the same line. If an end of the automatic
+    line isn't at its side's port, that end is stored as a bend point too.
+  - **Segment drag.** Dragging a segment's handle slides that segment sideways, perpendicular to itself, like
+    draw.io: both of its end corners move by the same amount. An end of the segment that is attached to a port can't
+    move, so the drag first adds a stub: a corner 20 px out from that port along the segment. A segment attached to
+    ports at both ends gets a stub at each. The drag then writes every corner of the resulting line except its two
+    ends.
+  - **Bend drag.** Dragging a bend point's handle moves that point.
+  - **Tidy.** After every drag, the moved points and their neighbours (a port counts as a neighbour) are checked: a
+    point in a straight row with both neighbours, or on top of one, is removed. Other points are left alone. If no
+    points remain, `points` is removed and the line is automatic again (its sides stay).
+  - **Context menu.** "Add bend point" inserts a point at the spot on the line nearest the click, in path order, and
+    it is kept even if it lies in a straight row. "Remove bend point" (on a bend point) removes it. "Reset line"
+    removes the line's `points` and both sides, so it is routed automatically again.
+  - Dragging a line's end still reconnects it (UI16). While dragging, the preview is drawn the way the final line
+    will be: orthogonal, not a curve.
+- **UI37 Line labels**: a line's label can be dragged along its line. On release, the label's centre is projected
+  onto the nearest point of the drawn line and written as `label_at` (§5), rounded to two decimals. "Reset label
+  position" in the context menu removes it. On an edge with no label, `label_at` is kept but has no effect.
+- **UI38 Connection sides**: every block has four connection handles, one per side, in the order top, right, bottom,
+  left. Dragging from one starts a line that leaves the block from that side, and the line's `source_side` is
+  written.
+  - While a line is being connected or reconnected, the block under the pointer shows its four connection points
+    and highlights the nearest one. Dropping on a connection point attaches the line there and writes `target_side`
+    (or `source_side`, when reconnecting a source end). Dropping elsewhere on the block leaves that side to the
+    layout.
+  - Dropping a line's end on another connection point of the block it is already attached to only changes that
+    end's side: the id, `points` and `label_at` stay.
+  - The preview line is drawn orthogonally, bending the way the final line will. The click path in UI15 sets no
+    sides. Diamonds connect at their four vertices.
+- **UI39 Snap and guides**: while dragging blocks, bend points, notes or the title, the dragged item snaps when its
+  centre line or one of its edges comes within 6 screen pixels of the same kind of line on a target that isn't being
+  dragged: centre to centre, left edge to left edge, top to top, and so on, horizontally and vertically on their own.
+  Targets are the other blocks; for a bend point, also the other bend points and the two ports of its own line; for a
+  note, also the other notes. A centre line is `x + floor(width / 2)` (and likewise for y).
+  - With several items dragged, the one under the pointer decides the snap and the rest move with it.
+  - When two targets are equally close, centre lines win over edges, then the left or top edge over the right or
+    bottom one, then the smaller coordinate.
+  - A guide line (`snap-guide`) shows across the canvas while snapped, and the stored position is the snapped one.
+  - Holding Alt (Option) while dragging turns snapping off.
+- **UI40 Context menus**: a right-click, or a two-finger click on a trackpad, opens a small menu on what was clicked.
+  With several blocks selected and one of them clicked, block items apply to all of them where that makes sense
+  (colours, duplicate, unpin, reset size, delete); the others are left out. Escape, or a click elsewhere, closes the
+  menu. The items, their `data-menu-item` names, and when each shows:
+
+  | On | Item (`data-menu-item`) | Shows when |
+  |---|---|---|
+  | block | `edit-label`, `rename-id`, `shape`, `colors`, `duplicate`, `delete` | always (`edit-label`, `rename-id` and `shape` for one block only) |
+  | block | `unpin` / `reset-size` / `reset-colors` | the block is pinned / has a stored size / has a `style` with colours |
+  | line | `edit-label` (reads "Add label" when there is none), `delete` | always |
+  | line | `add-bend` | the click wasn't on a bend point |
+  | line | `remove-bend` | the click was on a bend point |
+  | line | `reset-line` / `reset-label` | the line is manual or has a side / has `label_at` |
+  | note | `edit-note`, `font-size`, `bold`, `color`, `delete` | always |
+  | title | `edit-title`, `hide-title` | always |
+  | title | `reset-position` | the title has a stored position |
+  | canvas | `add-note`, `add-<shape kind>` for each of the eight shapes | always |
+  | canvas | `show-title` | the title is hidden |
+
+  `shape` opens `data-shape` options, `colors` and `color` open colour inputs (`data-prop`, `data-variant`), and
+  `font-size` opens a number input (`data-prop="font_size"`), all inside the menu. `add-<shape kind>` adds the block
+  with its top-left corner at the clicked spot, pinned there, in the lane its centre falls in by UI43's rules.
+  Each item otherwise does exactly what its requirement says.
+- **UI41 Notes**: free text anywhere on the canvas, for annotations that aren't part of the flow.
+  - Add one from the toolbar (`add-note`, at the centre of the view) or the canvas context menu (at the clicked
+    spot). It opens straight into its editor. Nothing is written until the first commit, which writes the note (the
+    first free id of `note1`, `note2`…, not taken, §3.1), its text and its position as one step; Escape, or
+    committing blank text, adds nothing.
+  - In the editor, Enter adds a line, and Cmd/Ctrl+Enter or clicking away commits. The text is written as typed,
+    without trailing line breaks. Committing blank text in an existing note deletes it.
+  - Drag a note to move it (writes its position; snapping applies). Double-click to edit, press Delete to remove it.
+    Its context menu sets the font size, bold and colour.
+  - A note is its `notes` entry in the config (text and style) plus its position in the layout file.
+- **UI42 Title**: the title can be dragged like a note (writes the layout file's `title` position). Its context menu can
+  hide it (writes `show_title: false` in the config) and reset its position (removes `title` from the layout file).
+  A hidden title comes back from the canvas context menu (`show-title`, which removes `show_title`). Double-clicking,
+  or `edit-title`, edits it as in UI22.
+- **UI43 Anywhere**: a block, bend point, note or title can be dropped anywhere, including left of or above
+  everything else. The file stores exactly where it was dropped, negative values included (§5); the layout's frame
+  (§6) keeps the output starting at 0, and the UI pans by the change so that nothing else moves on screen.
+  - The block's centre decides its lane, as in UI11. A block whose centre is before the start of the flow axis stays
+    in the lane its centre is across from (a negative `along`).
+  - In a diagram with lanes, a block whose centre is before the first lane joins the first lane (a negative
+    `across`), and one whose centre is after the last lane moves to Unassigned (A4).
+  - In a lane-free diagram, before the lane's start is a negative `across` in `_unassigned`.
+  - Only the first lane can grow toward its start (§5), so the promise that nothing else moves on screen holds for
+    every drop. A block dropped across the start edge of a later lane is stored at `across` 0 and lands on that edge.
+
+**Keeping the layout file in step** (v1.1). Every UI operation that changes the list of edges re-keys every edge
+entry by its edge's new id (matching edges by their position in the file, so a reconnect that creates or breaks a
+duplicate pair keeps entries on the right lines). In the same write:
+- deleting an edge deletes its entry;
+- renaming a node renames its node entry and the keys of its edges' entries;
+- reconnecting an end to another block removes the entry's `points` and the moved end's side (the other side and
+  `label_at` stay);
+- deleting a node deletes its entry and its edges' entries;
+- renaming a lane renames `lane` in pins and bend points;
+- deleting a lane in any way removes the `points` of every line with a bend point in that lane, and the pins of
+  blocks that move out of it;
+- duplicating a block (UI13) copies its size as well;
+- "Re-layout all" (UI12) removes every pin and every line's `points`, and keeps sizes, sides, `label_at`, notes and the
+  title position;
+- when an operation leaves no block in Unassigned, so that its lane disappears, every bend point in `_unassigned` is
+  re-expressed in the last remaining lane at the same on-screen position;
+- any entry these leave empty is removed (§5).
+
+The AI's text edits can shift edge ids too (for example by deleting a duplicate). The layout file is not re-keyed
+then; that is the text author's job, and `W-layout-unknown-edge` shows any entry left behind.
 
 ### 8.3 Test contract (DOM attributes the acceptance tests use)
 
@@ -538,7 +788,7 @@ opening first, through the listed opener).
 | Lane | `data-lane-id="<id>"`, `data-selected="true\|false"`; its header is `data-lane-header="<id>"` (double-click to edit the label in `label-editor`); inside the header, `data-testid="lane-menu"` opens a menu with `lane-rename-id` (opens the id editor), `lane-up`, `lane-down`, `lane-delete` |
 | Lane delete dialog | `data-testid="lane-delete-dialog"` with a `data-testid="lane-target"` select (lane ids and `_unassigned`) and buttons `lane-move-blocks`, `lane-delete-blocks`, `confirm-no` |
 | Node | `data-node-id="<id>"`, `data-kind="<shape kind>"`, `data-lane="<lane id>"`, `data-pinned="true\|false"`, `data-selected="true\|false"`, `data-x`, `data-y`, `data-width`, `data-height` (integer layout coordinates at zoom 1, as in `flowmap layout`); the label text is in a child with `data-role="label"` |
-| Node connection handle | `data-handle="source"` and `data-handle="target"` inside the node element |
+| Node connection handle | `data-handle="source"` inside the node element (v1.1: four of them, see "Node (v1.1)"; there is no `data-handle="target"` in v1.1) |
 | Edge | `data-edge-id="<id>"`, `data-source`, `data-target`, `data-selected`; the label text is inside the element; when selected, its ends are `data-edge-end="source\|target"` |
 | Palette | `data-testid="palette"`, one button per shape with `data-shape="<shape kind>"` (click, or drag onto a lane) |
 | Shape picker | `data-testid="shape-picker"` (shown when one block is selected), one option per shape with `data-shape` |
@@ -551,11 +801,18 @@ opening first, through the listed opener).
 | Styles panel | `data-testid="styles"` (opened by `styles-toggle`) with `rule-add`, `styles-yaml` (textarea with the whole `styles` list) and `styles-yaml-apply`. Each rule, in order, is `data-testid="style-rule"`, containing `rule-legend` (input), `rule-up`, `rule-down`, `rule-delete`, `match-add`, and its conditions as `data-testid="match-row"`, each with `match-field` (input), `match-op` (select: `equals`, `present`, `absent`), `match-value` (input) and `match-delete`. Each style property is a control with `data-prop="<property>"`; a colour property holds two text inputs, `data-variant="light"` and `data-variant="dark"`, that accept `#rrggbb` or `#rgb`; an empty input clears the property. Every select has an empty option and every number input may be emptied; empty clears the property |
 | Legend | `data-testid="legend"`, one `data-testid="legend-item"` child per rule that has legend text, in rule order |
 | Save indicator | `data-testid="save-status"` with text `saved`, `saving` or `error` |
-| Error banner | `data-testid="errors"`, one child per problem with `data-code="<code>"`; a `W-config-unknown-node`, `W-config-unknown-lane` or `W-layout-unknown-node` child contains an `orphan-delete` button |
+| Error banner | `data-testid="errors"`, one child per problem with `data-code="<code>"`; a child for any orphan code in UI27 contains an `orphan-delete` button |
 | Confirmation dialog | `data-testid="confirm"` with buttons `confirm-yes` and `confirm-no` |
 | Export result | `data-testid="export-path"` with the written path as text |
 | Notices | `data-testid="edit-dropped"` (UI30), `data-testid="history-cleared"` (UI28) |
 | Shortcut list | `data-testid="shortcuts"` (shown by `?`) |
+| Node (v1.1) | also `data-sized="true\|false"` (has a stored size); four connection handles `data-handle="source"` each with `data-port="top\|right\|bottom\|left"`, in that DOM order; when selected, resize handles `data-resize="n\|ne\|e\|se\|s\|sw\|w\|nw"`; while a line is being connected or reconnected over it, connection points `data-port-target="<side>"` |
+| Edge (v1.1) | also `data-manual="true\|false"` and `data-points` (the drawn line as integer diagram coordinates, `x1,y1 x2,y2 …`, equal to the layout JSON's `points`); its label is a child with `data-role="edge-label"` (draggable); when selected, one handle per segment of the merged drawn line `data-segment="<i>"` (UI36) and one per bend point `data-bend="<i>"` (0-based, from the source) |
+| Snap guide (v1.1) | `data-testid="snap-guide"`, present while a snap is active during a drag |
+| Context menu (v1.1) | `data-testid="context-menu"`, items `data-menu-item="<name>"` exactly as in UI40's table; the `shape`, colour and font-size controls render inside the menu element |
+| Block colours (v1.1) | in the inspector: `data-testid="block-colors"` holding `data-prop="fill\|border_color\|text_color"` controls with `data-variant="light\|dark"` inputs, preset swatches `data-testid="swatch"` with `data-color="#rrggbb"` (light) and `data-color-dark="#rrggbb"`, and `block-colors-reset` |
+| Notes (v1.1) | each note `data-note-id="<id>"` with integer `data-x`, `data-y` (diagram coordinates, as in the layout JSON) and its text inside; toolbar button `add-note`; editor `data-testid="note-editor"` (a textarea) |
+| Title (v1.1) | `data-testid="title"` also carries integer `data-x` and `data-y`, and can be dragged |
 
 ## 9. Stack and structure
 
@@ -602,8 +859,17 @@ opening first, through the listed opener).
 | U8 | Export and keyboard (UI32, UI33): both exports are written; every listed shortcut works and none fires inside an editor | 🤖 |
 | U9 | Node positions in the UI (`data-x` and so on) equal `flowmap layout` output | 🤖 |
 | U10 | L9: every node's `data-role="label"` element's on-screen box lies inside the node element's box | 🤖 |
+| U11 (v1.1) | Resize (UI34): every handle; the minimum size holds; top and left handles move the pin; reset size | 🤖 |
+| U12 (v1.1) | Block colours (UI35): from the inspector, the swatches and the context menu; multi-select; reset; the SVG export shows them | 🤖 |
+| U13 (v1.1) | Lines (UI36–UI38): segment drag, bend drag, add, remove and reset; label drag and reset; connect from each side; drop on a connection point; UI and `flowmap layout` agree on the drawn path | 🤖 |
+| U14 (v1.1) | Snap (UI39) and context menus (UI40): a drag that ends within 6 px of alignment stores the aligned position and shows `snap-guide`; Alt disables it; every menu item on every target does what its requirement says | 🤖 |
+| U15 (v1.1) | Notes and title (UI41, UI42): add, edit, move, style, delete; hide, show, move and reset the title; the SVG export includes them | 🤖 |
+| U16 (v1.1) | Anywhere (UI43): drops left of and above everything store the dropped position (negative values included), the lane rules for "above" and "left" hold, every other block keeps its on-screen position, and the lanes in `flowmap layout` still start at 0 | 🤖 |
 
 **Part 3: parity (section 8.1)**
+
+(v1.1) Drag tests written for v1.0 hold Alt so snapping (UI39) can't change their result, and P5 connects through the
+click path (UI15), which writes no sides. Connecting by a handle is P25.
 
 For each operation below, the suite makes the change twice, starting from the same files: once through the UI, once
 by editing a copy of the files by hand (then `flowmap fmt` on the `.mmd`). It then compares: the `.mmd` byte for byte,
@@ -632,6 +898,16 @@ the config as parsed YAML with every untouched line byte-identical, and the layo
 | P18 | Replace the styles list through styles YAML | 🤖 |
 | P19 | Delete each kind of orphan: a node entry, a lane entry, a pin | 🤖 |
 | P20 | Undo then redo each of P1–P19 | 🤖 |
+| P21 (v1.1) | Resize a block from a corner and from its top-left; reset its size | 🤖 |
+| P22 (v1.1) | Set a block's fill, border and text colour (light and dark); set colours on several blocks; reset | 🤖 |
+| P23 (v1.1) | Bend a line by dragging a segment; move a bend point; add and remove a bend point; reset the line | 🤖 |
+| P24 (v1.1) | Drag a line's label; reset its position | 🤖 |
+| P25 (v1.1) | Connect from each side of a step and each vertex of a diamond; drop on a target's connection point; reconnect an end of a manual line | 🤖 |
+| P26 (v1.1) | Add, edit, move, restyle and delete a note | 🤖 |
+| P27 (v1.1) | Move the title; hide it; show it; reset its position | 🤖 |
+| P28 (v1.1) | Edits that keep the layout file in step (§8.2): delete one of three duplicate edges that have entries; rename a node with a sized, pinned entry and shaped lines; delete a lane that holds a bend point; re-layout all | 🤖 |
+| P29 (v1.1) | Drop a block, a bend point and a note left of and above everything (negative values) | 🤖 |
+| P30 (v1.1) | Undo then redo each of P21–P29 | 🤖 |
 
 **Human judgment**
 
@@ -643,15 +919,18 @@ the config as parsed YAML with every untouched line byte-identical, and the layo
 | H4 | Nothing was ever lost or corrupted during a real session of editing alongside the AI | 🧑 |
 | H5 | Small edits (a rename, an added step, one drag, an AI text edit) don't visibly reshuffle unrelated boxes | 🧑 |
 | H6 | Marking evidence on a step and adding a style rule feel natural through the inspector and styles panel, without touching YAML | 🧑 |
+| H7 (v1.1) | Shaping lines, resizing and connecting from a chosen side feel like a good flowchart tool (draw.io, Lucidchart) | 🧑 |
+| H8 (v1.1) | Snapping helps rather than fights; context menus have what you reach for | 🧑 |
 
 **Done** means Parts 1, 2 and 3 all pass and the H-criteria are acceptable to Dan.
 
-## 11. Not in v1
+## 11. Not in v1.1
 
 Real-time multi-user editing; accounts; cloud anything; showing or editing `.mmd` comments, class suffixes or
 pass-through lines in the UI (section 8.1); multiple pages per diagram with off-page connectors (stretch); comments on
 the canvas (stretch); a generated open-questions list (stretch); draw.io export (stretch); nested lanes; Mermaid
-features outside the subset in section 3; manual edge waypoints (edges are always routed automatically).
+features outside the subset in section 3; curved lines; line colours and line styles; grouping several blocks into
+one; rotating blocks.
 
 ## 12. Amendments
 
@@ -663,4 +942,6 @@ in flight.
 | 2026-09-24 | **A1.** Section 9's note that the `yaml` Document API keeps untouched lines byte-identical is withdrawn. UI26 is unchanged. | `toString()` re-pads flow maps and collapses spacing (found independently by Build A and the acceptance suite); ruling R2. |
 | 2026-09-24 | **A2.** The build must make `pnpm exec flowmap` work from its root (section 7). | pnpm 9 doesn't expose a package's own `bin`; ruling R1. |
 | 2026-09-24 | **A3.** UI18: an empty slug gives the id `lane`. | `lane-` broke the id rules; ruling R3. |
-| 2026-09-24 | **A4. Diagrams without lanes (Dan).** (a) A `.mmd` with no subgraphs is a plain flowchart. Its layout is unchanged in the JSON (every node is in `_unassigned`), but the UI and the SVG export draw no lane band or lane header for it. The `_unassigned` lane element keeps its `data-lane-id` in the DOM, without a `data-lane-header`, and no space is reserved for a lane label. (b) UI6: in a diagram with no lanes, clicking a palette shape adds the block right away (unlaned, not pinned); dragging a shape from the palette onto the canvas adds it pinned where it was dropped. (c) UI11: in a diagram with lanes, a block dropped with its centre outside every lane moves to Unassigned, keeping a pin at the drop position. (d) UI1: the home page's new-diagram action offers "Flowchart" (no lanes) or "Swimlanes"; that choice is a UI convenience and writes nothing beyond a valid `.mmd`. | Dan wants generic flowcharts too, not only swimlane maps. |
+| 2026-09-24 | **A4. Diagrams without lanes (Dan).** (a) A `.mmd` with no subgraphs is a plain flowchart. Its layout is unchanged in the JSON (every node is in `_unassigned`), but the UI and the SVG export draw no lane band or lane header for it. The `_unassigned` lane element keeps its `data-lane-id` in the DOM, without a `data-lane-header`, and no space is reserved for a lane label. (b) UI6: in a diagram with no lanes, clicking a palette shape adds the block right away (unlaned, not pinned); dragging a shape from the palette onto the canvas adds it pinned where it was dropped. (c) UI11: in a diagram with lanes, a block dropped with its centre outside every lane moves to Unassigned, keeping a pin at the drop position. (v1.1 narrows this: a centre before the first lane joins the first lane; see UI43.) (d) UI1: the home page's new-diagram action offers "Flowchart" (no lanes) or "Swimlanes"; that choice is a UI convenience and writes nothing beyond a valid `.mmd`. | Dan wants generic flowcharts too, not only swimlane maps. |
+| 2026-09-24 | **A5.** A `.mmd` with no subgraphs gives no `W-no-lane` warnings (§3.2). | In a plain flowchart every block would warn, which is noise; the warning still points at real problems in diagrams with lanes. |
+| 2026-09-24 | **v1.1 (Dan).** Shaping by hand: UI34–UI43, the extended layout file (§5: sizes, edge sides, bend points, `label_at`, note and title positions, negative values and the frame), block `style`, `notes` and `show_title` in the config (§4), L4/L7/L8 extended and L11/L12 added (§6), the layout JSON and SVG additions (§7, §7.1), the DOM rows marked (v1.1) in §8.3, and U11–U16, P21–P30, H7–H8 (§10). R5.9's strictness now applies to the §5 key list. See `CHANGES-v1.1.md`. | Dan's feedback after using Build A: resize, colours, bent lines, sides, snap, context menus, notes, a movable title. |

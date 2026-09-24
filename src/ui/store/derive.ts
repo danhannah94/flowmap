@@ -5,7 +5,9 @@
 import { loadDocument, type FlowDocument } from '../../core/document';
 import type { Files } from '../../core/ops';
 import { parseLayoutFile, serializeLayoutFile, setHints } from '../../core/layoutfile';
+import { pinTranslation, type Translation } from '../../core/layout';
 import type { LayoutResult } from '../../core/types';
+import type { Point } from '../canvas/viewport';
 
 /** Problem codes that come from the `.mmd` itself (§3): any error among them makes the diagram read-only. */
 export const MMD_CODES = new Set([
@@ -68,4 +70,25 @@ export function withHints(before: Files, after: Files, current: Derived | null):
 
 export function sameFiles(a: Files, b: Files): boolean {
   return a.mmd === b.mmd && a.config === b.config && a.layout === b.layout;
+}
+
+/** The layout's frame (`pinTranslation`, §6): its translation of negative pins, from the pins that apply. */
+export function translationOf(d: Derived | null): Translation {
+  return pinTranslation(Object.values(d?.doc.pins ?? {}), d?.layout?.lanes[0]?.id);
+}
+
+/**
+ * How far, in world px, the whole diagram moved between two layouts because its frame changed (§6: a block dropped
+ * before or above everything, its undo, an unpin): the store pans the view by the opposite (UI43), so what the person
+ * didn't move stays put on screen and a dropped block ends where it was released. T moves everything along the flow;
+ * U (the first lane growing toward its start) moves everything across it, since every lane is at or after the first.
+ */
+export function originMove(prev: Derived | null, next: Derived): Point {
+  if (!prev?.layout || !next.layout) return { x: 0, y: 0 };
+  const a = translationOf(prev);
+  const b = translationOf(next);
+  const along = b.along - a.along;
+  const sameFirst = prev.layout.lanes[0]?.id === next.layout.lanes[0]?.id;
+  const across = sameFirst ? b.across - a.across : 0;
+  return next.layout.direction === 'TB' ? { x: across, y: along } : { x: along, y: across };
 }

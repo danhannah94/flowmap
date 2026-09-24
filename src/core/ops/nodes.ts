@@ -1,5 +1,6 @@
 // Block operations (design.md §8.2 UI6–UI14).
 import { clearPins, pinFromDrop, removePins, renamePinNode, setPins } from '../layoutfile';
+import { pinTranslation, type Translation } from '../layout';
 import { findNode, type NodeDecl } from '../mmd';
 import { SHAPE_KINDS, UNASSIGNED, type LayoutResult, type Pin, type ShapeKind } from '../types';
 import { checkBlockLabel, refuse, run, type Ctx, type Files, type OpResult } from './context';
@@ -53,7 +54,7 @@ export function addNode(
     const id = ctx.nextNodeId();
     ctx.declsOf(args.lane).push({ id, shape: args.shape, label: NEW_BLOCK_LABELS[args.shape], className: null, comments: [] });
     if (args.pin) {
-      const pin = pinFromDrop(args.lane, args.pin.along, args.pin.across);
+      const pin = pinFromDrop(args.lane, args.pin.along, args.pin.across, ctx.firstLane());
       ctx.editLayout('always', (file) => setPins(file, [[id, pin]]));
     }
     return { id };
@@ -115,8 +116,8 @@ export function renameNode(files: Files, oldId: string, newId: string): OpResult
 
 /**
  * UI10: pin blocks at their drop positions (a drag, or an arrow-key nudge), recording each block's current lane.
- * Positions are rounded to whole pixels, `along` at least 0 and `across` at least 12. New pins are added in file
- * declaration order.
+ * Positions are rounded to whole pixels (halves toward −∞) and otherwise kept exactly, negative ones included where §5
+ * allows them (`pinFromDrop`: `across` below 0 only in the first lane). New pins are added in file declaration order.
  */
 export function pinNodes(files: Files, pins: readonly ({ id: string } & DropPosition)[]): OpResult {
   return run(files, (ctx) => {
@@ -124,7 +125,7 @@ export function pinNodes(files: Files, pins: readonly ({ id: string } & DropPosi
     const ordered = ctx.sortByDeclaration([...byId.keys()]);
     const out: [string, Pin][] = ordered.map((id) => {
       const p = byId.get(id)!;
-      return [id, pinFromDrop(ctx.laneOf(id), p.along, p.across)];
+      return [id, pinFromDrop(ctx.laneOf(id), p.along, p.across, ctx.firstLane())];
     });
     if (out.length) ctx.editLayout('always', (file) => setPins(file, out));
     return {};
@@ -162,7 +163,7 @@ export function moveNodesToLane(
     const drop = moved.filter((id) => !dropAt.has(id));
     const pins: [string, Pin][] = ordered
       .filter((id) => dropAt.has(id))
-      .map((id) => [id, pinFromDrop(lane, dropAt.get(id)!.along, dropAt.get(id)!.across)]);
+      .map((id) => [id, pinFromDrop(lane, dropAt.get(id)!.along, dropAt.get(id)!.across, ctx.firstLane())]);
     if (drop.length) ctx.editLayout(drop, (file) => removePins(file, drop));
     if (pins.length) ctx.editLayout('always', (file) => setPins(file, pins));
     return {};
@@ -191,17 +192,21 @@ export function clearAllPins(files: Files): OpResult {
 // ---- UI13 Duplicate
 
 /**
- * Where a node is now, as a pin would record it (§5): `along` is its box's start on the flow axis, `across` its
- * offset from its lane's start edge. `layout` is the current layout (`flowmap layout` output, or the UI's).
+ * Where a node is now, as a pin would record it (§5): `along` is its box's start on the flow axis less the frame's
+ * T, `across` its offset from its lane's zero line (the start edge; for the first lane, U after it). `shift` is the
+ * layout's frame (`pinTranslation`); `layout` is the current layout (`flowmap layout` output, or the UI's).
  */
-export function positionInLane(layout: Pick<LayoutResult, 'direction' | 'lanes' | 'nodes'>, id: string): DropPosition | undefined {
+export function positionInLane(
+  layout: Pick<LayoutResult, 'direction' | 'lanes' | 'nodes'>, id: string, shift: Translation = { along: 0, across: 0 },
+): DropPosition | undefined {
   const node = layout.nodes.find((n) => n.id === id);
   if (!node) return undefined;
   const lane = layout.lanes.find((l) => l.id === node.lane);
   if (!lane) return undefined;
+  const u = lane.id === layout.lanes[0]?.id ? shift.across : 0;
   return layout.direction === 'TB'
-    ? { along: node.y, across: node.x - lane.x }
-    : { along: node.x, across: node.y - lane.y };
+    ? { along: node.y - shift.along, across: node.x - lane.x - u }
+    : { along: node.x - shift.along, across: node.y - lane.y - u };
 }
 
 /**
@@ -219,15 +224,18 @@ export function duplicateNodes(
     const ordered = ctx.sortByDeclaration(ids);
     const newIds: string[] = [];
     const pins: [string, Pin][] = [];
+    // The pins that apply (their lane is still the node's), for the layout's frame (negative pins, §6).
+    const applying = Object.entries(ctx.layout?.nodes ?? {}).filter(([id, p]) => ctx.hasNode(id) && p.lane === ctx.laneOf(id));
+    const shift = pinTranslation(applying.map(([, p]) => p), layout.lanes[0]?.id);
     for (const id of ordered) {
       const found = findNode(ctx.d, id);
       const lane = found?.lane ?? UNASSIGNED;
       const src = found?.node ?? { shape: 'step' as const, label: id, className: null };
-      const pos = positionInLane(layout, id);
+      const pos = positionInLane(layout, id, shift);
       if (!pos) refuse(`The layout has no position for "${id}"`);
       const copy = ctx.nextNodeId();
       ctx.declsOf(lane).push({ id: copy, shape: src.shape, label: src.label, className: src.className, comments: [] });
-      pins.push([copy, pinFromDrop(lane, pos.along + 24, pos.across + 24)]);
+      pins.push([copy, pinFromDrop(lane, pos.along + 24, pos.across + 24, ctx.firstLane())]);
       newIds.push(copy);
     }
     ordered.forEach((id, k) => ctx.editConfig([id], (doc) => doc.copyNode(id, newIds[k]!)));

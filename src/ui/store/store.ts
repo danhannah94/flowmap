@@ -12,7 +12,7 @@
 import type { Files, OpResult } from '../../core/ops';
 import type { LayoutResult, ShapeKind } from '../../core/types';
 import { fetchDiagram, putDiagram, sameVersions, subscribeChanges, type Snapshot, type Versions } from '../api';
-import { derive, sameFiles, withHints, type Derived } from './derive';
+import { derive, originMove, sameFiles, withHints, type Derived } from './derive';
 import { fitViewport, zoomAround, type Rect, type Viewport } from '../canvas/viewport';
 
 export type ThemeName = 'light' | 'dark';
@@ -335,7 +335,12 @@ export class Store {
     const d = derive(files, this.state.file);
     const shown = d.layout ? d : this.state.shown;
     const selection = opts.keepSelection ? pruneSelection(this.state.selection, shown?.layout ?? null) : EMPTY_SELECTION;
-    this.set({ files, derived: d, shown, selection });
+    // The layout's translation of negative pins changed (a drop before or above everything, its undo, an unpin): the
+    // diagram moved in world coordinates, so pan by the same amount and nothing jumps on screen. Not on first open.
+    const v = this.state.viewport;
+    const m = opts.keepSelection && d.layout ? originMove(this.state.shown, d) : { x: 0, y: 0 };
+    const viewport = m.x || m.y ? { ...v, x: v.x - m.x * v.zoom, y: v.y - m.y * v.zoom } : v;
+    this.set({ files, derived: d, shown, selection, viewport });
   }
 
   // ---------------------------------------------------------------------------------------------------------------
