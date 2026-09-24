@@ -78,13 +78,38 @@ const EdgeView = memo(function EdgeView({ edge, source, target, selected, mode, 
       ) : null}
       {selected && pts.length >= 2 ? (
         <>
-          <circle className="fm-edge-end" data-edge-end="source" cx={pts[0]!.x} cy={pts[0]!.y} r={5} />
-          <circle className="fm-edge-end" data-edge-end="target" cx={end!.x} cy={end!.y} r={5} />
+          <EndGrip pts={pts} end="source" />
+          <EndGrip pts={pts} end="target" />
         </>
       ) : null}
     </g>
   );
 });
+
+/**
+ * A selected edge's draggable end (UI16). It sits a little way along the line from its block rather than on the
+ * border: blocks are drawn above edges and their handles reach 6 px outside the box, so a grip centred on the border
+ * would be under the block. At the target end it sits just behind the arrowhead.
+ */
+function EndGrip({ pts, end }: { pts: Point[]; end: 'source' | 'target' }) {
+  const path = end === 'source' ? pts : [...pts].reverse();
+  let total = 0;
+  for (let i = 1; i < path.length; i++) total += Math.hypot(path[i]!.x - path[i - 1]!.x, path[i]!.y - path[i - 1]!.y);
+  let left = Math.min(end === 'source' ? 13 : ARROW + 5, total / 3);
+  let at = path[0]!;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1]!;
+    const b = path[i]!;
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len >= left && len > 0) {
+      at = { x: a.x + ((b.x - a.x) * left) / len, y: a.y + ((b.y - a.y) * left) / len };
+      break;
+    }
+    left -= len;
+    at = b;
+  }
+  return <circle className="fm-edge-end" data-edge-end={end} cx={at.x} cy={at.y} r={5} />;
+}
 
 function arrowHead(from: Point, tip: Point): string {
   const len = Math.hypot(tip.x - from.x, tip.y - from.y) || 1;

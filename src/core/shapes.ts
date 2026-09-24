@@ -8,7 +8,7 @@
 // a visually different one, and the layout module's edge endpoints would miss the drawn boundary.
 // Importing the shared constants (rather than redeclaring them) keeps the two in lockstep.
 import type { ShapeKind } from './types';
-import { SHAPE_GEOMETRY } from './measure';
+import { roundRadius, SHAPE_GEOMETRY } from './measure';
 
 export interface Box {
   x: number;
@@ -93,7 +93,7 @@ export function decisionShape(box: Box): ShapeGeometry {
 
 export function terminalShape(box: Box): ShapeGeometry {
   const { x, y, width, height } = box;
-  const r = height / 2; // stadium corner radius = H/2 (measure.ts's shape-geometry contract)
+  const r = roundRadius(height); // stadium corner radius = min(H/2, ROUND_MAX) (measure.ts's shape-geometry contract)
   return {
     outline: { tag: 'rect', x: n(x), y: n(y), width: n(width), height: n(height), rx: n(r), ry: n(r) },
     decorations: [],
@@ -172,10 +172,12 @@ export function documentShape(box: Box): ShapeGeometry {
 
 export function delayShape(box: Box): ShapeGeometry {
   const { x, y, width, height } = box;
-  const r = height / 2; // right end is a half circle of radius H/2 (measure.ts's shape-geometry contract)
+  const r = roundRadius(height); // right end rounded with radius min(H/2, ROUND_MAX) (measure.ts's shape-geometry contract)
   const d = [
     `M ${pt(x, y)}`,
     `L ${pt(x + width - r, y)}`,
+    `A ${n(r)} ${n(r)} 0 0 1 ${pt(x + width, y + r)}`,
+    `L ${pt(x + width, y + height - r)}`,
     `A ${n(r)} ${n(r)} 0 0 1 ${pt(x + width - r, y + height)}`,
     `L ${pt(x, y + height)}`,
     'Z',

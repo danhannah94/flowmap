@@ -119,13 +119,19 @@ export async function serve(options: ServeOptions): Promise<ServeHandle> {
     }
     const fullBase: DiagramVersions = { mmd: base.mmd ?? null, config: base.config ?? null, layout: base.layout ?? null };
 
-    const result = await applyPut(dir, file, fullBase, patch);
+    // The watcher holds back its checks of this diagram until the write is recorded, so it never echoes (UI29).
+    watcher.beginWrite(file);
+    let result: Awaited<ReturnType<typeof applyPut>> | undefined;
+    try {
+      result = await applyPut(dir, file, fullBase, patch);
+    } finally {
+      watcher.endWrite(file, result && !result.conflict ? result.snapshot.versions : undefined);
+    }
     if (result.conflict) {
       // "Disk wins": the client's edit is rejected with what's actually on disk.
       sendJson(res, 409, result.snapshot);
       return;
     }
-    watcher.noteWritten(file, result.snapshot.versions);
     sendJson(res, 200, result.snapshot);
   }
 

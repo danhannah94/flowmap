@@ -137,6 +137,17 @@ export async function applyPut(dir: string, mmdFile: string, base: DiagramVersio
     }
   }
 
-  const snapshot = await readDiagram(dir, mmdFile);
-  return { conflict: false, snapshot };
+  // Built from `patch`, not a fresh disk re-read: the conflict check above already proved the pre-write disk state
+  // matched `base`, and the loop above just wrote exactly `patch` (or left a file alone because it already matched).
+  // A second read here would risk picking up a *different*, genuinely external write that lands in the instant
+  // between our last write and that read, and reporting it back to this PUT's caller as if it were this PUT's own
+  // result — which would then have the watcher (see watcher.ts endWrite) silently adopt that external content as
+  // "ours" and never broadcast it.
+  const files: DiagramFiles = { mmd: patch.mmd, config: patch.config, layout: patch.layout };
+  const versions: DiagramVersions = {
+    mmd: files.mmd === null ? null : contentHash(files.mmd),
+    config: files.config === null ? null : contentHash(files.config),
+    layout: files.layout === null ? null : contentHash(files.layout),
+  };
+  return { conflict: false, snapshot: { files, versions } };
 }

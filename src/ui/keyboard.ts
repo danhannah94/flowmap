@@ -42,6 +42,8 @@ export function installKeyboard(store: Store): () => void {
     if (isTyping(e.target)) return;
     const s = store.getState();
     if (s.editing || s.confirm) return;
+    // Any other modal dialog (the lane delete dialog, a feature's own dialog) also holds the keyboard.
+    if (document.querySelector('[aria-modal="true"]')) return;
     // Enter or Space on a focused button presses the button, not a shortcut.
     if ((e.key === 'Enter' || e.key === ' ') && e.target instanceof HTMLElement && e.target.closest('button, a')) return;
     const matching = COMMANDS.filter((cmd) => cmd.keys?.some((k) => matches(e, k)));

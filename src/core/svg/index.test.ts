@@ -35,7 +35,8 @@ function stubNodeSize(label: string, _kind: ShapeKind) {
 vi.mock('../measure', () => ({
   LABEL_FONT: { family: 'Inter', size: 13, lineHeight: 18, weight: 400 },
   // shapes.ts imports this too, to stay in lockstep with textArea()'s geometry model.
-  SHAPE_GEOMETRY: { subprocessBar: 10, databaseRy: 8, ioSkew: 14, documentWave: 6 },
+  SHAPE_GEOMETRY: { subprocessBar: 10, databaseRy: 8, ioSkew: 14, documentWave: 6, roundMax: 28 },
+  roundRadius: (height: number) => Math.min(height / 2, 28),
   textWidth: stubTextWidth,
   wrapLabel: stubWrapLabel,
   textArea: stubTextArea,

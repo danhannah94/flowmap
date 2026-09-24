@@ -49,9 +49,10 @@ describe('writeAtomic', () => {
       }
     })();
 
+    await new Promise((r) => setTimeout(r, 20)); // let the watch loop actually start listening before we write
     const newContent = 'flowchart LR\n  a["Rewritten"]\n'.repeat(1000);
     await writeAtomic(target, newContent);
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 200)); // generous margin under load (unrelated to the watcher's own debounce)
     ac.abort();
     await watchLoop;
 

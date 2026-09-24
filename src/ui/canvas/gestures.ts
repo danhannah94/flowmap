@@ -38,9 +38,14 @@ export type GestureFactory<K extends Hit['kind'] = Hit['kind']> = (
 
 const factories = new Map<Hit['kind'], GestureFactory>();
 
-/** Register (or replace) the gesture that starts on a kind of target. */
-export function registerGesture<K extends Hit['kind']>(kind: K, factory: GestureFactory<K>): void {
+/**
+ * Register (or replace) the gesture that starts on a kind of target. Returns the factory it replaces, so a feature
+ * can wrap an existing gesture (e.g. connect's click path intercepts clicks on blocks, UI15).
+ */
+export function registerGesture<K extends Hit['kind']>(kind: K, factory: GestureFactory<K>): GestureFactory<K> | undefined {
+  const previous = factories.get(kind) as unknown as GestureFactory<K> | undefined;
   factories.set(kind, factory as unknown as GestureFactory);
+  return previous;
 }
 
 export function gestureFor(hit: Hit, e: PointerEvent, ctx: GestureContext): Gesture | null {
@@ -118,7 +123,8 @@ function marquee(ctx: GestureContext, e: PointerEvent): Gesture {
   };
 }
 
-function backgroundGesture(hit: Hit, e: PointerEvent, ctx: GestureContext): Gesture | null {
+/** Pan, click to select a lane or clear, click to place (exported so a wrapping gesture, e.g. lane-header reorder, can fall back to it). */
+export function backgroundGesture(hit: Hit, e: PointerEvent, ctx: GestureContext): Gesture | null {
   const { store } = ctx;
   if (e.shiftKey && e.button === 0) return marquee(ctx, e);
   return panOrClick(ctx, e, () => {

@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { listDiagrams } from './api';
 import { Canvas } from './canvas/Canvas';
 import { Palette } from './chrome/Palette';
-import { ConfirmDialog, ErrorBanner, Notices, SidePanels } from './chrome/Panels';
+import './chrome/evidence'; // evidence and styles (UI24–UI27): inspector, styles panel, orphan deletes
+import { ConfirmDialog, ErrorBanner, Notices, Overlays, SidePanels } from './chrome/Panels';
 import { Logo, ThemeToggle, TopBar } from './chrome/Toolbar';
 import { ZoomControls } from './chrome/ZoomControls';
 import { installKeyboard } from './keyboard';
@@ -86,6 +87,7 @@ function Editor({ file }: { file: string }) {
         <SidePanels />
       </div>
       <ConfirmDialog />
+      <Overlays />
     </div>
   );
 }

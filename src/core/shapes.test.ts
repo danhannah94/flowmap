@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SHAPE_KINDS } from './types';
+import { roundRadius, SHAPE_GEOMETRY } from './measure';
 import { shapeGeometry, type Box } from './shapes';
 
 const box: Box = { x: 10, y: 20, width: 160, height: 60 };
@@ -32,12 +33,17 @@ describe('shapeGeometry', () => {
     }
   });
 
-  it('terminal is a stadium: rect with rx/ry equal to half the shorter side', () => {
-    const { outline } = shapeGeometry('terminal', box);
-    expect(outline.tag).toBe('rect');
-    if (outline.tag !== 'rect') throw new Error('unreachable');
-    expect(outline.rx).toBe(Math.min(box.width, box.height) / 2);
-    expect(outline.ry).toBe(Math.min(box.width, box.height) / 2);
+  it('terminal is a rounded rect with measure.ts\'s roundRadius: a stadium up to two lines, capped for taller boxes', () => {
+    for (const height of [52, 56, 60, 78, 120]) {
+      const { outline } = shapeGeometry('terminal', { ...box, height });
+      expect(outline.tag).toBe('rect');
+      if (outline.tag !== 'rect') throw new Error('unreachable');
+      expect(outline.rx).toBe(roundRadius(height));
+      expect(outline.ry).toBe(roundRadius(height));
+    }
+    // A true stadium at 56 px; capped at ROUND_MAX for a tall (multi-line) box, where the text area assumes it.
+    expect((shapeGeometry('terminal', { ...box, height: 56 }).outline as { rx: number }).rx).toBe(28);
+    expect((shapeGeometry('terminal', { ...box, height: 120 }).outline as { rx: number }).rx).toBe(SHAPE_GEOMETRY.roundMax);
   });
 
   it('subprocess is a rectangle with two vertical bar decorations', () => {
@@ -88,6 +94,21 @@ describe('shapeGeometry', () => {
     if (outline.tag !== 'path') throw new Error('unreachable');
     expect(outline.d).toMatch(/^M 10,20 L /); // starts at the box's top-left, straight left edge
     expect(outline.d).toMatch(/A /); // rounded right cap
+  });
+
+  it('delay rounds its right corners with measure.ts\'s roundRadius (capped for tall boxes)', () => {
+    for (const height of [52, 60, 78, 120]) {
+      const b = { ...box, height };
+      const { outline } = shapeGeometry('delay', b);
+      if (outline.tag !== 'path') throw new Error('unreachable');
+      const r = roundRadius(height);
+      const right = b.x + b.width;
+      // Two corner arcs of radius r, joined by a straight right side from y + r to y + H - r.
+      expect(outline.d).toBe(
+        `M 10,20 L ${right - r},20 A ${r} ${r} 0 0 1 ${right},${20 + r} L ${right},${20 + height - r} `
+          + `A ${r} ${r} 0 0 1 ${right - r},${20 + height} L 10,${20 + height} Z`,
+      );
+    }
   });
 
   it('is pure: same input produces the same output, and does not mutate the box', () => {

@@ -1,0 +1,203 @@
+/* Blocks and lines features (UI7, UI9, UI15–UI17): the shape picker bar, the connect preview and its hint.
+   Colours come from the chrome palette in styles.css (`--accent`, `--panel-glass`, …), so both themes follow. */
+
+/* ---- shape picker: a contextual bar docked at the top of the canvas while one block is selected ------------ */
+
+.fm-picker {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: var(--panel-glass);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  z-index: 6;
+  animation: fm-picker-in 0.14s ease-out;
+}
+
+@keyframes fm-picker-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -4px);
+  }
+}
+
+.fm-picker-shape {
+  width: 38px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.fm-picker-shape:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.fm-picker-shape[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  --icon-fill: var(--accent-soft);
+}
+
+.fm-picker-shape:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.fm-picker-shape:focus-visible,
+.fm-picker-id:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.fm-picker-sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 5px;
+  background: var(--border-strong);
+}
+
+.fm-picker-id {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  max-width: 190px;
+  padding: 0 9px 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: 500 12px/1 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.fm-picker-id:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.fm-picker-id:disabled {
+  cursor: default;
+}
+
+.fm-picker-id-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fm-picker-id svg {
+  flex: none;
+  opacity: 0.7;
+}
+
+/* ---- connect / reconnect preview (screen space, above the canvas, never takes pointer events) -------------- */
+
+.fm-connect-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.fm-connect-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 7 5;
+  animation: fm-march 0.6s linear infinite;
+}
+
+.fm-snapped .fm-connect-line {
+  stroke-dasharray: none;
+  animation: none;
+}
+
+@keyframes fm-march {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+
+.fm-connect-arrow {
+  fill: var(--accent);
+}
+
+.fm-connect-anchor {
+  fill: var(--accent);
+  stroke: var(--canvas-bg, var(--bg));
+  stroke-width: 2;
+}
+
+.fm-connect-target {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
+  stroke-width: 2;
+  animation: fm-target-in 0.12s ease-out;
+}
+
+@keyframes fm-target-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.fm-connect-hint {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--text);
+  background: var(--panel-glass);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  box-shadow: var(--shadow-sm);
+  z-index: 6;
+  pointer-events: none;
+  white-space: nowrap;
+  animation: fm-rise 0.16s ease-out;
+}
+
+.fm-connect-hint-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.fm-connect-hint kbd {
+  font: 500 10.5px/16px Inter, sans-serif;
+  padding: 0 6px;
+  border-radius: 5px;
+  border: 1px solid var(--border-strong);
+  color: var(--muted);
+}

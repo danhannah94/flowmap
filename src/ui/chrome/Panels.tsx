@@ -137,3 +137,19 @@ export function SidePanels() {
     </aside>
   );
 }
+
+/**
+ * Editor-wide overlays that features mount once (dialogs, popovers, floating cards, document-level listeners), in
+ * registration order, after the confirmation dialog. Each component decides for itself when to render anything.
+ */
+export const overlays: { id: string; Component: ComponentType }[] = [];
+
+export function Overlays() {
+  return (
+    <>
+      {overlays.map(({ id, Component }) => (
+        <Component key={id} />
+      ))}
+    </>
+  );
+}

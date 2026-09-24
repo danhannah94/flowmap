@@ -15,6 +15,11 @@ export class DiagramWatcher {
   private readonly subscribers = new Map<string, Set<ServerResponse>>();
   private fsWatcher: FSWatcher | null = null;
   private debounceTimer: NodeJS.Timeout | null = null;
+  /** Diagrams a PUT is writing right now (how many writes), and a counter bumped whenever one starts. A check that
+   *  overlaps a write is deferred until it ends, so a half-done or not-yet-recorded own write never echoes. */
+  private readonly writing = new Map<string, number>();
+  private readonly writeGen = new Map<string, number>();
+  private readonly deferred = new Set<string>();
 
   constructor(dir: string, debounceMs = 50) {
     this.dir = dir;
@@ -48,7 +53,17 @@ export class DiagramWatcher {
   private async checkTracked(): Promise<void> {
     for (const mmdFile of this.trackedFiles()) {
       try {
+        const gen = this.writeGen.get(mmdFile) ?? 0;
+        if (this.writing.has(mmdFile)) {
+          this.deferred.add(mmdFile);
+          continue;
+        }
         const snapshot = await readDiagram(this.dir, mmdFile);
+        if (this.writing.has(mmdFile) || (this.writeGen.get(mmdFile) ?? 0) !== gen) {
+          this.deferred.add(mmdFile); // a write started while reading: check again once it's recorded
+          if (!this.writing.has(mmdFile)) this.scheduleCheck();
+          continue;
+        }
         const prev = this.known.get(mmdFile);
         if (prev && !versionsEqual(prev, snapshot.versions)) {
           this.known.set(mmdFile, snapshot.versions);
@@ -62,10 +77,19 @@ export class DiagramWatcher {
     }
   }
 
-  /** Records the versions the server itself just wrote (a PUT), so the resulting fs event isn't treated as an
-   *  external change. */
-  noteWritten(mmdFile: string, versions: DiagramVersions): void {
-    this.known.set(mmdFile, versions);
+  /** A PUT starts writing a diagram: checks of it wait until `endWrite`. */
+  beginWrite(mmdFile: string): void {
+    this.writing.set(mmdFile, (this.writing.get(mmdFile) ?? 0) + 1);
+    this.writeGen.set(mmdFile, (this.writeGen.get(mmdFile) ?? 0) + 1);
+  }
+
+  /** The PUT is done: record the versions it wrote (none if it wrote nothing), then run any check it held back. */
+  endWrite(mmdFile: string, versions?: DiagramVersions): void {
+    const n = (this.writing.get(mmdFile) ?? 1) - 1;
+    if (n > 0) this.writing.set(mmdFile, n);
+    else this.writing.delete(mmdFile);
+    if (versions) this.known.set(mmdFile, versions);
+    if (n <= 0 && this.deferred.delete(mmdFile)) this.scheduleCheck();
   }
 
   /** Reads a diagram and, the first time it's seen, records its versions as the baseline (no event fires for it). */

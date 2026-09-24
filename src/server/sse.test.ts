@@ -104,6 +104,86 @@ describe('flowmap server: SSE (design.md UI29)', () => {
     capture.stop();
   });
 
+  it('200 rapid PUTs with multi-file changes produce zero "changed" events (own writes never echo)', async () => {
+    await handle.close();
+    handle = await serve({ dir, port: 0, watchDebounceMs: 5 });
+    base = `http://127.0.0.1:${handle.port}`;
+
+    const capture = captureSse(`${base}/api/events?file=purchase-request.mmd`);
+    await sleep(50);
+
+    const getRes = await fetch(`${base}/api/diagram?file=purchase-request.mmd`);
+    let current = (await getRes.json()) as {
+      files: { mmd: string; config: string | null; layout: string | null };
+      versions: Record<string, string | null>;
+    };
+    const originalMmd = current.files.mmd;
+
+    for (let i = 0; i < 200; i++) {
+      // Cycle the config file through create/update/delete and change the layout every time, so every PUT touches
+      // a different mix of the three files (including the temp-write-then-rename path for more than one of them).
+      const configPhase = i % 4;
+      const patch = {
+        mmd: `${originalMmd}\n%% rev ${i}\n`,
+        config: configPhase === 0 ? null : `title: rev-${i}\n`,
+        layout: `{"version":1,"nodes":{"a":{"x":${i},"y":${i}}}}`,
+      };
+      const putRes = await fetch(`${base}/api/diagram?file=purchase-request.mmd`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base: current.versions, files: patch }),
+      });
+      expect(putRes.status).toBe(200);
+      current = (await putRes.json()) as typeof current;
+    }
+
+    // Give the debounced watcher plenty of time to have noticed every write along the way.
+    await sleep(400);
+    expect(capture.events.filter((e) => e.event === 'changed')).toEqual([]);
+    capture.stop();
+  });
+
+  it('a genuinely external write during a burst of PUTs is still reported within 1s', async () => {
+    await handle.close();
+    handle = await serve({ dir, port: 0, watchDebounceMs: 5 });
+    base = `http://127.0.0.1:${handle.port}`;
+
+    const capture = captureSse(`${base}/api/events?file=purchase-request.mmd`);
+    await sleep(50);
+
+    const getRes = await fetch(`${base}/api/diagram?file=purchase-request.mmd`);
+    let current = (await getRes.json()) as {
+      files: { mmd: string; config: string | null; layout: string | null };
+      versions: Record<string, string | null>;
+    };
+    const originalMmd = current.files.mmd;
+
+    const burst = (async () => {
+      for (let i = 0; i < 200; i++) {
+        const patch = { mmd: `${originalMmd}\n%% rev ${i}\n`, config: current.files.config, layout: current.files.layout };
+        const putRes = await fetch(`${base}/api/diagram?file=purchase-request.mmd`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ base: current.versions, files: patch }),
+        });
+        // A conflict means the disk changed under us (the external write below, or the "disk wins" rule) — stop,
+        // just like a real client would once its base is stale.
+        if (putRes.status !== 200) break;
+        current = (await putRes.json()) as typeof current;
+      }
+    })();
+
+    await sleep(30); // let the burst get going before the external edit lands
+    const configPath = join(dir, 'purchase-request.flow.yaml');
+    const configText = await readFile(configPath, 'utf8');
+    await writeFile(configPath, `${configText}\n# written externally mid-burst\n`, 'utf8');
+
+    await waitFor(() => capture.events.some((e) => e.event === 'changed' && e.data.includes('written externally mid-burst')), 1000);
+
+    await burst;
+    capture.stop();
+  });
+
   it('close() ends open SSE connections', async () => {
     const capture = captureSse(`${base}/api/events?file=purchase-request.mmd`);
     await sleep(50);
