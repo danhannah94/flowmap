@@ -1,0 +1,331 @@
+/* Context menus (UI40): a compact native-style menu. Rows highlight with the accent like a system menu; sub-controls
+   (shape, colours, font size) open inline under their row. */
+
+.fm-cm {
+  position: fixed;
+  z-index: 70;
+  min-width: 212px;
+  max-width: 320px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: 5px;
+  background: var(--cm-bg);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  backdrop-filter: blur(18px) saturate(1.4);
+  border: 1px solid var(--cm-border);
+  border-radius: 10px;
+  box-shadow: var(--cm-shadow);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.2;
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+  animation: fm-cm-in 0.08s ease-out;
+  transform-origin: top left;
+  --cm-bg: rgba(20, 29, 48, 0.94);
+  --cm-border: rgba(148, 163, 184, 0.22);
+  --cm-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --cm-hi: var(--accent-strong);
+  --cm-hi-text: #ffffff;
+}
+
+:root[data-theme='light'] .fm-cm {
+  --cm-bg: rgba(255, 255, 255, 0.95);
+  --cm-border: rgba(15, 23, 42, 0.12);
+  --cm-shadow: 0 12px 32px rgba(15, 23, 42, 0.16), 0 2px 6px rgba(15, 23, 42, 0.08);
+  --cm-hi: #4f46e5;
+}
+
+@keyframes fm-cm-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.fm-cm-header {
+  padding: 5px 9px 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--faint);
+}
+
+.fm-cm-section-title {
+  padding: 5px 9px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--faint);
+}
+
+.fm-cm-sep {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--cm-border);
+}
+
+.fm-cm-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 28px;
+  padding: 0 9px 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.fm-cm-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+
+.fm-cm-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fm-cm-hint {
+  padding-left: 14px;
+  font-size: 12px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.fm-cm-check,
+.fm-cm-chevron {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.fm-cm-chevron {
+  transition: transform 0.12s ease;
+}
+
+.fm-cm-open .fm-cm-chevron {
+  transform: rotate(90deg);
+}
+
+.fm-cm-item:hover,
+.fm-cm-item:focus-visible,
+.fm-cm-item:focus {
+  background: var(--cm-hi);
+  color: var(--cm-hi-text);
+  outline: none;
+}
+
+.fm-cm-item:hover :is(.fm-cm-icon, .fm-cm-hint, .fm-cm-check, .fm-cm-chevron),
+.fm-cm-item:focus :is(.fm-cm-icon, .fm-cm-hint, .fm-cm-check, .fm-cm-chevron) {
+  color: inherit;
+}
+
+.fm-cm-item.fm-cm-open:not(:hover):not(:focus) {
+  background: var(--hover);
+}
+
+.fm-cm-danger {
+  color: var(--danger);
+}
+
+.fm-cm-danger .fm-cm-icon {
+  color: var(--danger);
+}
+
+.fm-cm-danger:hover,
+.fm-cm-danger:focus {
+  background: var(--danger);
+  color: #ffffff;
+}
+
+.fm-cm-item[aria-disabled='true'],
+.fm-cm-item[aria-disabled='true']:hover {
+  background: transparent;
+  color: var(--faint);
+}
+
+.fm-cm-item[aria-disabled='true'] .fm-cm-icon {
+  color: var(--faint);
+  opacity: 0.6;
+}
+
+/* ---- tiles: the canvas's "Add block here" shapes ---------------------------------------------------------- */
+
+.fm-cm-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  padding: 0 1px 1px;
+}
+
+.fm-cm-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 7px 2px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 10.5px;
+  cursor: default;
+}
+
+.fm-cm-tile-icon {
+  display: grid;
+  place-items: center;
+  height: 20px;
+  color: var(--text);
+}
+
+.fm-cm-tile-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fm-cm-tile:hover,
+.fm-cm-tile:focus {
+  background: var(--accent-soft);
+  color: var(--text);
+  outline: none;
+}
+
+.fm-cm-tile:focus-visible {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.fm-cm-tile:hover .fm-cm-tile-icon,
+.fm-cm-tile:focus .fm-cm-tile-icon {
+  color: var(--accent);
+}
+
+.fm-cm-tile[aria-disabled='true'] {
+  opacity: 0.45;
+  background: transparent;
+}
+
+/* ---- inline sub-controls ------------------------------------------------------------------------------------ */
+
+.fm-cm-control {
+  margin: 2px 0 4px;
+  padding: 6px 6px 4px;
+  border-radius: 7px;
+  background: var(--hover);
+}
+
+.fm-cm-shapes {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+}
+
+.fm-cm-shape {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 5px 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 10px;
+  cursor: default;
+}
+
+.fm-cm-shape .fm-shape-icon {
+  color: var(--text);
+}
+
+.fm-cm-shape-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fm-cm-shape:hover,
+.fm-cm-shape:focus-visible {
+  background: var(--panel-raised);
+  color: var(--text);
+  outline: none;
+}
+
+.fm-cm-shape[aria-checked='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.fm-cm-colors {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 262px;
+}
+
+.fm-cm-colors .fm-ev-prop {
+  grid-template-columns: 58px minmax(0, 1fr);
+}
+
+.fm-cm-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 1px 1px 3px;
+}
+
+.fm-cm-swatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--sw-light) 0 50%, var(--sw-dark) 50% 100%);
+  cursor: default;
+}
+
+.fm-cm-swatch:hover,
+.fm-cm-swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.fm-cm-number {
+  display: grid;
+  grid-template-columns: 1fr 76px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 2px 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.fm-cm-number-input {
+  width: 100%;
+}

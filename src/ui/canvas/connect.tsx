@@ -1,26 +1,34 @@
-// Lines on the canvas (design.md §8.2 UI15–UI17):
-// - UI15 Connect: drag from a block's `data-handle="source"` onto another block (dropping anywhere on it), or the
-//   click path: select the source, press `connect`, click the target. Dragging from a `data-handle="target"` works the
-//   other way round (the block you drop on becomes the source). A live preview line follows the pointer.
-// - UI16 Reconnect: with an edge selected, drag its `data-edge-end="source|target"` onto another block.
+// Lines on the canvas (design.md §8.2 UI15–UI17, UI38):
+// - UI15 / UI38 Connect: every block has four connection handles, `data-handle="source"` with `data-port` (ports.tsx).
+//   Dragging one starts a line that leaves the block from that side (`source_side` is written). Over another block, its
+//   four connection points (`data-port-target`) show and the nearest is highlighted; dropping on one writes
+//   `target_side`, dropping elsewhere on the block leaves that side to the layout. Or the click path: select the
+//   source, press connect, click the target (no sides).
+// - UI16 / UI38 Reconnect: with an edge selected, drag its `data-edge-end="source|target"` onto a block. On a connection
+//   point that end's side is written; on another point of the block it is already attached to, only the side changes.
 // - UI17 Edge label: double-click an edge (or press Enter with one selected) to edit its label in `label-editor`.
 //
-// Every edit is one core operation through `store.apply` (one undo step). The preview is drawn in an overlay above the
-// canvas in screen space, so its stroke stays crisp at any zoom; it never takes pointer events.
+// The preview is drawn orthogonally, bending the way the final line will (lineGeometry.ts): exactly L11 when a manual
+// line keeps its bend points, else the router's conventions (leave and arrive square to the sides). It is drawn in an
+// overlay above the canvas in screen space, so its stroke stays crisp at any zoom; it never takes pointer events.
+// Every edit is one core operation through `store.apply` (one undo step).
 import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
+import { nodePort } from '../../core/layout';
 import { edgeLabelSize } from '../../core/measure';
 import { connect, reconnect, setEdgeLabel } from '../../core/ops';
-import type { LayoutResult } from '../../core/types';
+import type { LayoutResult, Side } from '../../core/types';
 import { overlays } from '../chrome/Panels';
 import { editable } from '../commands/types';
 import { shallow, useStore, useStoreState } from '../store/hooks';
 import type { State, Store } from '../store/store';
-import { edgePoints, type LayoutNode } from './geometry';
+import { edgePoints, roundedPath, type LayoutNode } from './geometry';
 import {
   hitTest, registerDoubleClick, registerGesture, type Gesture, type GestureContext, type GestureFactory,
 } from './gestures';
-import { toScreen, toWorld, type Point, type Rect } from './viewport';
+import { connectorPath, facingSide, lineModel, manualPath, nearestPort, PORT_SNAP_PX, portSnapRadius, type XY } from './lineGeometry';
+import { connectTarget } from './ports';
+import { toScreen, toWorld, type Point } from './viewport';
 import '../blocks.css';
 
 const DRAG_THRESHOLD = 3;
@@ -51,14 +59,12 @@ function armedSource(s: State): string | null {
 // Live preview (module state: it changes on every pointer move and nothing else needs it).
 
 interface Preview {
-  /** The fixed end, in world coordinates. */
-  from: Point;
-  /** Which way the line leaves `from` (unit vector). */
-  fromDir: Point;
-  /** The moving end (the pointer, or snapped onto a target block), in world coordinates. */
-  to: Point;
-  /** Which end gets the arrowhead: the moving one (a new edge's target) or the fixed one. */
-  arrow: 'to' | 'from';
+  /** The line as it would be drawn, from its source end to its target end (world coordinates). */
+  points: XY[];
+  /** The end that stays put (drawn as a dot). */
+  anchor: XY;
+  /** The moving end is on a block (drawn solid) rather than following the pointer (dashed). */
+  snapped: boolean;
   /** The block that would be connected on release (highlighted). */
   target: string | null;
   /** Reconnect: the edge being moved, drawn faded until the drop. */
@@ -71,6 +77,7 @@ const previewListeners = new Set<() => void>();
 function setPreview(p: Preview | null): void {
   preview = p;
   for (const fn of previewListeners) fn();
+  if (!p) connectTarget.set(null);
 }
 
 function subscribePreview(fn: () => void): () => void {
@@ -94,67 +101,57 @@ export function nodeAt(layout: LayoutResult, p: Point, tolerance = DROP_TOLERANC
   return null;
 }
 
-/** Where the line from `from` towards the box's centre meets the box's border. */
-function boxEntry(box: Rect, from: Point): Point {
-  const c = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-  const dx = from.x - c.x;
-  const dy = from.y - c.y;
-  if (dx === 0 && dy === 0) return c;
-  const t = Math.min(dx === 0 ? Infinity : box.width / 2 / Math.abs(dx), dy === 0 ? Infinity : box.height / 2 / Math.abs(dy));
-  if (t >= 1) return c; // `from` is inside the box
-  return { x: c.x + dx * t, y: c.y + dy * t };
+/**
+ * Where a dragged line end would land (UI38): the block under the pointer (a connection point just outside its box
+ * counts), its connection point nearest the pointer, and whether the pointer is on it (within PORT_SNAP_PX on screen).
+ */
+function dropAt(layout: LayoutResult, p: Point, zoom: number, exclude: string | null) {
+  const over = nodeAt(layout, p, Math.max(DROP_TOLERANCE, PORT_SNAP_PX / zoom));
+  if (!over || over.id === exclude) return null;
+  const port = nearestPort(over, p, portSnapRadius(over, zoom));
+  return { node: over, port };
 }
 
-function unit(dx: number, dy: number): Point {
-  const len = Math.hypot(dx, dy) || 1;
-  return { x: dx / len, y: dy / len };
-}
-
-/** A handle's position on its block, and the direction a line leaves it (§8.3 handles: flow-axis sides). */
-function handleAnchor(node: LayoutNode, handle: 'source' | 'target', direction: LayoutResult['direction']): { at: Point; dir: Point } {
-  if (direction === 'TB') {
-    return handle === 'source'
-      ? { at: { x: node.x + node.width / 2, y: node.y + node.height }, dir: { x: 0, y: 1 } }
-      : { at: { x: node.x + node.width / 2, y: node.y }, dir: { x: 0, y: -1 } };
-  }
-  return handle === 'source'
-    ? { at: { x: node.x + node.width, y: node.y + node.height / 2 }, dir: { x: 1, y: 0 } }
-    : { at: { x: node.x, y: node.y + node.height / 2 }, dir: { x: -1, y: 0 } };
-}
-
-/** The moving end: snapped onto a valid target block, else the pointer. */
-function movingEnd(layout: LayoutResult, from: Point, pointer: Point, exclude: string | null): { to: Point; target: string | null } {
-  const over = nodeAt(layout, pointer);
-  if (!over || over.id === exclude) return { to: pointer, target: null };
-  return { to: boxEntry(over, from), target: over.id };
-}
+const xy = (p: Point): XY => [p.x, p.y];
 
 // ---------------------------------------------------------------------------------------------------------------
-// UI15: connect
+// UI15 / UI38: connect
 
-function finishConnect(store: Store, source: string, target: string): void {
+function finishConnect(store: Store, source: string, target: string, sides?: { source_side?: Side; target_side?: Side }): void {
   disarmConnect(store);
-  const r = store.apply(connect, source, target);
+  const r = store.apply(connect, source, target, sides ?? {});
   if (r.ok) store.select({ edges: [r.edgeId] });
 }
 
 /** A gesture that does nothing (so the canvas doesn't fall back to another gesture for this press). */
 const inert: Gesture = { move() {}, up() {}, cancel() {} };
 
-/** Drag from a handle to a block. From `source`: this block → the drop target. From `target`: the drop target → this. */
-function handleDrag(store: Store, ctx: GestureContext, e: PointerEvent, id: string, handle: 'source' | 'target'): Gesture | null {
+/** Drag from a block's connection handle on `side` to another block: this block → the drop target (UI38). */
+function handleDrag(store: Store, ctx: GestureContext, e: PointerEvent, id: string, side: Side): Gesture | null {
   const layout = store.layout;
   const node = layout?.nodes.find((n) => n.id === id);
   if (!layout || !node) return null;
-  const anchor = handleAnchor(node, handle, layout.direction);
+  const a = nodePort(node, side) as XY;
   const startLocal = ctx.local(e);
   let active = false;
+  const zoom = () => store.getState().viewport.zoom;
   return {
     move(ev) {
       if (!active && !moved(startLocal, ctx.local(ev))) return;
       active = true;
-      const { to, target } = movingEnd(layout, anchor.at, ctx.world(ev), id);
-      setPreview({ from: anchor.at, fromDir: anchor.dir, to, arrow: handle === 'source' ? 'to' : 'from', target, edgeId: null });
+      const p = ctx.world(ev);
+      const drop = dropAt(layout, p, zoom(), id);
+      if (!drop) {
+        connectTarget.set(null);
+        setPreview({ points: connectorPath(a, side, xy(p), null), anchor: a, snapped: false, target: null, edgeId: null });
+        return;
+      }
+      const { node: over, port } = drop;
+      // On a connection point: that side. Elsewhere on the block the layout chooses; show the side facing the line.
+      const sb = port.on ? port.side : facingSide(layout.direction, over, a);
+      const b = nodePort(over, sb) as XY;
+      connectTarget.set({ node: over.id, nearest: port.side, active: port.on });
+      setPreview({ points: connectorPath(a, side, b, sb), anchor: a, snapped: true, target: over.id, edgeId: null });
     },
     up(ev) {
       setPreview(null);
@@ -163,10 +160,9 @@ function handleDrag(store: Store, ctx: GestureContext, e: PointerEvent, id: stri
         store.select({ nodes: [id] }, ev.shiftKey ? 'toggle' : 'replace');
         return;
       }
-      const over = nodeAt(store.layout ?? layout, ctx.world(ev));
-      if (!over || over.id === id) return; // dropped on nothing, or back on itself: cancelled
-      if (handle === 'source') finishConnect(store, id, over.id);
-      else finishConnect(store, over.id, id);
+      const drop = dropAt(store.layout ?? layout, ctx.world(ev), zoom(), id);
+      if (!drop) return; // dropped on nothing, or back on its own block: cancelled
+      finishConnect(store, id, drop.node.id, drop.port.on ? { source_side: side, target_side: drop.port.side } : { source_side: side });
     },
     cancel() {
       setPreview(null);
@@ -174,13 +170,18 @@ function handleDrag(store: Store, ctx: GestureContext, e: PointerEvent, id: stri
   };
 }
 
+const SIDE_NAMES: readonly string[] = ['top', 'right', 'bottom', 'left'];
+
 registerGesture('handle', (hit, e, ctx) => {
   const { store } = ctx;
   const s = store.getState();
   // Placing a shape, a read-only diagram, or Shift (selection): the handle is just part of its block.
   if (s.tool.kind === 'place' || store.readOnlyReason() || e.shiftKey) return null;
   if (connectArmed(s)) return clickPathGesture(ctx, e, hit.id);
-  return handleDrag(store, ctx, e, hit.id, hit.handle);
+  const el = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-port]') : null;
+  const side = el?.dataset.port;
+  if (!side || !SIDE_NAMES.includes(side)) return null;
+  return handleDrag(store, ctx, e, hit.id, side as Side);
 });
 
 /** The click path: with connect armed, a click on a block picks the source (if none) or connects to it. */
@@ -202,7 +203,7 @@ function clickPathGesture(ctx: GestureContext, e: PointerEvent, id: string): Ges
         disarmConnect(store); // clicking the source again cancels
         return;
       }
-      finishConnect(store, source, id);
+      finishConnect(store, source, id); // UI15: the click path writes no sides
     },
   };
 }
@@ -214,30 +215,64 @@ const nodeGesture: GestureFactory<'node'> | undefined = registerGesture('node', 
 });
 
 // ---------------------------------------------------------------------------------------------------------------
-// UI16: reconnect
+// UI16 / UI38: reconnect
 
 registerGesture('edge-end', (hit, e, ctx) => {
   const { store } = ctx;
-  const layout = store.layout;
+  const doc = store.getState().shown?.doc;
+  const output = doc?.layout;
+  const layout = output?.result;
   const edge = layout?.edges.find((x) => x.id === hit.id);
-  if (!layout || !edge) return null;
+  if (!doc || !output || !layout || !edge || edge.points.length < 2) return null;
+  const model = lineModel(output, doc.edgeEntries[edge.id], edge.id);
   const byId = (id: string) => layout.nodes.find((n) => n.id === id);
-  const pts = edgePoints(edge, byId(edge.source), byId(edge.target));
-  if (pts.length < 2) return null;
-  const n = pts.length;
-  // The end that stays put, and the direction the line leaves it (along its first segment).
-  const fixed = hit.end === 'target' ? pts[0]! : pts[n - 1]!;
-  const next = hit.end === 'target' ? pts[1]! : pts[n - 2]!;
-  const fromDir = unit(next.x - fixed.x, next.y - fixed.y);
+  const end = hit.end;
+  const other = end === 'target' ? 'source' : 'target';
+  const fixedNode = byId(edge[other]);
+  if (!fixedNode) return null;
+  // The end that stays put, at the port of the side it uses.
+  const fixedSide: Side = other === 'source' ? edge.source_side : edge.target_side;
+  const fixed = nodePort(fixedNode, fixedSide) as XY;
   const startLocal = ctx.local(e);
   const blocked = store.readOnlyReason();
+  const zoom = () => store.getState().viewport.zoom;
   let active = false;
+
+  /** The line as it would be with the moving end on `over`, at side `side` (null: elsewhere on the block). */
+  const pathTo = (over: LayoutNode, side: Side | null): XY[] => {
+    if (model?.manual && over.id === edge[end]) {
+      // Same block, a manual line: only this end's side changes and the bend points stay, so this is exactly L11.
+      const bends = model.bends;
+      const near = end === 'source' ? bends[0]! : bends[bends.length - 1]!;
+      const s = side ?? facingSide(layout.direction, over, near);
+      const p = nodePort(over, s) as XY;
+      return end === 'source'
+        ? manualPath(p, s, bends, fixed, fixedSide, layout.direction)
+        : manualPath(fixed, fixedSide, bends, p, s, layout.direction);
+    }
+    // Otherwise the points go (another block) or the line is automatic: routed by the layout.
+    const s = side ?? facingSide(layout.direction, over, fixed);
+    const p = nodePort(over, s) as XY;
+    return end === 'target' ? connectorPath(fixed, fixedSide, p, s) : connectorPath(p, s, fixed, fixedSide);
+  };
+
   return {
     move(ev) {
       if (blocked || (!active && !moved(startLocal, ctx.local(ev)))) return;
       active = true;
-      const { to, target } = movingEnd(layout, fixed, ctx.world(ev), null);
-      setPreview({ from: fixed, fromDir, to, arrow: hit.end === 'target' ? 'to' : 'from', target, edgeId: edge.id });
+      const p = ctx.world(ev);
+      const drop = dropAt(layout, p, zoom(), null);
+      if (!drop) {
+        connectTarget.set(null);
+        const free = connectorPath(fixed, fixedSide, xy(p), null);
+        setPreview({ points: end === 'target' ? free : [...free].reverse(), anchor: fixed, snapped: false, target: null, edgeId: edge.id });
+        return;
+      }
+      connectTarget.set({ node: drop.node.id, nearest: drop.port.side, active: drop.port.on });
+      setPreview({
+        points: pathTo(drop.node, drop.port.on ? drop.port.side : null),
+        anchor: fixed, snapped: true, target: drop.node.id, edgeId: edge.id,
+      });
     },
     up(ev) {
       setPreview(null);
@@ -245,9 +280,10 @@ registerGesture('edge-end', (hit, e, ctx) => {
         store.select({ edges: [hit.id] }, ev.shiftKey ? 'toggle' : 'replace');
         return;
       }
-      const over = nodeAt(store.layout ?? layout, ctx.world(ev));
-      if (!over || over.id === edge[hit.end]) return; // nowhere, or where it already was: snaps back
-      const r = store.apply(reconnect, edge.id, hit.end, over.id);
+      const drop = dropAt(store.layout ?? layout, ctx.world(ev), zoom(), null);
+      if (!drop) return; // nowhere: snaps back
+      const side = drop.port.on ? drop.port.side : null;
+      const r = store.apply(reconnect, edge.id, end, drop.node.id, side);
       if (r.ok) store.select({ edges: [r.edgeId] });
     },
     cancel() {
@@ -410,10 +446,19 @@ export function ConnectOverlay() {
   if (!shown && armed && layout && pointer) {
     const src = source ? layout.nodes.find((n) => n.id === source) : undefined;
     if (src) {
-      const a = handleAnchor(src, 'source', layout.direction);
-      const { to, target } = movingEnd(layout, a.at, pointer, src.id);
-      shown = { from: a.at, fromDir: a.dir, to, arrow: 'to', target, edgeId: null };
-      hover = target;
+      // The click path writes no sides: preview from the side facing the pointer (or the block under it).
+      const over = nodeAt(layout, pointer);
+      const target = over && over.id !== src.id ? over : null;
+      const toward: XY = target ? [target.x + target.width / 2, target.y + target.height / 2] : [pointer.x, pointer.y];
+      const sa = facingSide(layout.direction, src, toward);
+      const a = nodePort(src, sa) as XY;
+      let points: XY[];
+      if (target) {
+        const sb = facingSide(layout.direction, target, a);
+        points = connectorPath(a, sa, nodePort(target, sb) as XY, sb);
+      } else points = connectorPath(a, sa, [pointer.x, pointer.y], null);
+      shown = { points, anchor: a, snapped: !!target, target: target?.id ?? null, edgeId: null };
+      hover = target?.id ?? null;
     } else {
       hover = nodeAt(layout, pointer)?.id ?? null; // picking the source
     }
@@ -423,7 +468,8 @@ export function ConnectOverlay() {
   const styles: string[] = [];
   if (drag || armed) styles.push('.fm-canvas, .fm-canvas * { cursor: crosshair !important; }');
   if (drag?.edgeId) styles.push(`.fm-edge[data-edge-id=${cssString(drag.edgeId)}] { opacity: 0.18; }`);
-  if (armed && source) styles.push(`.fm-node[data-node-id=${cssString(source)}] .fm-handle-source { opacity: 1; }`);
+  // While a line is dragged the connection handles step aside for the target's connection points (ports.tsx).
+  if (drag) styles.push('.fm-port { visibility: hidden !important; opacity: 0 !important; transition: none !important; }');
 
   if (!wrap) return null;
   return createPortal(
@@ -464,30 +510,26 @@ function TargetHalo({ node, viewport }: { node: LayoutNode; viewport: { x: numbe
   );
 }
 
+/** The preview line: orthogonal, with rounded corners like the drawn lines, dashed until it is on a block. */
 function PreviewLine({ p, viewport }: { p: Preview; viewport: { x: number; y: number; zoom: number } }) {
-  const a = toScreen(viewport, p.from);
-  const b = toScreen(viewport, p.to);
-  const dist = Math.hypot(b.x - a.x, b.y - a.y);
-  // Leave the anchor along its direction in proportion to how far ahead the pointer is, so a target behind the
-  // anchor gets a gentle curve instead of a hook.
-  const ahead = (b.x - a.x) * p.fromDir.x + (b.y - a.y) * p.fromDir.y;
-  const k = Math.max(14, Math.min(90, ahead * 0.5, dist * 0.45));
-  const c1 = { x: a.x + p.fromDir.x * k, y: a.y + p.fromDir.y * k };
-  const c2 = { x: b.x + (c1.x - b.x) * 0.3, y: b.y + (c1.y - b.y) * 0.3 };
-  const f = (n: number) => Math.round(n * 10) / 10;
-  const d = `M${f(a.x)},${f(a.y)} C${f(c1.x)},${f(c1.y)} ${f(c2.x)},${f(c2.y)} ${f(b.x)},${f(b.y)}`;
-  const head = p.arrow === 'to' ? arrow(c2, b) : arrow(c1, a);
+  const pts = p.points.map((q) => toScreen(viewport, { x: q[0], y: q[1] }));
+  if (pts.length < 2) return null;
+  const anchor = toScreen(viewport, { x: p.anchor[0], y: p.anchor[1] });
+  const tip = pts[pts.length - 1]!;
+  const from = pts[pts.length - 2]!;
+  const dist = Math.hypot(tip.x - from.x, tip.y - from.y);
   return (
-    <g className={`fm-connect-preview${p.target ? ' fm-snapped' : ''}`}>
-      <path className="fm-connect-line" d={d} />
-      <circle className="fm-connect-anchor" cx={p.arrow === 'to' ? a.x : b.x} cy={p.arrow === 'to' ? a.y : b.y} r={4} />
-      {dist > 6 ? <path className="fm-connect-arrow" d={head} /> : null}
+    <g className={`fm-connect-preview${p.snapped ? ' fm-snapped' : ''}`}>
+      <path className="fm-connect-line" d={roundedPath(pts, 8)} />
+      <circle className="fm-connect-anchor" cx={anchor.x} cy={anchor.y} r={4} />
+      {dist > 6 ? <path className="fm-connect-arrow" d={arrow(from, tip)} /> : null}
     </g>
   );
 }
 
 function arrow(from: Point, tip: Point): string {
-  const u = unit(tip.x - from.x, tip.y - from.y);
+  const len0 = Math.hypot(tip.x - from.x, tip.y - from.y) || 1;
+  const u = { x: (tip.x - from.x) / len0, y: (tip.y - from.y) / len0 };
   const len = 10;
   const w = 5;
   const bx = tip.x - u.x * len;

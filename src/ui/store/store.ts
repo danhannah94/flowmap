@@ -14,6 +14,7 @@ import type { LayoutResult, ShapeKind } from '../../core/types';
 import { fetchDiagram, putDiagram, sameVersions, subscribeChanges, type Snapshot, type Versions } from '../api';
 import { derive, originMove, sameFiles, withHints, type Derived } from './derive';
 import { fitViewport, zoomAround, type Rect, type Viewport } from '../canvas/viewport';
+import { notesRowBottom, withAnnotations } from '../notes/geometry';
 
 export type ThemeName = 'light' | 'dark';
 export type SaveStatus = 'saved' | 'saving' | 'error';
@@ -23,7 +24,12 @@ export interface Selection {
   edges: readonly string[];
   /** A selected lane (UI6: click a lane's empty area, then a palette shape). Exclusive with nodes and edges. */
   lane: string | null;
+  /** v1.1 (UI10): a selected note or the title, always on its own (exclusive with everything above). */
+  annotation?: Annotation | null;
 }
+
+/** A note or the title (UI41, UI42): canvas text that isn't part of the flow. */
+export type Annotation = { kind: 'note'; id: string } | { kind: 'title' };
 
 export const EMPTY_SELECTION: Selection = Object.freeze({ nodes: [], edges: [], lane: null }) as Selection;
 
@@ -424,7 +430,7 @@ export class Store {
 
   select(sel: Partial<Selection>, mode: 'replace' | 'toggle' = 'replace'): void {
     if (mode === 'replace') {
-      this.set({ selection: { nodes: sel.nodes ?? [], edges: sel.edges ?? [], lane: sel.lane ?? null } });
+      this.set({ selection: { nodes: sel.nodes ?? [], edges: sel.edges ?? [], lane: sel.lane ?? null, annotation: sel.annotation ?? null } });
       return;
     }
     const cur = this.state.selection;
@@ -441,7 +447,7 @@ export class Store {
 
   clearSelection(): void {
     const s = this.state.selection;
-    if (s.nodes.length || s.edges.length || s.lane) this.set({ selection: EMPTY_SELECTION });
+    if (s.nodes.length || s.edges.length || s.lane || s.annotation) this.set({ selection: EMPTY_SELECTION });
   }
 
   selectAll(): void {
@@ -627,10 +633,18 @@ function pruneSelection(sel: Selection, layout: LayoutResult | null): Selection 
     nodes: sel.nodes.filter((id) => nodes.has(id)),
     edges: sel.edges.filter((id) => edges.has(id)),
     lane: sel.lane && lanes.has(sel.lane) ? sel.lane : null,
+    annotation: annotationExists(sel.annotation, layout) ? sel.annotation : null,
   };
   return next.nodes.length === sel.nodes.length && next.edges.length === sel.edges.length && next.lane === sel.lane
+    && next.annotation === (sel.annotation ?? null)
     ? sel
     : next;
+}
+
+/** Is a selected note still there, or the title still shown? */
+function annotationExists(a: Annotation | null | undefined, layout: LayoutResult): a is Annotation {
+  if (!a) return false;
+  return a.kind === 'title' ? !!layout.title : !!layout.notes?.some((n) => n.id === a.id);
 }
 
 /** Room the floating shape palette takes at the canvas's left edge (fit keeps the diagram clear of it). */
@@ -650,6 +664,9 @@ function contentBounds(shown: Derived | null): Rect | null {
   const layout = shown?.layout;
   if (!layout) return null;
   const legend = shown!.doc.legend.length;
-  const bottom = layout.height + (legend ? LEGEND_GAP + legendRows(legend, layout.width) * 30 : 0);
-  return { x: 0, y: -TITLE_BAND, width: Math.max(layout.width, 320), height: bottom + TITLE_BAND };
+  // The legend sits below the diagram and the default row of notes (as the canvas draws it, Decorations.tsx).
+  const below = Math.max(layout.height, notesRowBottom(shown));
+  const bottom = below + (legend ? LEGEND_GAP + legendRows(legend, layout.width) * 30 : 0);
+  // v1.1: notes and the title may be anywhere, including left of or above everything (UI41–UI43).
+  return withAnnotations({ x: 0, y: -TITLE_BAND, width: Math.max(layout.width, 320), height: bottom + TITLE_BAND }, layout);
 }

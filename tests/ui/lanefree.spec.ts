@@ -203,7 +203,7 @@ test('A4b: dragging a block in a lane-free diagram pins it where dropped, still 
   await open(page, d);
   const before = await attrs(node(page, 'reorder'));
   const t = await viewTransform(page, 'reorder');
-  await dragBy(page, node(page, 'reorder'), 0, 140 * t.z);
+  await dragBy(page, node(page, 'reorder'), 0, 140 * t.z, { alt: true });
   const files = await onDisk(d, (f) => !!pins(f.layout).reorder);
   expect(declaredLane(files.mmd, 'reorder')).toBe('_unassigned');
   await saved(page);
@@ -229,6 +229,7 @@ test('A4c: a block dropped below the last lane moves to Unassigned, pinned at th
   const from = t.toScreen({ x: a2.x + a2.width / 2, y: a2.y + a2.height / 2 });
   const to = t.toScreen(dropWorld);
   expect(inside(to, await canvasBox(page))).toBe(true);
+  await page.keyboard.down('Alt'); // exactly where dropped: no snapping (UI39)
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   for (let i = 1; i <= 8; i++) await page.mouse.move(from.x + ((to.x - from.x) * i) / 8, from.y + ((to.y - from.y) * i) / 8);
@@ -236,6 +237,7 @@ test('A4c: a block dropped below the last lane moves to Unassigned, pinned at th
   await expect(page.locator('[data-drop-preview="_unassigned"]')).toBeVisible();
   await expect(page.locator('[data-drop-target="true"]')).toHaveCount(0);
   await page.mouse.up();
+  await page.keyboard.up('Alt');
   await expect(page.locator('[data-drop-preview]')).toHaveCount(0);
   const files = await onDisk(d, (f) => declaredLane(f.mmd, 'a2') === '_unassigned');
   expect(declaredLane(files.mmd, 'a2')).toBe('_unassigned');
@@ -266,7 +268,7 @@ test('v1.1: a block dropped beyond the lanes along the flow stays in the lane un
   const to = t.toScreen(dropWorld);
   expect(inside(to, await canvasBox(page))).toBe(true);
   const from = t.toScreen({ x: b1.x + b1.width / 2, y: b1.y + b1.height / 2 });
-  await dragFromTo(page, from, to);
+  await dragFromTo(page, from, to, { alt: true });
   const files = await onDisk(d, (f) => !!pins(f.layout).b1);
   expect(declaredLane(files.mmd, 'b1')).toBe('beta');
   await saved(page);
@@ -290,12 +292,14 @@ test('A4c: with Unassigned showing, dropping outside the lanes highlights it and
   const from = t.toScreen({ x: a1.x + a1.width / 2, y: a1.y + a1.height / 2 });
   const to = t.toScreen(dropWorld);
   expect(inside(to, await canvasBox(page))).toBe(true);
+  await page.keyboard.down('Alt'); // exactly where dropped: no snapping (UI39)
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   for (let i = 1; i <= 8; i++) await page.mouse.move(from.x + ((to.x - from.x) * i) / 8, from.y + ((to.y - from.y) * i) / 8);
   await expect(lane(page, '_unassigned')).toHaveAttribute('data-drop-target', 'true');
   await expect(page.locator('[data-drop-target="true"]')).toHaveCount(1);
   await page.mouse.up();
+  await page.keyboard.up('Alt');
   const files = await onDisk(d, (f) => declaredLane(f.mmd, 'a1') === '_unassigned');
   await saved(page);
   const moved = await attrs(node(page, 'a1'));
@@ -325,7 +329,7 @@ test('A4c: a multi-block drag applies the rule per block: outside every lane to 
   const from = t.toScreen({ x: a1.x + a1.width / 2, y: a1.y + a1.height / 2 });
   const to = t.toScreen({ x: a1.x + a1.width / 2, y: a1.y + a1.height / 2 + dy });
   expect(inside(t.toScreen({ x: b2.x, y: b2.y + b2.height + dy }), await canvasBox(page))).toBe(true);
-  await dragFromTo(page, from, to);
+  await dragFromTo(page, from, to, { alt: true });
   const files = await onDisk(d, (f) => declaredLane(f.mmd, 'b2') === '_unassigned' && declaredLane(f.mmd, 'a1') === 'beta');
   expect(declaredLane(files.mmd, 'a1')).toBe('beta');
   expect(declaredLane(files.mmd, 'b2')).toBe('_unassigned');

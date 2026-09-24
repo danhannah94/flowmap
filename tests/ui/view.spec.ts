@@ -37,8 +37,9 @@ test('renders title, lanes, nodes, edges and legend with the CLI layout to the p
   await expect(page.getByTestId('legend').getByTestId('legend-item')).toHaveCount(7);
   await expect(page.getByTestId('legend-item').first()).toContainText('Confirmed by two or more people');
   // Handles and labels.
-  await expect(node(page, 'r01').locator('[data-handle="source"]')).toHaveCount(1);
-  await expect(node(page, 'r01').locator('[data-handle="target"]')).toHaveCount(1);
+  // v1.1 (UI38): four connection handles, top, right, bottom, left; no target handle.
+  expect(await node(page, 'r01').locator('[data-handle="source"]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.port))).toEqual(['top', 'right', 'bottom', 'left']);
+  await expect(node(page, 'r01').locator('[data-handle="target"]')).toHaveCount(0);
   await expect(node(page, 'r01').locator('[data-role="label"]')).toHaveText('Fill the purchase request form');
   await expect(page.getByTestId('save-status')).toHaveText('saved');
 });

@@ -5,6 +5,8 @@ import { badgeBox, textArea, wrapLabel } from '../../core/measure';
 import type { ResolvedNodeStyle } from '../../core/theme';
 import type { Direction } from '../../core/types';
 import { labelPieces, type LayoutNode } from './geometry';
+import { PortHandles } from './ports';
+import { ResizeHandles } from './ResizeHandles';
 import { OutlineOnly, Shape } from './Shape';
 
 interface Props {
@@ -18,9 +20,13 @@ interface Props {
   dragging: boolean;
   /** Hide the label while its in-place editor is open. */
   editing: boolean;
+  /** v1.1: the block has a stored size (`data-sized`, §8.3). */
+  sized?: boolean;
+  /** v1.1 UI34: show the resize handles (the one selected block, when resizing is allowed). */
+  resizable?: boolean;
 }
 
-export const NodeView = memo(function NodeView({ node, style, direction, selected, dx, dy, dragging, editing }: Props) {
+export const NodeView = memo(function NodeView({ node, style, direction, selected, dx, dy, dragging, editing, sized = false, resizable = false }: Props) {
   const area = textArea(node.kind, node.width, node.height);
   const lines = wrapLabel(node.label, area.width);
   const pieces = labelPieces(node.label, lines);
@@ -38,6 +44,7 @@ export const NodeView = memo(function NodeView({ node, style, direction, selecte
       data-y={node.y}
       data-width={node.width}
       data-height={node.height}
+      data-sized={sized ? 'true' : 'false'}
       data-dragging={dragging ? 'true' : undefined}
       style={{
         left: node.x,
@@ -59,6 +66,7 @@ export const NodeView = memo(function NodeView({ node, style, direction, selecte
         )}
         <Shape kind={node.kind} width={node.width} height={node.height} paint={paint} />
       </svg>
+      {resizable ? <ResizeHandles node={node} /> : null}
       <div
         className="fm-node-text"
         style={{ left: area.x, top: area.y, width: area.width, height: area.height, visibility: editing ? 'hidden' : undefined }}
@@ -82,8 +90,8 @@ export const NodeView = memo(function NodeView({ node, style, direction, selecte
       </div>
       {style.badge ? <Badge node={node} text={style.badge} /> : null}
       {node.pinned ? <div className="fm-pin" title="Pinned" aria-hidden="true" /> : null}
-      <div className={`fm-handle fm-handle-target fm-${direction}`} data-handle="target" />
-      <div className={`fm-handle fm-handle-source fm-${direction}`} data-handle="source" />
+      {/* v1.1 UI38: four connection handles (top, right, bottom, left) and, while a line is dragged over, its connection points */}
+      <PortHandles node={node} />
     </div>
   );
 });

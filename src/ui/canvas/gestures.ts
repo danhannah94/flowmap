@@ -3,6 +3,7 @@
 // release. Features add gestures with `registerGesture` (for example `handle` for connect, UI15, and `edge-end` for
 // reconnect, UI16) without touching the canvas.
 import { addBlock, dropNodes, editNodeLabel, pinningBlocked } from '../actions';
+import { blockSnapSession } from '../snap/session';
 import type { Store } from '../store/store';
 import { containsRect, rectFromPoints, type Point } from './viewport';
 
@@ -168,13 +169,16 @@ registerGesture('node', (hit, e, ctx) => {
   const startLocal = ctx.local(e);
   let dragging = false;
   const blocked = pinningBlocked(store);
+  // UI39: the block under the pointer snaps to the other blocks (Alt turns it off); the rest move with it.
+  const snapper = blockSnapSession(store, ids, hit.id);
   return {
     move(ev) {
       if (!dragging && !moved(startLocal, ctx.local(ev))) return;
       if (blocked) return;
       dragging = true;
       const p = ctx.world(ev);
-      store.set({ drag: { ids, lead: hit.id, dx: p.x - start.x, dy: p.y - start.y } });
+      const d = snapper.offset(p.x - start.x, p.y - start.y, ev.altKey);
+      store.set({ drag: { ids, lead: hit.id, dx: d.dx, dy: d.dy } });
     },
     up(ev) {
       if (!dragging) {
@@ -184,10 +188,13 @@ registerGesture('node', (hit, e, ctx) => {
         return;
       }
       const p = ctx.world(ev);
-      dropNodes(store, ids, p.x - start.x, p.y - start.y);
+      const d = snapper.offset(p.x - start.x, p.y - start.y, ev.altKey);
+      snapper.end();
+      dropNodes(store, ids, d.dx, d.dy);
       store.set({ drag: null });
     },
     cancel() {
+      snapper.end();
       store.set({ drag: null });
     },
   };

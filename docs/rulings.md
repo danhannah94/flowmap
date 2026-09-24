@@ -17,6 +17,7 @@ rule 3. Newest at the bottom.
 | R10 | 2026-09-24 | acceptance suite | v1.1 edge cases the contract leaves open (list below). | Adopted as listed below. | Build B: in its starting context |
 | R11 | 2026-09-24 | A | v1.1 edge cases from Build A's core wave (list below). | Adopted as listed below. | Build B: in its starting context |
 | R12 | 2026-09-24 | A | Reordering lanes, adding a lane to a lane-free diagram, or deleting the first lane can leave a negative `across` in a lane that is no longer first, which §5 forbids. | Any operation that changes which lane is displayed first first re-expresses the old first lane's pins and bend points with its growth U added to every `across`, so all values are at least 0 and nothing moves on screen, in the same write. | Build B: in its starting context |
+| R13 | 2026-09-24 | A | Resizing an automatically placed block from its right or bottom edge makes it jump on release. | Amendment A6: every resize pins the block (UI34). | Build B: in its starting context |
 
 ## R4: parser edge cases
 

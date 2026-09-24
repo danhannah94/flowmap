@@ -1,0 +1,21 @@
+/* Snap guides (UI39). A vivid rose line, distinct from the indigo selection accent, like the smart guides in
+   drawing tools. */
+.fm-snap-guides {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 3; /* with the connect preview: over the diagram, under the palette and zoom controls (4) */
+  overflow: visible;
+  pointer-events: none;
+  --snap-guide: #e11d74;
+}
+
+:root[data-theme='dark'] .fm-snap-guides {
+  --snap-guide: #fb5fa5;
+}
+
+.fm-snap-guides line {
+  stroke: var(--snap-guide);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}

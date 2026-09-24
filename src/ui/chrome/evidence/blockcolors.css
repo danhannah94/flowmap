@@ -1,0 +1,62 @@
+/* UI35 block colours in the inspector (BlockColors.tsx). The swatches read in both themes: each is split on the
+   diagonal, the light fill top-left and the dark fill bottom-right; the one the selection already has is ringed. */
+
+.fm-bc-swatches {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 6px;
+  margin: 2px 0 12px;
+}
+
+.fm-bc-swatch {
+  position: relative;
+  aspect-ratio: 1;
+  width: 100%;
+  max-width: 28px;
+  justify-self: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--sw-light) 0 50%, var(--sw-dark) 50% 100%);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.14), 0 0 0 1px var(--border-strong);
+  cursor: pointer;
+  transition: transform 0.12s ease-out, box-shadow 0.12s;
+}
+
+.fm-bc-swatch:hover:not(:disabled) {
+  transform: scale(1.12);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.14), 0 0 0 1px var(--border-strong), var(--shadow-sm);
+}
+
+.fm-bc-swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.fm-bc-swatch[aria-pressed='true'] {
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.14), 0 0 0 2px var(--panel), 0 0 0 3.5px var(--accent);
+}
+
+.fm-bc-swatch:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.fm-bc-fields .fm-ev-prop {
+  grid-template-columns: 46px minmax(0, 1fr);
+}
+
+/* The same inputs inside the block's context menu (`colors`, UI40): the menu's full inner width (320 px less its
+   border, padding and the sub-control's padding), so each input shows a whole #rrggbb. */
+.fm-bc-menu .fm-cm-colors {
+  width: 296px;
+}
+
+.fm-bc-menu .fm-cm-colors .fm-ev-prop {
+  grid-template-columns: 40px minmax(0, 1fr);
+}
+
+.fm-bc-menu .fm-cm-swatches {
+  justify-content: space-between;
+  padding: 2px 2px 6px;
+}

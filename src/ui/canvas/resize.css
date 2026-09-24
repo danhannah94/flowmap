@@ -1,0 +1,212 @@
+/* UI34 resize handles (ResizeHandles.tsx) on the selected block.
+   Every size is in world px, derived from the canvas's --zoom so it stays constant on screen (a 16 px hit area and an
+   8 px mark), capped so a handle never swallows a block when zoomed far out. A hit area reaches half its size outside
+   the box, but inside the box at most 22% of the block's width or height, so the middle of even a small block is
+   still the block (press and drag it to move it). Side hit areas take the middle 36% of their side, clear of the
+   corners'. */
+.fm-resize {
+  --hit: clamp(10px, calc(16px / var(--zoom, 1)), 40px);
+  --half: calc(var(--hit) / 2);
+  --mark: clamp(4px, calc(8px / var(--zoom, 1)), 20px);
+  --line: clamp(0.75px, calc(1.5px / var(--zoom, 1)), 3.5px);
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.fm-resize-h {
+  position: absolute;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+/* The visible mark, centred on the corner or the side's midpoint. */
+.fm-resize-h::after {
+  content: '';
+  position: absolute;
+  box-sizing: border-box;
+  background: var(--canvas-bg);
+  border: var(--line) solid var(--accent);
+  box-shadow: 0 0 0 calc(var(--line) * 0.75) color-mix(in srgb, var(--canvas-bg) 70%, transparent);
+  pointer-events: none;
+  transition: transform 0.1s ease-out, background 0.1s;
+}
+
+.fm-resize-h:hover::after,
+.fm-resize[data-resizing] .fm-resize-h[data-active]::after {
+  background: var(--accent);
+  transform: scale(1.25);
+}
+
+/* ---- corners: a square mark ---- */
+
+.fm-resize-corner {
+  width: calc(var(--half) + min(var(--half), 22%));
+  height: calc(var(--half) + min(var(--half), 22%));
+}
+
+.fm-resize-corner::after {
+  width: var(--mark);
+  height: var(--mark);
+  border-radius: calc(var(--mark) * 0.22);
+}
+
+.fm-resize-nw,
+.fm-resize-ne {
+  top: calc(0px - var(--half));
+}
+
+.fm-resize-sw,
+.fm-resize-se {
+  bottom: calc(0px - var(--half));
+}
+
+.fm-resize-nw,
+.fm-resize-sw {
+  left: calc(0px - var(--half));
+}
+
+.fm-resize-ne,
+.fm-resize-se {
+  right: calc(0px - var(--half));
+}
+
+.fm-resize-nw::after,
+.fm-resize-ne::after {
+  top: calc(var(--half) - var(--mark) / 2);
+}
+
+.fm-resize-sw::after,
+.fm-resize-se::after {
+  bottom: calc(var(--half) - var(--mark) / 2);
+}
+
+.fm-resize-nw::after,
+.fm-resize-sw::after {
+  left: calc(var(--half) - var(--mark) / 2);
+}
+
+.fm-resize-ne::after,
+.fm-resize-se::after {
+  right: calc(var(--half) - var(--mark) / 2);
+}
+
+/* ---- sides: a short bar along the side ---- */
+
+.fm-resize-n,
+.fm-resize-s {
+  left: 32%;
+  width: 36%;
+  height: calc(var(--half) + min(var(--half), 22%));
+}
+
+.fm-resize-e,
+.fm-resize-w {
+  top: 32%;
+  height: 36%;
+  width: calc(var(--half) + min(var(--half), 22%));
+}
+
+.fm-resize-n {
+  top: calc(0px - var(--half));
+}
+
+.fm-resize-s {
+  bottom: calc(0px - var(--half));
+}
+
+.fm-resize-w {
+  left: calc(0px - var(--half));
+}
+
+.fm-resize-e {
+  right: calc(0px - var(--half));
+}
+
+.fm-resize-n::after,
+.fm-resize-s::after {
+  left: calc(50% - var(--mark));
+  width: calc(var(--mark) * 2);
+  height: calc(var(--mark) * 0.75);
+  border-radius: var(--mark);
+}
+
+.fm-resize-e::after,
+.fm-resize-w::after {
+  top: calc(50% - var(--mark));
+  height: calc(var(--mark) * 2);
+  width: calc(var(--mark) * 0.75);
+  border-radius: var(--mark);
+}
+
+.fm-resize-n::after {
+  top: calc(var(--half) - var(--mark) * 0.375);
+}
+
+.fm-resize-s::after {
+  bottom: calc(var(--half) - var(--mark) * 0.375);
+}
+
+.fm-resize-w::after {
+  left: calc(var(--half) - var(--mark) * 0.375);
+}
+
+.fm-resize-e::after {
+  right: calc(var(--half) - var(--mark) * 0.375);
+}
+
+/* ---- the size readout while resizing ---- */
+
+.fm-resize-readout {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + clamp(6px, calc(12px / var(--zoom, 1)), 60px));
+  transform: translateX(-50%);
+  padding: calc(2px / var(--zoom, 1)) calc(7px / var(--zoom, 1));
+  border-radius: calc(5px / var(--zoom, 1));
+  background: var(--accent-strong);
+  color: #fff;
+  font: 600 calc(11px / var(--zoom, 1)) / 1.35 Inter, sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 calc(2px / var(--zoom, 1)) calc(8px / var(--zoom, 1)) rgba(0, 0, 0, 0.25);
+}
+
+/* ---- while a resize is in progress (<html data-fm-resizing>) and when resizing is off ---- */
+
+html[data-fm-resizing] .fm-handle,
+html[data-fm-resizing] .fm-port {
+  opacity: 0 !important;
+}
+
+html[data-fm-resizing='n'] *,
+html[data-fm-resizing='s'] * {
+  cursor: ns-resize !important;
+}
+
+html[data-fm-resizing='e'] *,
+html[data-fm-resizing='w'] * {
+  cursor: ew-resize !important;
+}
+
+html[data-fm-resizing='ne'] *,
+html[data-fm-resizing='sw'] * {
+  cursor: nesw-resize !important;
+}
+
+html[data-fm-resizing='nw'] *,
+html[data-fm-resizing='se'] * {
+  cursor: nwse-resize !important;
+}
+
+html[data-fm-resizing] .fm-node .fm-node-svg {
+  filter: none;
+}
+
+.fm-canvas[data-dragging='true'] .fm-resize,
+.fm-canvas[data-readonly='true'] .fm-resize,
+.fm-canvas[data-placing='true'] .fm-resize {
+  display: none;
+}

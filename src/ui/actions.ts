@@ -2,7 +2,7 @@
 // intent into one core operation through `store.apply` (one undo step), using the layout on screen for positions.
 import { nodeSize } from '../core/measure';
 import {
-  addNode, moveNodesToLane, NEW_BLOCK_LABELS, pinNodes, setNodeLabel,
+  addNode, addNodeAt, moveNodesToLane, NEW_BLOCK_LABELS, pinNodes, setNodeLabel,
   type DropPosition, type Files, type OpResult,
 } from '../core/ops';
 import { roundPx } from '../core/layoutfile';
@@ -96,6 +96,29 @@ export function addBlockAt(store: Store, shape: ShapeKind, world: Point): boolea
     return false;
   }
   return addBlock(store, shape, lane.id, world);
+}
+
+/**
+ * UI40 canvas menu `add-<shape kind>`: add a block with its top-left corner at a world point, pinned there, in the lane
+ * its centre falls in by UI43's rules (`addNodeAt`), and open it in label editing (UI6). One undo step; `settlePlaced`
+ * makes it exact on screen when the drop changes the lanes (the Unassigned lane appearing with it).
+ */
+export function addBlockAtCorner(store: Store, shape: ShapeKind, corner: Point): boolean {
+  const output = store.getState().derived?.doc.layout;
+  if (!output) return false;
+  const size = nodeSize(NEW_BLOCK_LABELS[shape], shape);
+  const box = { x: roundPx(corner.x), y: roundPx(corner.y), width: size.width, height: size.height };
+  let id = '';
+  const r = store.apply(function addBlockHere(f: Files) {
+    const added = addNodeAt(f, shape, corner, output);
+    if (!added.ok) return added;
+    id = added.id;
+    return settlePlaced(store, f, added.files, [{ id, from: added.lane, lane: added.lane, box }]);
+  });
+  if (!r.ok || !id) return false;
+  store.set({ tool: { kind: 'select' } });
+  editNodeLabel(store, id);
+  return true;
 }
 
 type Placed = { id: string; from: string; lane: string; box: Rect };

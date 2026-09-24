@@ -5,7 +5,7 @@
 import { loadDocument, type FlowDocument } from '../../core/document';
 import type { Files } from '../../core/ops';
 import { parseLayoutFile, serializeLayoutFile, setHints } from '../../core/layoutfile';
-import { pinTranslation, type Translation } from '../../core/layout';
+import type { Translation } from '../../core/layout';
 import type { LayoutResult } from '../../core/types';
 import type { Point } from '../canvas/viewport';
 
@@ -72,13 +72,20 @@ export function sameFiles(a: Files, b: Files): boolean {
   return a.mmd === b.mmd && a.config === b.config && a.layout === b.layout;
 }
 
-/** The layout's frame (`pinTranslation`, §6): its translation of negative pins, from the pins that apply. */
+const NO_FRAME: Translation = Object.freeze({ along: 0, across: 0 });
+
+/**
+ * The layout's frame (§6 Frame): T along the flow and U across the first lane, exactly as the layout function used it
+ * (`LayoutOutput.translation`). It counts every applied pin *and* bend point, so anything that turns a position on
+ * screen into a stored value (a drop, a nudge, a new note) or pans by a change of frame must read it from here,
+ * never recompute it from the pins alone. No layout (the `.mmd` has errors): no frame.
+ */
 export function translationOf(d: Derived | null): Translation {
-  return pinTranslation(Object.values(d?.doc.pins ?? {}), d?.layout?.lanes[0]?.id);
+  return d?.doc.layout?.translation ?? NO_FRAME;
 }
 
 /**
- * How far, in world px, the whole diagram moved between two layouts because its frame changed (§6: a block dropped
+ * How far, in world px, the whole diagram moved between two layouts because its frame changed (§6: a block or bend point dropped
  * before or above everything, its undo, an unpin): the store pans the view by the opposite (UI43), so what the person
  * didn't move stays put on screen and a dropped block ends where it was released. T moves everything along the flow;
  * U (the first lane growing toward its start) moves everything across it, since every lane is at or after the first.

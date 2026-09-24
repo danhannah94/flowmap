@@ -1,0 +1,128 @@
+/* Notes and the title on the canvas (UI41, UI42): plain text annotations in the diagram's own type. They show that
+   they can be moved only when it matters: a faint frame on hover, the accent frame when selected. */
+
+.fm-annotations {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.fm-note,
+.fm-title-movable {
+  position: absolute;
+  cursor: grab;
+  touch-action: none;
+}
+
+.fm-note {
+  font-family: Inter, sans-serif;
+  white-space: pre;
+  overflow: visible;
+}
+
+.fm-note-text {
+  display: block;
+  white-space: pre;
+}
+
+/* The frame sits a few px outside the text box, so the text never shifts when it appears. */
+.fm-note::before,
+.fm-title-movable::before {
+  content: '';
+  position: absolute;
+  inset: -5px -7px;
+  border-radius: 6px;
+  border: 1px dashed transparent;
+  pointer-events: none;
+  transition: border-color 0.12s, background-color 0.12s;
+}
+
+.fm-note:hover::before,
+.fm-title-movable:hover::before {
+  border-color: color-mix(in srgb, var(--muted) 55%, transparent);
+}
+
+.fm-note[data-selected='true']::before,
+.fm-title-movable[data-selected='true']::before {
+  border: 1.5px solid var(--accent);
+  background: var(--accent-soft);
+}
+
+.fm-note[data-dragging='true'],
+.fm-title-movable[data-dragging='true'] {
+  cursor: grabbing;
+  opacity: 0.92;
+  z-index: 2;
+}
+
+.fm-canvas[data-readonly='true'] .fm-note,
+.fm-canvas[data-readonly='true'] .fm-title-movable {
+  cursor: default;
+}
+
+/* ---- the note editor (note-editor) ---- */
+
+.fm-note-editor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  animation: fm-note-editor-in 0.1s ease-out;
+}
+
+@keyframes fm-note-editor-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}
+
+.fm-note-editor-input {
+  display: block;
+  box-sizing: border-box;
+  font-family: Inter, sans-serif;
+  font-size: var(--note-font);
+  line-height: var(--note-line);
+  font-weight: var(--note-weight);
+  padding: var(--note-pad);
+  color: var(--text);
+  background: var(--editor-bg);
+  border: 1.5px solid var(--accent);
+  border-radius: 7px;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  white-space: pre;
+  box-shadow: 0 0 0 4px var(--accent-soft), var(--shadow-sm);
+}
+
+.fm-note-editor-input::placeholder {
+  color: var(--faint);
+}
+
+.fm-note-editor-measure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  visibility: hidden;
+  white-space: pre;
+  pointer-events: none;
+  font-family: Inter, sans-serif;
+  font-size: var(--note-font);
+  font-weight: var(--note-weight);
+}
+
+.fm-note-editor-hint {
+  font: 500 11px/16px Inter, sans-serif;
+  color: var(--muted);
+  background: var(--panel-glass);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 7px;
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+}

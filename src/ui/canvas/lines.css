@@ -1,0 +1,222 @@
+/* Line shaping, line labels and connection sides (UI36–UI38). Sizes that divide by --zoom (set on the canvas) stay the
+   same on screen at any zoom; the caps keep a handle from swallowing a small block when zoomed far out. */
+
+/* ---- connection handles: four per block, just outside each side, in line with its port ------------------------- */
+
+/* A handle exists only for its own block: hidden (`visibility: hidden`, so it takes no pointer events and can never
+   steal a press meant for something else) until the block is hovered or selected. It hides a moment after the pointer
+   leaves the block, so the pointer can cross the few px from the box out to it. Sizes are constant on screen but
+   capped in diagram px so no part of a handle reaches more than 30 px out (--reach): automatic placement keeps blocks
+   at least 44 px apart and the first column 32 px clear of the lane headers, so even a shown handle covers no other
+   block and no lane header (blocks pinned closer can still meet one). While shown, a handle sits above the resize
+   handles (resize.css), whose middles stay on the border, clear of it: both stay clickable. A selected line and its
+   handles are above both (.fm-edges-top). */
+.fm-port {
+  --reach: 30px;
+  --core: min(calc(12px / var(--zoom, 1)), 26px);
+  --gap: min(calc(18px / var(--zoom, 1)), calc(var(--reach) - var(--core) / 2)); /* box edge to the handle's centre */
+  --hs: min(calc(22px / var(--zoom, 1)), calc(2 * (var(--reach) - var(--gap)))); /* the hit area while shown */
+  --vis: min(calc(17px / var(--zoom, 1)), 28px); /* the arrow */
+  position: absolute;
+  width: var(--core);
+  height: var(--core);
+  margin: calc(var(--core) / -2) 0 0 calc(var(--core) / -2);
+  cursor: crosshair;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.12s ease 0.25s, visibility 0s linear 0.37s;
+}
+
+.fm-node:hover .fm-port,
+.fm-node[data-selected='true'] .fm-port {
+  visibility: visible;
+  opacity: 1;
+  transition-delay: 0s;
+  z-index: 3;
+}
+
+.fm-port::before {
+  content: '';
+  position: absolute;
+  inset: calc((var(--core) - var(--hs)) / 2);
+  border-radius: 50%;
+}
+
+.fm-port-top {
+  top: calc(0px - var(--gap));
+}
+
+.fm-port-bottom {
+  top: calc(100% + var(--gap));
+}
+
+.fm-port-left {
+  left: calc(0px - var(--gap));
+}
+
+.fm-port-right {
+  left: calc(100% + var(--gap));
+}
+
+.fm-port svg {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--vis);
+  height: var(--vis);
+  transform: translate(-50%, -50%);
+  overflow: visible;
+  pointer-events: none;
+}
+
+.fm-port path {
+  fill: var(--accent);
+  fill-opacity: 0.8;
+  stroke: var(--canvas-bg);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  transition: fill-opacity 0.1s, transform 0.1s;
+  transform-origin: 8px 8px;
+}
+
+.fm-port:hover path {
+  fill-opacity: 1;
+  transform: scale(1.3);
+}
+
+.fm-canvas[data-dragging='true'] .fm-port,
+.fm-canvas[data-readonly='true'] .fm-port,
+.fm-canvas[data-placing='true'] .fm-port {
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+/* ---- connection points on the block a line is being dragged over (data-port-target) ----------------------------- */
+
+.fm-port-target {
+  --d: min(calc(11px / var(--zoom, 1)), 36px);
+  position: absolute;
+  width: var(--d);
+  height: var(--d);
+  margin: calc(var(--d) / -2) 0 0 calc(var(--d) / -2);
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--canvas-bg);
+  border: min(calc(2px / var(--zoom, 1)), 6px) solid var(--accent);
+  pointer-events: none;
+  z-index: 2;
+  animation: fm-port-in 0.12s ease-out;
+}
+
+.fm-port-target[data-nearest='true'] {
+  background: color-mix(in srgb, var(--accent) 35%, var(--canvas-bg));
+}
+
+.fm-port-target[data-active='true'] {
+  background: var(--accent);
+  transform: scale(1.45);
+  box-shadow: 0 0 0 min(calc(4px / var(--zoom, 1)), 12px) color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+@keyframes fm-port-in {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+
+/* ---- a selected line: drawn above the blocks, with its handles ------------------------------------------------- */
+
+.fm-edges-top {
+  z-index: 4;
+}
+
+.fm-edge-ghost {
+  fill: none;
+  stroke: var(--edge);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.fm-edge-shaping .fm-edge-line {
+  stroke: var(--accent);
+  stroke-width: 2.25;
+}
+
+.fm-edge-shaping .fm-edge-arrow {
+  fill: var(--accent);
+}
+
+/* segment handles: a small bar along the segment, dragged square to it */
+.fm-seg {
+  cursor: move;
+}
+
+.fm-seg[data-orient='h'] {
+  cursor: ns-resize;
+}
+
+.fm-seg[data-orient='v'] {
+  cursor: ew-resize;
+}
+
+.fm-seg-hit {
+  fill: transparent;
+  pointer-events: all;
+}
+
+.fm-seg-bar {
+  fill: var(--canvas-bg);
+  stroke: var(--accent);
+  pointer-events: none;
+  transition: fill 0.1s;
+}
+
+.fm-seg:hover .fm-seg-bar,
+.fm-seg[data-active='true'] .fm-seg-bar {
+  fill: var(--accent);
+}
+
+/* bend handles: a solid dot on each bend point */
+.fm-bend {
+  cursor: move;
+}
+
+.fm-bend-hit {
+  fill: transparent;
+  pointer-events: all;
+}
+
+.fm-bend-dot {
+  fill: var(--accent);
+  stroke: var(--canvas-bg);
+  pointer-events: none;
+  transition: r 0.1s;
+}
+
+.fm-bend:hover .fm-bend-dot,
+.fm-bend[data-active='true'] .fm-bend-dot {
+  fill: color-mix(in srgb, var(--accent) 70%, var(--title));
+}
+
+/* the label: draggable along its line */
+.fm-edge-label {
+  cursor: grab;
+}
+
+.fm-edge-label[data-dragging='true'] {
+  cursor: grabbing;
+}
+
+.fm-edge-label[data-dragging='true'] rect {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.fm-label-track {
+  fill: var(--accent);
+  opacity: 0.9;
+  pointer-events: none;
+}

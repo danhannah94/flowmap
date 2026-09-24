@@ -135,17 +135,17 @@ test('a block under the shape picker’s spot: the picker docks at the bottom an
   await open(page, d);
   await page.locator('.fm-zoom-level').click();
   await expect.poll(() => zoomOf(page, 's3')).toBeCloseTo(1, 2);
-  // Alt-drag pans from anywhere: bring s3 to the top centre of the canvas.
+  // A middle-button drag pans from anywhere: bring s3 to the top centre of the canvas. (v1.1: Alt-drag on a block
+  // moves the block without snapping, UI39, so it no longer pans.)
   const c = await box(page.getByTestId('canvas'));
   const b = await box(node(page, 's3'));
-  await page.keyboard.down('Alt');
   await page.mouse.move(b.left + b.width / 2, b.top + b.height / 2);
-  await page.mouse.down();
+  await page.mouse.down({ button: 'middle' });
   await page.mouse.move(c.left + c.width / 2, c.top + 20 + b.height / 2, { steps: 8 });
-  await page.mouse.up();
-  await page.keyboard.up('Alt');
+  await page.mouse.up({ button: 'middle' });
   const moved = await box(node(page, 's3'));
   expect(moved.top).toBeLessThan(c.top + 40);
+  await expect(node(page, 's3')).toHaveAttribute('data-pinned', 'false'); // the view moved, not the block
   await node(page, 's3').dblclick();
   await expect(page.getByTestId('label-editor')).toBeVisible();
   const picker = await box(page.getByTestId('shape-picker'));
@@ -260,39 +260,52 @@ test('in-place editors are readable at fit zoom, anchored to their target, and g
 // ---- handles and grips at low zoom -------------------------------------------------------------------------------
 
 test('handles and line-end grips keep a usable size at fit zoom; handles show on hover and on the selected block', async ({ page }, info) => {
+  // v1.1 (UI38): four connection handles per block, each just outside its side in line with the side's port, clear of
+  // the resize handles on the border. (lines.spec.ts covers connecting from every side.)
   const d = makeDiagram(info);
   await open(page, d);
   expect(await zoomOf(page, 'p01')).toBeLessThan(0.5);
-  const handle = (id: string, h: 'source' | 'target') => node(page, id).locator(`[data-handle="${h}"]`);
+  const handle = (id: string, side: 'top' | 'right' | 'bottom' | 'left') => node(page, id).locator(`[data-handle="source"][data-port="${side}"]`);
   const opacity = (loc: Locator) => loc.evaluate((el) => Number(getComputedStyle(el).opacity));
   // Hidden until hover or selection.
-  await expect.poll(() => opacity(handle('p01', 'source'))).toBe(0);
+  await expect.poll(() => opacity(handle('p01', 'right'))).toBe(0);
   await node(page, 'p01').hover();
-  await expect.poll(() => opacity(handle('p01', 'source'))).toBe(1);
+  await expect.poll(() => opacity(handle('p01', 'right'))).toBe(1);
   await node(page, 'p05').click();
   await page.mouse.move(5, 300);
-  await expect.poll(() => opacity(handle('p05', 'target'))).toBe(1);
-  for (const [id, h] of [['p01', 'source'], ['p01', 'target'], ['p05', 'source']] as const) {
-    const hb = await box(handle(id, h));
-    expect(hb.width, `${id} ${h} width`).toBeGreaterThanOrEqual(10);
-    expect(hb.height, `${id} ${h} height`).toBeGreaterThanOrEqual(10);
-    // On the block's side (§8.3: inside the node element), reaching only a little way outside it; a press on the
-    // side's midpoint lands on the handle.
+  await expect.poll(() => opacity(handle('p05', 'left'))).toBe(1);
+  for (const [id, side] of [['p01', 'right'], ['p01', 'left'], ['p05', 'right'], ['p05', 'bottom']] as const) {
+    await node(page, id).hover(); // (p05 is selected: its handles show anyway)
+    const hb = await box(handle(id, side));
+    expect(hb.width, `${id} ${side} width`).toBeGreaterThanOrEqual(8);
+    expect(hb.height, `${id} ${side} height`).toBeGreaterThanOrEqual(8);
+    // Just outside its side (§8.3: inside the node element), in line with the side's middle; a press on its centre
+    // lands on it.
     const nb = await box(node(page, id));
-    const side = h === 'source' ? nb.right : nb.left;
-    expect(hb.left).toBeLessThan(side);
-    expect(hb.right).toBeGreaterThan(side);
-    expect(h === 'source' ? hb.right - side : side - hb.left).toBeLessThan(4);
-    const onSide = await page.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.getAttribute('data-handle'), [side + (h === 'source' ? -1 : 1), nb.top + nb.height / 2]);
-    expect(onSide).toBe(h);
+    const cx = hb.left + hb.width / 2;
+    const cy = hb.top + hb.height / 2;
+    const out = side === 'right' ? cx - nb.right : side === 'left' ? nb.left - cx : cy - nb.bottom;
+    expect(out, `${id} ${side} outside`).toBeGreaterThan(2);
+    expect(out, `${id} ${side} close`).toBeLessThan(20);
+    const along = side === 'bottom' ? cx - (nb.left + nb.width / 2) : cy - (nb.top + nb.height / 2);
+    expect(Math.abs(along), `${id} ${side} in line`).toBeLessThan(1.5);
+    const onIt = await page.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.closest<HTMLElement>('[data-port]')?.dataset.port, [cx, cy]);
+    expect(onIt).toBe(side);
   }
-  // Connect at fit zoom by dragging a handle.
-  await handle('intake', 'source').dragTo(node(page, 'p05'));
+  // Hidden handles take no pointer events: they never cover another block or a lane header.
+  await page.mouse.move(5, 300);
+  await expect.poll(() => handle('p01', 'right').evaluate((el) => getComputedStyle(el).visibility)).toBe('hidden');
+  // Connect at fit zoom by dragging a handle (shown while its block is hovered).
+  await node(page, 'intake').hover();
+  await handle('intake', 'right').dragTo(node(page, 'p05'));
   const want = canon(`${PR.mmd}  intake --> p05\n`);
   expect((await onDisk(d, (f) => f.mmd === want)).mmd).toBe(want);
   await expect(page.locator('[data-edge-id="intake->p05"]')).toHaveAttribute('data-selected', 'true');
-  // With that line selected, the same handle still starts another (a duplicate, P5).
-  await handle('intake', 'source').dragTo(node(page, 'p05'));
+  // With that line selected, another of the block's handles still starts another (a duplicate, P5). (v1.1: the
+  // selected line is drawn above the blocks with its own handles, which win where they meet a connection handle:
+  // here its first corner, 8 px from the right port, covers intake's right handle at this zoom.)
+  await node(page, 'intake').hover();
+  await handle('intake', 'bottom').dragTo(node(page, 'p05'));
   const dup = canon(`${want}  intake --> p05\n`);
   expect((await onDisk(d, (f) => f.mmd === dup)).mmd).toBe(dup);
   // The new line is selected; its end grips are big enough to grab.

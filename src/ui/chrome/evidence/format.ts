@@ -2,7 +2,7 @@
 // a scalar as its YAML string, a list joined with `, `, a map as compact JSON), and how an existing value is put back
 // into the field form (the type that round-trips it exactly, so saving an untouched value changes nothing).
 import { stringify } from 'yaml';
-import { fieldValueToJs, scalarString, type FieldValue, type FlowConfig, type StyleRule } from '../../../core/config';
+import { BLOCK_STYLE_KEY, fieldValueToJs, scalarString, type FieldValue, type FlowConfig, type StyleRule } from '../../../core/config';
 
 export type FieldType = 'text' | 'list' | 'map' | 'yaml';
 
@@ -87,7 +87,8 @@ export function knownKeys(config: FlowConfig | null): string[] {
   const out: string[] = [];
   const add = (k: string) => { if (!out.includes(k)) out.push(k); };
   for (const f of COMMON_FIELDS) add(f.key);
-  for (const meta of Object.values(config?.nodes ?? {})) for (const k of Object.keys(meta)) add(k);
+  // v1.1 §4: `style` is a block's own colours, not a field (the field form refuses it).
+  for (const meta of Object.values(config?.nodes ?? {})) for (const k of Object.keys(meta)) if (k !== BLOCK_STYLE_KEY) add(k);
   for (const k of ruleKeys(config)) if (!(BUILTIN_FIELDS as readonly string[]).includes(k) || k === 'kind') add(k);
   return out;
 }

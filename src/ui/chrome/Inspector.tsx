@@ -3,7 +3,7 @@
 // several blocks selected it shows only the field form (set or remove a field on all of them). Every edit is one
 // core operation through `store.apply`; config edits are off while the config has errors (UI26, UI31).
 import { useMemo, useState, type ReactNode } from 'react';
-import { ConfigDoc, matchFields, ruleMatches, type FlowConfig, type NodeMeta } from '../../core/config';
+import { BLOCK_STYLE_KEY, ConfigDoc, matchFields, ruleMatches, type FlowConfig, type NodeMeta } from '../../core/config';
 import { moveNodesToLane, removeNodeField, replaceNodeEntry } from '../../core/ops';
 import { UNASSIGNED, type GraphNode } from '../../core/types';
 import { editNodeLabel } from '../actions';
@@ -12,6 +12,7 @@ import { shallow, useStore, useStoreState } from '../store/hooks';
 import type { State } from '../store/store';
 import { ShapeIcon } from './Palette';
 import { sidePanels } from './Panels';
+import { BlockColors } from './evidence/BlockColors';
 import { AutoTextarea, IconButton, ico, StyleSwatch } from './evidence/controls';
 import { FieldForm, type FieldFormInit } from './evidence/FieldForm';
 import { COMMON_FIELDS, describeMatch, fieldText, formFor, isPlainMap, isScalar, usualType } from './evidence/format';
@@ -76,7 +77,8 @@ function SingleBlock({ id }: { id: string }) {
 
   if (!node) return null;
   const meta: NodeMeta = (config && Object.hasOwn(config.nodes, id) ? config.nodes[id] : undefined) ?? {};
-  const keys = Object.keys(meta);
+  // §4: a block's own `style` isn't evidence; it shows as the block's colours (UI35), not as a field row.
+  const keys = Object.keys(meta).filter((k) => k !== BLOCK_STYLE_KEY);
   const configOff = lock !== null;
   let formSeq = form?.n ?? 0;
 
@@ -196,6 +198,8 @@ function SingleBlock({ id }: { id: string }) {
           />
         ) : null}
       </section>
+
+      <BlockColors ids={[id]} />
 
       <StyledBy config={config} node={node} theme={theme} />
 
@@ -391,7 +395,7 @@ function ManyBlocks({ ids }: { ids: string[] }) {
   // Fields some of the selected blocks have, with how many: a click puts the name in the form.
   const shared = useMemo(() => {
     const count = new Map<string, number>();
-    for (const id of ids) for (const k of Object.keys(config?.nodes[id] ?? {})) count.set(k, (count.get(k) ?? 0) + 1);
+    for (const id of ids) for (const k of Object.keys(config?.nodes[id] ?? {})) if (k !== BLOCK_STYLE_KEY) count.set(k, (count.get(k) ?? 0) + 1);
     return [...count];
   }, [config, ids]);
   return (
@@ -420,6 +424,7 @@ function ManyBlocks({ ids }: { ids: string[] }) {
           </div>
         ) : null}
       </section>
+      <BlockColors ids={ids} />
     </>
   );
 }

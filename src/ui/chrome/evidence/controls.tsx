@@ -88,7 +88,7 @@ function toPickerValue(hex: string, fallback: string): string {
  * A colour property (UI25, §8.3): `data-prop` holding light and dark hex inputs (`data-variant`), each with a native
  * picker. `onCommit(light, dark)` receives both current values. Emptying light clears the property (R5.11).
  */
-export function ColorField({ prop, label, light, dark, disabled, defaults, onCommit }: {
+export function ColorField({ prop, label, light, dark, disabled, defaults, onCommit, placeholder }: {
   prop: string;
   label: string;
   light: string;
@@ -96,6 +96,8 @@ export function ColorField({ prop, label, light, dark, disabled, defaults, onCom
   disabled?: boolean;
   defaults: { light: string; dark: string };
   onCommit: (light: string, dark: string) => void;
+  /** Placeholder text for an empty input instead of `none` / `same` (e.g. `mixed` across several blocks). */
+  placeholder?: { light?: string; dark?: string };
 }) {
   // Live text while a picker is open; the commit happens when the picker closes (its native `change`).
   const [preview, setPreview] = useState<{ light?: string; dark?: string }>({});
@@ -126,7 +128,7 @@ export function ColorField({ prop, label, light, dark, disabled, defaults, onCom
                 data-variant={variant}
                 className="fm-ev-input fm-ev-hex"
                 value={variant === 'light' ? light : dark}
-                placeholder={variant === 'light' ? 'none' : light ? 'same' : 'none'}
+                placeholder={placeholder?.[variant] ?? (variant === 'light' ? 'none' : light ? 'same' : 'none')}
                 aria-label={`${label}, ${variant} theme (#rgb or #rrggbb)`}
                 disabled={disabled}
                 maxLength={7}

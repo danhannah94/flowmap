@@ -93,8 +93,17 @@ export async function zoomOf(page: Page, id: string): Promise<number> {
   return box.width / a.width;
 }
 
+/**
+ * Mouse drag options: `shift` held throughout; `alt` held throughout (v1.1: a block drag with Alt doesn't snap, UI39,
+ * so a test that checks the exact drop position holds it, as §10 Part 3 says).
+ */
+export interface DragOpts {
+  shift?: boolean;
+  alt?: boolean;
+}
+
 /** Drag with the mouse from the centre of `loc` by (dx, dy) screen px, in small steps like a person. */
-export async function dragBy(page: Page, loc: Locator, dx: number, dy: number, opts: { shift?: boolean } = {}): Promise<void> {
+export async function dragBy(page: Page, loc: Locator, dx: number, dy: number, opts: DragOpts = {}): Promise<void> {
   const box = (await loc.boundingBox())!;
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2;
@@ -105,9 +114,10 @@ export async function dragFromTo(
   page: Page,
   from: { x: number; y: number },
   to: { x: number; y: number },
-  opts: { shift?: boolean } = {},
+  opts: DragOpts = {},
 ): Promise<void> {
   if (opts.shift) await page.keyboard.down('Shift');
+  if (opts.alt) await page.keyboard.down('Alt');
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   const steps = 8;
@@ -115,6 +125,7 @@ export async function dragFromTo(
     await page.mouse.move(from.x + ((to.x - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps);
   }
   await page.mouse.up();
+  if (opts.alt) await page.keyboard.up('Alt');
   if (opts.shift) await page.keyboard.up('Shift');
 }
 

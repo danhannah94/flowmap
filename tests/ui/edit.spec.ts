@@ -22,7 +22,7 @@ test('dragging a block pins it where it is dropped, on disk within 1 s', async (
   const cli = d.cliLayout();
   const laneY = cli.lanes.find((l) => l.id === 'requester')!.y;
   const z = await zoomOf(page, 'r01');
-  await dragBy(page, node(page, 'r01'), 90, 0);
+  await dragBy(page, node(page, 'r01'), 90, 0, { alt: true });
   const t0 = Date.now();
   const layout = await eventually(() => d.read().layout, (l) => !!pins(l).r01);
   expect(Date.now() - t0).toBeLessThan(1000);
@@ -50,7 +50,7 @@ test('Shift-click selects several blocks; dragging one moves and pins them all a
   const a5 = await attrs(node(page, 'p05'));
   const a6 = await attrs(node(page, 'p06'));
   const z = await zoomOf(page, 'p05');
-  await dragBy(page, node(page, 'p05'), 50, 0);
+  await dragBy(page, node(page, 'p05'), 50, 0, { alt: true });
   const layout = await eventually(() => d.read().layout, (l) => !!pins(l).p05 && !!pins(l).p06);
   const p = pins(layout);
   expect(Math.abs(p.p05!.along - (a5.x + 50 / z))).toBeLessThanOrEqual(1);

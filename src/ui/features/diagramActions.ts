@@ -11,12 +11,14 @@ export function editTitle(store: Store): void {
   if (!doc || !store.layout) return;
   const current = doc.title;
   const shownWidth = document.querySelector<HTMLElement>('[data-testid="title"]')?.offsetWidth ?? 0;
+  // v1.1: over the title where it is drawn (it can be moved, UI42); a hidden title is edited at its default place.
+  const box = store.layout.title ?? { x: 0, y: -TITLE_BAND + 18 };
   store.beginEdit({
     testid: 'title-editor',
     target: { kind: 'title' },
     initial: current,
-    // In place, the input's text lines up with the title's (its padding and border sit left of x = 0).
-    anchor: { x: -10, y: -TITLE_BAND + 12, width: Math.max(360, shownWidth + 80), height: 40 },
+    // In place, the input's text lines up with the title's (its padding and border sit left of the title's x).
+    anchor: { x: box.x - 10, y: box.y - 6, width: Math.max(360, shownWidth + 80), height: 40 },
     variant: 'title',
     placeholder: 'Diagram title',
     commit: (text) => {

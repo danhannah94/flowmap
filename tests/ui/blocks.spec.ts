@@ -391,7 +391,10 @@ test('delete an edge (button), and blocks with edges together (Backspace) (P8)',
 test('connect by dragging from a source handle onto anywhere on the target block, with a live preview (P5)', async ({ page }, info) => {
   const d = makeDiagram(info);
   await open(page, d);
-  const from = await centreOf(page, '[data-node-id="p06"] [data-handle="source"]');
+  // v1.1 (UI38): the right-hand one of the four handles; it writes `source_side` (see lines.spec.ts for every side).
+  // (v1.1: a block's connection handles show, and take the pointer, while it is hovered or selected.)
+  await node(page, 'p06').hover();
+  const from = await centreOf(page, '[data-node-id="p06"] [data-handle="source"][data-port="right"]');
   const target = (await node(page, 'r02').boundingBox())!;
   // Drop near a corner of the target, not its centre: anywhere on the block counts.
   const to = { x: target.x + target.width * 0.85, y: target.y + target.height * 0.8 };
@@ -403,36 +406,53 @@ test('connect by dragging from a source handle onto anywhere on the target block
   await page.mouse.up();
   await expect(page.locator('.fm-connect-preview')).toHaveCount(0);
   const want = canon(`${PR.mmd}  p06 --> r02\n`);
-  const files = await onDisk(d, (f) => f.mmd === want);
-  expect(files).toEqual({ ...PR, mmd: want });
+  const files = await onDisk(d, (f) => f.mmd === want && f.layout !== PR.layout);
+  expect(files.mmd).toBe(want);
+  expect(files.config).toBe(PR.config);
+  // Dropped away from the target's connection points: only the source side is written (UI38).
+  expect(layoutJs(files.layout)).toEqual({ ...(layoutJs(PR.layout) as object), edges: { 'p06->r02': { source_side: 'right' } } });
   await expect(edge(page, 'p06->r02')).toHaveAttribute('data-selected', 'true');
   await expectUndoRedo(page, d, PR, files);
   await expectMatchesCli(page, d);
 });
 
-test('connect with locator.dragTo, a duplicate edge, a reversed drag from a target handle, and cancelled drops', async ({ page }, info) => {
+test('connect with locator.dragTo, a duplicate edge, a drag from another side, and cancelled drops', async ({ page }, info) => {
+  // v1.1: there is no target handle (UI38), so the v1.0 "reversed drag from a target handle" is now a drag from the
+  // left-hand handle: the block it starts from is always the source.
   const d = makeDiagram(info);
   await open(page, d);
   // An edge that already exists: a second one is appended (`#2`).
-  await node(page, 'intake').locator('[data-handle="source"]').dragTo(node(page, 'r01'));
+  // (v1.1: a block's connection handles show, and take the pointer, while it is hovered or selected.)
+  await node(page, 'intake').hover();
+  await node(page, 'intake').locator('[data-handle="source"][data-port="right"]').dragTo(node(page, 'r01'));
   const dup = canon(`${PR.mmd}  intake --> r01\n`);
   await onDisk(d, (f) => f.mmd === dup);
   expect(d.read().mmd).toBe(dup);
   await expect(edge(page, 'intake->r01#2')).toHaveCount(1);
-  // From a target handle: the block dropped on becomes the source.
-  await node(page, 'f04').locator('[data-handle="target"]').dragTo(node(page, 'm01'));
-  const rev = canon(`${dup}  m01 --> f04\n`);
+  // From the left-hand handle of f04 onto m01: f04 is the source, leaving from its left side.
+  await node(page, 'f04').hover();
+  await node(page, 'f04').locator('[data-handle="source"][data-port="left"]').dragTo(node(page, 'm01'));
+  const rev = canon(`${dup}  f04 --> m01\n`);
   await onDisk(d, (f) => f.mmd === rev);
   expect(d.read().mmd).toBe(rev);
+  expect((layoutJs(d.read().layout) as { edges: unknown }).edges).toEqual({
+    'intake->r01#2': { source_side: 'right' },
+    'f04->m01': { source_side: 'left' },
+  });
   await saved(page);
   // Dropped on empty lane space, or back on its own block: nothing happens.
-  const h = await centreOf(page, '[data-node-id="p01"] [data-handle="source"]');
-  await dragFromTo(page, h, await emptyPointInLane(page, 'finance'));
+  const h = await centreOf(page, '[data-node-id="p01"] [data-handle="source"][data-port="right"]');
+  const before = d.read();
+  const empty = await emptyPointInLane(page, 'finance');
+  await node(page, 'p01').hover();
+  await dragFromTo(page, h, empty);
+  await node(page, 'p01').hover();
   await dragFromTo(page, h, await centreOf(page, '[data-node-id="p01"]'));
   await saved(page);
-  expect(d.read().mmd).toBe(rev);
+  expect(d.read()).toEqual(before);
   // A click on a handle just selects its block.
-  await node(page, 'p01').locator('[data-handle="source"]').click();
+  await node(page, 'p01').hover();
+  await node(page, 'p01').locator('[data-handle="source"][data-port="right"]').click();
   await expect(node(page, 'p01')).toHaveAttribute('data-selected', 'true');
 });
 

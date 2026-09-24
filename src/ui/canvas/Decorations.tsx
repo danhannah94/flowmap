@@ -1,26 +1,19 @@
-// The title above the diagram and the legend below it (UI2), in world coordinates like the SVG export.
+// The legend below the diagram (UI2), in world coordinates like the SVG export. (The title, which can be moved and
+// hidden since v1.1, is drawn with the notes: src/ui/notes.)
 import { resolveStyle, type Theme } from '../../core/theme';
 import type { LayoutResult, LegendItem } from '../../core/types';
-import { LEGEND_GAP, TITLE_BAND } from '../store/store';
+import { notesRowBottom } from '../notes/geometry';
+import { LEGEND_GAP } from '../store/store';
 import { useStoreState } from '../store/hooks';
 
-export function DiagramTitle({ title }: { title: string }) {
-  const editing = useStoreState((s) => s.editing?.target.kind === 'title');
-  return (
-    <div className="fm-title-wrap" style={{ left: 0, top: -TITLE_BAND }}>
-      <div data-testid="title" className="fm-title" style={{ visibility: editing ? 'hidden' : undefined }}>
-        {title}
-      </div>
-    </div>
-  );
-}
-
 export function Legend({ items, layout, theme }: { items: LegendItem[]; layout: LayoutResult; theme: Theme }) {
+  // Below the diagram and the default row of notes under it (§6), so the two never overlap.
+  const bottom = useStoreState((s) => notesRowBottom(s.shown));
   return (
     <div
       data-testid="legend"
       className="fm-legend"
-      style={{ left: 0, top: layout.height + LEGEND_GAP, width: Math.max(layout.width, 320) }}
+      style={{ left: 0, top: Math.max(bottom, layout.height) + LEGEND_GAP, width: Math.max(layout.width, 320) }}
     >
       {items.map((item, i) => {
         const s = resolveStyle(item.style, theme);

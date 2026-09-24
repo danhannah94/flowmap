@@ -87,7 +87,7 @@ async function dragAndCheck(page: Page, d: Diagram, id: string, where: Where, op
   const to = await where(c0, from);
   const want = { x: to.x - c0.x, y: to.y - c0.y };
   const still = opts.still?.(want, before) ?? [];
-  await dragFromTo(page, from, to);
+  await dragFromTo(page, from, to, { alt: true }); // exactly where released: no snapping (UI39)
   const files = await eventually(() => d.read(), (f) => pins(f.layout)[id]?.lane === opts.lane);
   expect(pins(files.layout)[id]?.lane).toBe(opts.lane);
   await saved(page);

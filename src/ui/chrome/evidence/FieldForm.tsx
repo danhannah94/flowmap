@@ -2,12 +2,15 @@
 // one-click suggested values for keys that style rules match on. With one block it adds or edits a field; with
 // several it sets the field on all of them, and `field-remove-all` removes the named field from all of them.
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { fieldSuggestions, fieldValueFromForm, type FieldValue, type FlowConfig } from '../../../core/config';
+import { BLOCK_STYLE_KEY, fieldSuggestions, fieldValueFromForm, type FieldValue, type FlowConfig } from '../../../core/config';
 import { removeFieldFromNodes, removeNodeField, setFieldOnNodes, setNodeField, type Files } from '../../../core/ops';
 import { chain } from '../../actions';
 import { useStore } from '../../store/hooks';
 import { ico } from './controls';
 import { convertForm, formJs, knownKeys, ruleKeys, sameJs, type FieldType } from './format';
+
+/** v1.1 §4: `style` is reserved for a block's own colours, which have their own controls. */
+const STYLE_KEY_REFUSED = '“style” holds the block’s colours: set them under Colours (or edit the node YAML).';
 
 export interface FieldFormInit {
   key: string;
@@ -74,6 +77,11 @@ export function FieldForm({ ids, config, init, disabled, onClose, autoFocus }: {
       keyRef.current?.focus();
       return false;
     }
+    if (k === BLOCK_STYLE_KEY) {
+      setError(STYLE_KEY_REFUSED);
+      keyRef.current?.focus();
+      return false;
+    }
     const renaming = !multi && init.editing !== undefined && init.editing !== k;
     if (!renaming && sameJs(formJs(value), current)) return true;
     const id = ids[0]!;
@@ -128,6 +136,11 @@ export function FieldForm({ ids, config, init, disabled, onClose, autoFocus }: {
   const removeAll = () => {
     if (!k) {
       setError('Type the name of the field to remove');
+      keyRef.current?.focus();
+      return;
+    }
+    if (k === BLOCK_STYLE_KEY) {
+      setError(STYLE_KEY_REFUSED);
       keyRef.current?.focus();
       return;
     }

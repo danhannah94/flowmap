@@ -3,13 +3,16 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { getTheme, type Theme } from '../../core/theme';
 import { useStore, useStoreState } from '../store/hooks';
-import { DiagramTitle, Legend } from './Decorations';
+import { Legend } from './Decorations';
 import { EdgesLayer } from './EdgesLayer';
 import { gestureFor, hitTest, onDoubleClick, type Gesture, type GestureContext, type Hit } from './gestures';
 import { InlineEditor } from './InlineEditor';
 import { LanesLayer } from './LanesLayer';
 import { NodesLayer } from './NodesLayer';
 import { toWorld } from './viewport';
+import { NotesLayer } from '../notes';
+
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
 export function Canvas() {
   const store = useStore();
@@ -71,9 +74,13 @@ export function Canvas() {
     // Close any open editor first (leaving it commits).
     const active = document.activeElement as HTMLElement | null;
     if (store.getState().editing && active && active !== document.body) active.blur();
+    // macOS: Ctrl+click is a right-click (it opens the context menu, UI40), not a press on what is under it.
+    if (e.button === 0 && native.ctrlKey && IS_MAC) return;
     let g: Gesture | null = null;
-    if (e.button === 1 || (e.button === 0 && native.altKey)) {
-      g = gestureFor({ kind: 'background' }, native, ctx); // middle button or Alt: always pan
+    // The middle button always pans. (v1.1: Alt+drag on a block moves it without snapping, UI39, so Alt no longer
+    // pans from anywhere; Alt+drag on the background still pans, like any background drag.)
+    if (e.button === 1) {
+      g = gestureFor({ kind: 'background' }, native, ctx);
     } else if (e.button === 0) {
       g = gestureFor(hit, native, ctx);
       // Until a feature registers them, handles and edge ends act like their block or edge.
@@ -153,10 +160,11 @@ export function Canvas() {
       <div className="fm-world" style={{ transform: world }}>
         {layout && shown ? (
           <>
-            <DiagramTitle title={shown.doc.title} />
             <LanesLayer layout={layout} theme={theme} />
             <EdgesLayer layout={layout} theme={theme} />
             <NodesLayer layout={layout} styles={shown.doc.styles} theme={theme} />
+            {/* Notes and the title (UI41, UI42): on top, since they may sit over anything (§6). */}
+            <NotesLayer layout={layout} notes={shown.doc.notes} theme={theme} />
             <Legend items={shown.doc.legend} layout={layout} theme={theme} />
           </>
         ) : null}

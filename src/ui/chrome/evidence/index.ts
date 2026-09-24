@@ -4,3 +4,4 @@
 import '../Inspector';
 import '../Styles';
 import '../Orphans';
+import './BlockSize'; // v1.1 UI34: the block's size in the inspector (after the inspector, which it extends)
