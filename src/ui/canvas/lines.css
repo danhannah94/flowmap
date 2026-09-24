@@ -214,9 +214,3 @@
   stroke: var(--accent);
   stroke-width: 1.5;
 }
-
-.fm-label-track {
-  fill: var(--accent);
-  opacity: 0.9;
-  pointer-events: none;
-}

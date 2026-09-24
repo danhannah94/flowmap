@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { format, parse } from '../../src/core/mmd';
-import { dragFromTo, eventually, lane, makeDiagram, node, open, PR, saved, type Diagram, type Files } from './helpers';
+import { dragFromTo, lane, makeDiagram, node, open, PR, saved, settled, type Diagram, type Files } from './helpers';
 
 const fmt = (text: string) => format(parse(text).diagram);
 
@@ -31,7 +31,7 @@ const withoutHints = (layout: string | null) => {
 async function expectFiles(page: Page, d: Diagram, want: Files): Promise<Files> {
   const same = (f: Files) => f.mmd === want.mmd && f.config === want.config
     && JSON.stringify(withoutHints(f.layout)) === JSON.stringify(withoutHints(want.layout));
-  const got = await eventually(() => d.read(), same, 3000);
+  const got = await settled(page, d, same, 3000);
   expect(got.mmd).toBe(want.mmd);
   expect(got.config).toBe(want.config);
   expect(withoutHints(got.layout)).toEqual(withoutHints(want.layout));
@@ -49,11 +49,11 @@ async function expectUnchanged(page: Page, d: Diagram, want: Files): Promise<voi
 /** P20: undo restores `before` byte for byte (a created file is deleted again); redo restores `after` byte for byte. */
 async function expectUndoRedo(page: Page, d: Diagram, before: Files, after: Files): Promise<void> {
   await page.getByTestId('undo').click();
-  await eventually(() => d.read(), (f) => f.mmd === before.mmd && f.config === before.config && f.layout === before.layout, 3000);
+  await settled(page, d, (f) => f.mmd === before.mmd && f.config === before.config && f.layout === before.layout, 3000);
   await saved(page);
   expect(d.read()).toEqual(before);
   await page.getByTestId('redo').click();
-  await eventually(() => d.read(), (f) => f.mmd === after.mmd && f.config === after.config && f.layout === after.layout, 3000);
+  await settled(page, d, (f) => f.mmd === after.mmd && f.config === after.config && f.layout === after.layout, 3000);
   await saved(page);
   expect(d.read()).toEqual(after);
 }
@@ -486,6 +486,15 @@ test('? shows the shortcut list (from the registry); ? again, Escape or × hides
   for (const text of ['Undo', 'Redo', 'Select everything', 'Cancel / clear the selection', 'Edit the selected block’s label', 'Nudge the selection', 'Show or hide this list']) {
     await expect(list).toContainText(text);
   }
+  // v1.1: notes and the title (Enter, arrows), double-click on a note, right-click menus, Alt to skip snapping.
+  const rows = list.locator('.fm-shortcut-row');
+  const row = (text: string) => rows.filter({ has: page.locator('dt', { hasText: text }) });
+  await expect(row('Edit the selected note or the title')).toContainText('Enter');
+  await expect(row('Move the selected note or the title 10 px')).toContainText('←');
+  await expect(row('Edit a block, a note,')).toContainText('Double-click');
+  await expect(row('The menu for a block, line, lane, note, the title or the canvas')).toContainText('Right-click');
+  await expect(row('Move without snapping')).toContainText(/Alt|⌥/);
+  await expect(row('Delete the selected blocks and lines, or the selected note')).toContainText('Delete');
   await page.keyboard.press('?');
   await expect(list).toHaveCount(0);
   await page.keyboard.press('?');
@@ -548,11 +557,11 @@ test('undo and redo shortcuts work on lane edits; no shortcut fires while typing
 
   // Outside an editor: Cmd/Ctrl+Z undoes, Shift+Cmd/Ctrl+Z redoes, byte for byte.
   await page.keyboard.press('ControlOrMeta+z');
-  await eventually(() => d.read(), (f) => f.mmd === PR.mmd, 3000);
+  await settled(page, d, (f) => f.mmd === PR.mmd, 3000);
   await saved(page);
   expect(d.read()).toEqual(PR);
   await page.keyboard.press('ControlOrMeta+Shift+z');
-  await eventually(() => d.read(), (f) => f.mmd === tb.mmd, 3000);
+  await settled(page, d, (f) => f.mmd === tb.mmd, 3000);
   await saved(page);
   expect(d.read()).toEqual(tb);
 });

@@ -6,8 +6,8 @@ export { mentions, type Files, type OpResult } from './context';
 export { type LayoutArg } from './frame';
 export {
   NEW_BLOCK_LABELS, addNode, addNodeAt, changeShape, clearAllPins, deleteItems, duplicateNodes, moveNodesToLane,
-  pinNodes, positionInLane, renameNode, resetSize, resizeNode, setNodeLabel, unpinNodes, type DropPosition,
-  type ResizeHandle,
+  pinNodes, positionInLane, renameNode, resetSize, resizedBox, resizeNode, setNodeLabel, unpinNodes, type DropPosition,
+  type ResizableBlock, type ResizeHandle,
 } from './nodes';
 export { connect, reconnect, setEdgeLabel, type ConnectSides } from './edges';
 export {

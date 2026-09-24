@@ -5,7 +5,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { parseDocument } from 'yaml';
 import { format, parse } from '../../src/core/mmd';
-import { attrs, dragFromTo, emptyPointInLane, eventually, expectMatchesCli, makeDiagram, node, open, pins, PR, saved, type Diagram, type Files } from './helpers';
+import { attrs, dragFromTo, emptyPointInLane, expectMatchesCli, makeDiagram, node, open, pins, PR, saved, settled, type Diagram, type Files } from './helpers';
 
 // ---- parity helpers ----------------------------------------------------------------------------------------------
 
@@ -49,18 +49,17 @@ function expectLinesKept(text: string, sub: readonly string[]): void {
 }
 
 /** Wait (up to 2 s) until the files on disk satisfy `check`, then return them. */
-async function onDisk(d: Diagram, check: (f: Files) => boolean): Promise<Files> {
-  return eventually(() => d.read(), check, 2000);
-}
+/** The files once the action has landed and the page has saved (helpers `settled`). */
+const onDisk = (page: Page, d: Diagram, check: (f: Files) => boolean): Promise<Files> => settled(page, d, check);
 
 /** Undo restores `before` byte for byte; redo re-applies `after` byte for byte (UI28, P20). */
 async function expectUndoRedo(page: Page, d: Diagram, before: Files, after: Files): Promise<void> {
   await saved(page);
   await page.getByTestId('undo').click();
-  expect(await onDisk(d, (f) => sameFiles(f, before))).toEqual(before);
+  expect(await onDisk(page, d, (f) => sameFiles(f, before))).toEqual(before);
   await saved(page);
   await page.getByTestId('redo').click();
-  expect(await onDisk(d, (f) => sameFiles(f, after))).toEqual(after);
+  expect(await onDisk(page, d, (f) => sameFiles(f, after))).toEqual(after);
   await saved(page);
 }
 
@@ -136,7 +135,7 @@ test('shape picker: shown for exactly one selected block; every shape rewrites t
   for (const shape of ['decision', 'terminal', 'subprocess', 'database', 'io', 'document', 'delay', 'step']) {
     await picker(page).locator(`[data-shape="${shape}"]`).click();
     const want = canon(edit(PR.mmd, [P03, `    ${DECL[shape]!('p03', label)}`]));
-    const files = await onDisk(d, (f) => f.mmd === want);
+    const files = await onDisk(page, d, (f) => f.mmd === want);
     expect(files.mmd).toBe(want);
     expect(files.config).toBe(PR.config);
     expect(files.layout).toBe(PR.layout);
@@ -148,12 +147,12 @@ test('shape picker: shown for exactly one selected block; every shape rewrites t
   // Undo walks back through every shape byte for byte; redo walks forward again.
   for (let i = states.length - 2; i >= 0; i--) {
     await page.getByTestId('undo').click();
-    expect(await onDisk(d, (f) => sameFiles(f, states[i]!))).toEqual(states[i]);
+    expect(await onDisk(page, d, (f) => sameFiles(f, states[i]!))).toEqual(states[i]);
     await saved(page);
   }
   for (let i = 1; i < states.length; i++) {
     await page.getByTestId('redo').click();
-    expect(await onDisk(d, (f) => sameFiles(f, states[i]!))).toEqual(states[i]);
+    expect(await onDisk(page, d, (f) => sameFiles(f, states[i]!))).toEqual(states[i]);
     await saved(page);
   }
   await expectMatchesCli(page, d);
@@ -167,11 +166,11 @@ test('shape picker: changing to document or delay drops a class suffix (P2)', as
   await node(page, 'p03').click();
   await picker(page).locator('[data-shape="io"]').click();
   const io = canon(edit(start.mmd, [`${P03}:::hot`, '    p03[/"Send it back with what is missing"/]:::hot']));
-  await onDisk(d, (f) => f.mmd === io);
+  await onDisk(page, d, (f) => f.mmd === io);
   expect(d.read().mmd).toBe(io);
   await picker(page).locator('[data-shape="document"]').click();
   const doc = canon(edit(start.mmd, [`${P03}:::hot`, '    p03@{ shape: doc, label: "Send it back with what is missing" }']));
-  expect((await onDisk(d, (f) => f.mmd === doc)).mmd).toBe(doc);
+  expect((await onDisk(page, d, (f) => f.mmd === doc)).mmd).toBe(doc);
   // The pass-through `class` line is text-only and stays.
   expect(doc).toContain('  class p03 hot');
 });
@@ -222,7 +221,7 @@ test('rename id: refusals show id-error and change nothing; a good id renames ev
     config: edit(config, ['  r01:\n', '  request_form:\n'], ['{id: r01}', '{id: request_form}']),
     layout: start.layout!.replace('"r01"', '"request_form"'),
   };
-  const files = await onDisk(d, (f) => f.mmd === hand.mmd && f.config !== config && f.layout !== layout);
+  const files = await onDisk(page, d, (f) => f.mmd === hand.mmd && f.config !== config && f.layout !== layout);
   expect(files.mmd).toBe(hand.mmd);
   expect(yamlJs(files.config)).toEqual(yamlJs(hand.config));
   expectLinesKept(files.config!, config.split('\n').filter((l) => !/\br01\b/.test(l)));
@@ -247,7 +246,7 @@ test('unpin the selected blocks; enabled only for pinned blocks (P10)', async ({
   await expect(node(page, 'closed')).toHaveAttribute('data-pinned', 'true');
   await expect(page.getByTestId('unpin')).toBeEnabled();
   await page.getByTestId('unpin').click();
-  const files = await onDisk(d, (f) => f.layout !== PR.layout);
+  const files = await onDisk(page, d, (f) => f.layout !== PR.layout);
   expect(layoutJs(files.layout)).toEqual({ version: 1, nodes: {} });
   expect(files.mmd).toBe(PR.mmd);
   expect(files.config).toBe(PR.config);
@@ -272,7 +271,7 @@ test('re-layout all asks first, then clears every pin and keeps hints (P10)', as
   // Yes: the layout file becomes {"version": 1, "nodes": {}}.
   await page.getByTestId('relayout-all').click();
   await page.getByTestId('confirm-yes').click();
-  const files = await onDisk(d, (f) => f.layout !== layout);
+  const files = await onDisk(page, d, (f) => f.layout !== layout);
   expect(layoutJs(files.layout)).toEqual({ version: 1, nodes: {} });
   expect(files.mmd).toBe(PR.mmd);
   expect(files.config).toBe(PR.config);
@@ -292,7 +291,7 @@ test('duplicate (button): a copy with its metadata, pinned 24/24 from the origin
   const laneY = cli.lanes.find((l) => l.id === 'requester')!.y;
   await node(page, 'r01').click();
   await page.getByTestId('duplicate').click();
-  const files = await onDisk(d, (f) => f.mmd !== PR.mmd && f.config !== PR.config && f.layout !== PR.layout);
+  const files = await onDisk(page, d, (f) => f.mmd !== PR.mmd && f.config !== PR.config && f.layout !== PR.layout);
   // The copy is the last declaration of its lane.
   expect(files.mmd).toBe(canon(edit(PR.mmd, ['    closed(["Request closed"])\n', '    closed(["Request closed"])\n    n1["Fill the purchase request form"]\n'])));
   // Its metadata is copied under the new id, appended at the end of `nodes`; every original line is kept.
@@ -318,7 +317,7 @@ test('duplicate (Cmd/Ctrl+D) several blocks: new ids and declarations in file or
   await node(page, 'p05').click();
   await node(page, 'r02').click({ modifiers: ['Shift'] });
   await page.keyboard.press('ControlOrMeta+d');
-  const files = await onDisk(d, (f) => f.mmd.includes('n2') && !!f.config?.includes('  n2:') && !!pins(f.layout).n2);
+  const files = await onDisk(page, d, (f) => f.mmd.includes('n2') && !!f.config?.includes('  n2:') && !!pins(f.layout).n2);
   expect(files.mmd).toBe(canon(edit(PR.mmd,
     ['    closed(["Request closed"])\n', '    closed(["Request closed"])\n    n1["Receive the delivery and sign for it"]\n'],
     ['    p07["Create the PO in the ERP"]\n', '    p07["Create the PO in the ERP"]\n    n2["Get three quotes"]\n'])));
@@ -347,7 +346,7 @@ test('delete a block (Delete key): its edges, attached comments and pin go; its 
   const hand = canon(edit(mmd,
     ['    %% the end of the line\n    closed(["Request closed"])\n', ''],
     ['  %% tell them, then close\n  m03 --> closed\n', '']));
-  const files = await onDisk(d, (f) => f.mmd === hand && f.layout !== PR.layout);
+  const files = await onDisk(page, d, (f) => f.mmd === hand && f.layout !== PR.layout);
   expect(files.mmd).toBe(hand);
   expect(files.config).toBe(PR.config);
   expect(layoutJs(files.layout)).toEqual({ version: 1, nodes: {} });
@@ -363,7 +362,7 @@ test('delete an edge (button), and blocks with edges together (Backspace) (P8)',
   await selectEdge(page, 'p03->r01');
   await page.getByTestId('delete').click();
   const one = canon(edit(PR.mmd, ['  p03 --> r01\n', '']));
-  const files1 = await onDisk(d, (f) => f.mmd === one);
+  const files1 = await onDisk(page, d, (f) => f.mmd === one);
   expect(files1).toEqual({ ...PR, mmd: one });
   await expect(edge(page, 'p03->r01')).toHaveCount(0);
   await saved(page);
@@ -380,7 +379,7 @@ test('delete an edge (button), and blocks with edges together (Backspace) (P8)',
     ['  m02 -->|no| m03\n', ''],
     ['  m03 --> closed\n', ''],
     ['  v02 --> r02\n', '']));
-  const files2 = await onDisk(d, (f) => f.mmd === two);
+  const files2 = await onDisk(page, d, (f) => f.mmd === two);
   expect(files2).toEqual({ ...PR, mmd: two });
   await expectUndoRedo(page, d, files1, files2);
   await expectMatchesCli(page, d);
@@ -406,7 +405,7 @@ test('connect by dragging from a source handle onto anywhere on the target block
   await page.mouse.up();
   await expect(page.locator('.fm-connect-preview')).toHaveCount(0);
   const want = canon(`${PR.mmd}  p06 --> r02\n`);
-  const files = await onDisk(d, (f) => f.mmd === want && f.layout !== PR.layout);
+  const files = await onDisk(page, d, (f) => f.mmd === want && f.layout !== PR.layout);
   expect(files.mmd).toBe(want);
   expect(files.config).toBe(PR.config);
   // Dropped away from the target's connection points: only the source side is written (UI38).
@@ -426,14 +425,14 @@ test('connect with locator.dragTo, a duplicate edge, a drag from another side, a
   await node(page, 'intake').hover();
   await node(page, 'intake').locator('[data-handle="source"][data-port="right"]').dragTo(node(page, 'r01'));
   const dup = canon(`${PR.mmd}  intake --> r01\n`);
-  await onDisk(d, (f) => f.mmd === dup);
+  await onDisk(page, d, (f) => f.mmd === dup);
   expect(d.read().mmd).toBe(dup);
   await expect(edge(page, 'intake->r01#2')).toHaveCount(1);
   // From the left-hand handle of f04 onto m01: f04 is the source, leaving from its left side.
   await node(page, 'f04').hover();
   await node(page, 'f04').locator('[data-handle="source"][data-port="left"]').dragTo(node(page, 'm01'));
   const rev = canon(`${dup}  f04 --> m01\n`);
-  await onDisk(d, (f) => f.mmd === rev);
+  await onDisk(page, d, (f) => f.mmd === rev);
   expect(d.read().mmd).toBe(rev);
   expect((layoutJs(d.read().layout) as { edges: unknown }).edges).toEqual({
     'intake->r01#2': { source_side: 'right' },
@@ -470,7 +469,7 @@ test('connect by the click path: select the source, press connect, click the tar
   await connect.click();
   await node(page, 'f03').click();
   const want = canon(`${PR.mmd}  f02 --> f03\n`);
-  const files = await onDisk(d, (f) => f.mmd === want);
+  const files = await onDisk(page, d, (f) => f.mmd === want);
   expect(files).toEqual({ ...PR, mmd: want });
   await expect(connect).toHaveAttribute('aria-pressed', 'false');
   await expect(edge(page, 'f02->f03')).toHaveAttribute('data-selected', 'true');
@@ -483,7 +482,7 @@ test('connect by the click path: select the source, press connect, click the tar
   await expect(connect).toHaveAttribute('aria-pressed', 'true');
   await node(page, 'f04').click();
   const next = canon(`${want}  v02 --> f04\n`);
-  expect((await onDisk(d, (f) => f.mmd === next)).mmd).toBe(next);
+  expect((await onDisk(page, d, (f) => f.mmd === next)).mmd).toBe(next);
   // Clicking empty canvas cancels an armed connect.
   await node(page, 'p01').click();
   await connect.click();
@@ -508,7 +507,7 @@ test('reconnect an edge’s source, then its target; it keeps its place, label a
   // Source end onto p04.
   await dragFromTo(page, await centreOf(page, '[data-edge-id="p02->p03"] [data-edge-end="source"]'), await centreOf(page, '[data-node-id="p04"]'));
   const src = canon(edit(mmd, ['  p02 -->|no| p03\n', '  p04 -->|no| p03\n']));
-  const files1 = await onDisk(d, (f) => f.mmd === src);
+  const files1 = await onDisk(page, d, (f) => f.mmd === src);
   expect(files1).toEqual({ ...PR, mmd: src });
   expect(src).toContain('  %% bounce it back\n  p04 -->|no| p03\n');
   await expect(edge(page, 'p04->p03')).toHaveAttribute('data-selected', 'true');
@@ -516,7 +515,7 @@ test('reconnect an edge’s source, then its target; it keeps its place, label a
   // Target end onto m01 (with Playwright's dragTo).
   await edge(page, 'p04->p03').locator('[data-edge-end="target"]').dragTo(node(page, 'm01'));
   const tgt = canon(edit(src, ['  p04 -->|no| p03\n', '  p04 -->|no| m01\n']));
-  const files2 = await onDisk(d, (f) => f.mmd === tgt);
+  const files2 = await onDisk(page, d, (f) => f.mmd === tgt);
   expect(files2).toEqual({ ...PR, mmd: tgt });
   // The edge id follows the endpoints. It is earlier in the file than the existing `p04 -->|yes| m01`, so it is
   // `p04->m01` and that one becomes `p04->m01#2` (§3.4).
@@ -546,7 +545,7 @@ test('edge label: double-click to set, change and clear; Escape cancels; Enter o
   await editor.press('Enter');
   await expect(editor).toHaveCount(0);
   const set = canon(edit(PR.mmd, ['  m03 --> closed\n', '  m03 -->|done| closed\n']));
-  const files1 = await onDisk(d, (f) => f.mmd === set);
+  const files1 = await onDisk(page, d, (f) => f.mmd === set);
   expect(files1).toEqual({ ...PR, mmd: set });
   await expect(edge(page, 'm03->closed')).toContainText('done');
   await expectUndoRedo(page, d, PR, files1);
@@ -568,7 +567,7 @@ test('edge label: double-click to set, change and clear; Escape cancels; Enter o
   await editor.press('Delete');
   await editor.press('Enter');
   const changed = canon(edit(PR.mmd, ['  m03 --> closed\n', '  m03 -->|"said #quot;no#quot; #1"| closed\n']));
-  const files2 = await onDisk(d, (f) => f.mmd === changed);
+  const files2 = await onDisk(page, d, (f) => f.mmd === changed);
   expect(files2).toEqual({ ...PR, mmd: changed });
   await expect(edge(page, 'm03->closed')).toHaveCount(1);
 
@@ -578,7 +577,7 @@ test('edge label: double-click to set, change and clear; Escape cancels; Enter o
   await page.mouse.dblclick(p.x, p.y);
   await editor.fill('   ');
   await editor.press('Enter');
-  const files3 = await onDisk(d, (f) => f.mmd === PR.mmd);
+  const files3 = await onDisk(page, d, (f) => f.mmd === PR.mmd);
   expect(files3).toEqual(PR);
   await expectUndoRedo(page, d, files2, files3);
   await expectMatchesCli(page, d);
@@ -636,7 +635,7 @@ test('rename id through the inspector’s id-edit button (the §8.3 path)', asyn
   await editor.fill('approved');
   await editor.press('Enter');
   const want = canon(PR.mmd.replace(/\bm02\b/g, 'approved'));
-  const files = await onDisk(d, (f) => f.mmd === want);
+  const files = await onDisk(page, d, (f) => f.mmd === want);
   expect(files).toEqual({ ...PR, mmd: want });
   await expect(node(page, 'approved')).toHaveAttribute('data-selected', 'true');
   await expectUndoRedo(page, d, PR, files);

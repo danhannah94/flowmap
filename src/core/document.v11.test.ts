@@ -148,6 +148,22 @@ describe('orphans: W-layout-unknown-node, -edge, -note (UI27)', () => {
   });
 });
 
+describe('R14.6: under E-config the title is the file\'s base name, even when the config has a title', () => {
+  test.each([
+    ['a bad version', 'version: 2\ntitle: Set by hand\n'],
+    ['a bad show_title', 'title: Set by hand\nshow_title: yes\n'],
+    ['YAML that doesn\'t parse', 'title: Set by hand\nlanes: [\n'],
+    ['a note-id clash', 'title: Set by hand\nnotes:\n  a: {text: x}\n'],
+    ['E-config with show_title: false', 'title: Set by hand\nshow_title: false\nversion: 3\n'],
+  ])('%s', (_name, config) => {
+    const doc = loadDocument(MMD, config, null, 'some/dir/my-diagram.mmd');
+    expect(doc.problems.errors.map((p) => p.code)).toEqual(['E-config']);
+    expect(doc.title).toBe('my-diagram');
+    expect(doc.showTitle).toBe(true);
+    expect(doc.layout!.result.title?.text).toBe('my-diagram');
+  });
+});
+
 describe('a note id that clashes with a node or lane id is E-config', () => {
   const doc = loadDocument(MMD, 'nodes:\n  a:\n    style: {fill: "#f00"}\nnotes:\n  l2: {text: x}\n', null, 'x.mmd');
   test('reported with line null; the config then counts as having errors', () => {

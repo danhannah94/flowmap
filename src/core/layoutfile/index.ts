@@ -11,7 +11,7 @@ export {
   setPin, setPins, removePin, removePins, setSize, setSizes, removeNodeEntries, nodeEntry,
   updateEdge, updateEdges, setEdgeSide, setEdgePoints, setLabelAt, resetEdge, removeEdgeEntries,
   rekeyEdges, rekeyEdgesByPosition, splitEdgeId,
-  renameNode, renamePinNode, renameLane, renameLaneInPins, dropPointsInLanes, movePointsToLane,
+  renameNode, renamePinNode, renameLane, renameLaneInPins, dropPointsInLanes, movePointsToLane, reexpressOldFirstLane,
   clearPinsAndPoints, clearPins,
   setNotePosition, removeNoteEntries, setTitlePosition,
   flipDirection, setHints, roundPx, pinFromDrop,

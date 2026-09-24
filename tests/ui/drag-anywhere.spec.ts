@@ -5,7 +5,7 @@
 // there after a reload.
 import { expect, test, type Page } from '@playwright/test';
 import { format, parse } from '../../src/core/mmd';
-import { attrs, dragFromTo, eventually, expectMatchesCli, makeDiagram, node, open, pins, saved, type Diagram, type Files } from './helpers';
+import { attrs, dragFromTo, expectMatchesCli, makeDiagram, node, open, pins, saved, settled, type Diagram, type Files } from './helpers';
 
 const canon = (text: string) => format(parse(text).diagram);
 
@@ -88,7 +88,7 @@ async function dragAndCheck(page: Page, d: Diagram, id: string, where: Where, op
   const want = { x: to.x - c0.x, y: to.y - c0.y };
   const still = opts.still?.(want, before) ?? [];
   await dragFromTo(page, from, to, { alt: true }); // exactly where released: no snapping (UI39)
-  const files = await eventually(() => d.read(), (f) => pins(f.layout)[id]?.lane === opts.lane);
+  const files = await settled(page, d, (f) => pins(f.layout)[id]?.lane === opts.lane);
   expect(pins(files.layout)[id]?.lane).toBe(opts.lane);
   await saved(page);
   const after = await centres(page);

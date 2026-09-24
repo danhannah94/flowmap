@@ -326,14 +326,71 @@ export function addNodeAt(
 export type ResizeHandle = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw';
 const HANDLES: readonly ResizeHandle[] = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
 
+/** A block as `resizedBox` needs it: its box as drawn, and its label and shape (for what the label needs, §6 L9). */
+export interface ResizableBlock {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label: string;
+  kind: ShapeKind;
+}
+
+/**
+ * UI34: the box a block has after dragging `handle` by (dx, dy) diagram px. Shared by `resizeNode` and the UI's live
+ * preview, so what is drawn while dragging is exactly what lands.
+ * - The opposite edge or corner stays; only the moved edge is rounded to a whole pixel (halves toward −∞).
+ * - The width stops at the label's narrowest width, the height at what the label needs at the new width (never below
+ *   40), and a width-only drag keeps the height at least that need too (the far edge moves down or right).
+ * - `floor` is where the block's lane starts across the flow when that lane isn't the first (else −Infinity): a top
+ *   edge (LR) or left edge (TB) can't go before it (a pin's `across` is at least 0 there, §5). Narrowing from a top
+ *   handle raises the height the label needs; the width stops narrowing where that need no longer fits between the
+ *   lane's start edge and the fixed bottom edge, so the bottom edge still stays.
+ */
+export function resizedBox(
+  node: ResizableBlock, handle: ResizeHandle, delta: { dx: number; dy: number }, LR: boolean, floor: number,
+): { x: number; y: number; width: number; height: number } {
+  const [n, s, e, w] = ['n', 's', 'e', 'w'].map((c) => handle.includes(c));
+  const right = node.x + node.width;
+  const bottom = node.y + node.height;
+  const needAt = (width: number) => Math.max(labelNeeds(node.label, node.kind, width).height, MIN_SIZE);
+
+  let left = node.x;
+  let width = node.width;
+  if (e) width = roundPx(right + delta.dx) - node.x;
+  if (w) {
+    left = Math.min(roundPx(node.x + delta.dx), right - 1);
+    if (!LR) left = Math.max(left, floor);
+    width = right - left;
+  }
+  width = Math.max(width, labelNeeds(node.label, node.kind, Math.max(1, width)).minWidth, MIN_SIZE);
+  if (LR && n && floor > -Infinity) {
+    // The block's current box fits (its top is at or after the lane's start edge), so this stops by `node.width`.
+    const room = bottom - floor;
+    while (width < node.width && needAt(width) > room) width++;
+  }
+  if (w) left = right - width;
+
+  let top = node.y;
+  let height = node.height;
+  if (s) height = roundPx(bottom + delta.dy) - node.y;
+  if (n) {
+    top = Math.min(roundPx(node.y + delta.dy), bottom - 1);
+    if (LR) top = Math.max(top, floor);
+    height = bottom - top;
+  }
+  height = Math.max(height, needAt(width));
+  if (n) top = bottom - height;
+  return { x: left, y: top, width, height };
+}
+
 /**
  * UI34: drag a resize handle of block `id` by `delta` (diagram pixels). Writes the block's `width` and `height` (both,
- * even if only one changed). The opposite edge or corner stays where it is in `layout`; only the moved edge is
- * rounded to a whole pixel (halves toward −∞). The handle stops at the block's narrowest width and at the height its
- * label needs at the new width (§6 L9), and a width-only drag keeps the height at least that need too, so a stored
- * size is never smaller than the label needs (§8.1). A top or left handle also moves the block, so it writes the pin
- * (pinning a block that wasn't) in the block's lane. Outside the first lane the handle stops at the lane's start
- * edge on the across axis, where a pin's `across` is 0 (§5).
+ * even if only one changed), sized and placed by `resizedBox` from the block's box in `layout`. Every resize also
+ * writes the pin (amendment A6), at the block's top-left after the resize: where it was drawn before for a right or
+ * bottom handle, moved by the handle for a top or left one. So an automatically placed block is pinned where it is
+ * and doesn't jump when the layout runs again; the pin is in the block's lane, with `across` at least 0 outside the
+ * first lane (§5).
  */
 export function resizeNode(
   files: Files, layout: LayoutArg, id: string, handle: ResizeHandle, delta: { dx: number; dy: number },
@@ -348,43 +405,13 @@ export function resizeNode(
     if (!node) return refuse(`The layout has no block "${id}"; try again`);
     const lane = ctx.laneOf(id);
     const LR = view.result.direction !== 'TB';
-    const [n, s, e, w] = ['n', 's', 'e', 'w'].map((c) => handle.includes(c));
-
-    // Across the flow, a top (LR) or left (TB) edge can't go before a later lane's start edge.
     const li = view.result.lanes.findIndex((l) => l.id === lane);
     const floor = li > 0 ? bandStart(view.result, view.result.lanes[li]!) : -Infinity;
-    const right = node.x + node.width;
-    const bottom = node.y + node.height;
-
-    let left = node.x;
-    let width = node.width;
-    if (e) width = roundPx(right + delta.dx) - node.x;
-    if (w) {
-      left = Math.min(roundPx(node.x + delta.dx), right - 1);
-      if (!LR) left = Math.max(left, floor);
-      width = right - left;
-    }
-    width = Math.max(width, labelNeeds(node.label, node.kind, Math.max(1, width)).minWidth, MIN_SIZE);
-    if (w) left = right - width;
-
-    const need = Math.max(labelNeeds(node.label, node.kind, width).height, MIN_SIZE);
-    let top = node.y;
-    let height = node.height;
-    if (s) height = roundPx(bottom + delta.dy) - node.y;
-    if (n) {
-      top = Math.min(roundPx(node.y + delta.dy), bottom - 1);
-      if (LR) top = Math.max(top, floor);
-      height = bottom - top;
-    }
-    height = Math.max(height, need);
-    if (n) top = bottom - height;
-
-    const size = { width, height };
-    ctx.editLayout('always', (file) => setSizes(file, [[id, size]]));
-    if (n || w) {
-      const corner = storedCorner(view, lane, left, top);
-      ctx.editLayout('always', (file) => setPins(file, [[id, pinFromDrop(lane, corner.along, corner.across, ctx.firstLane())]]));
-    }
+    const box = resizedBox(node, handle, delta, LR, floor);
+    const size = { width: box.width, height: box.height };
+    const corner = storedCorner(view, lane, box.x, box.y);
+    const pin = pinFromDrop(lane, corner.along, corner.across, ctx.firstLane());
+    ctx.editLayout('always', (file) => setPins(setSizes(file, [[id, size]]), [[id, pin]]));
     return { size };
   });
 }

@@ -394,14 +394,6 @@ a.fm-home:hover {
   pointer-events: none;
 }
 
-.fm-title-wrap {
-  position: absolute;
-  height: 64px;
-  display: flex;
-  align-items: center;
-  pointer-events: none;
-}
-
 .fm-title {
   font: 700 20px/28px Inter, sans-serif;
   color: var(--title);
@@ -708,101 +700,6 @@ a.fm-home:hover {
 .fm-node:hover .fm-pin,
 .fm-node[data-selected='true'] .fm-pin {
   opacity: 0.9;
-}
-
-/* Connection handles (UI15) on the flow-axis sides. The visible dot (::after) is centred on the side and keeps about
-   10 px on screen at any zoom down to ~37%; the hit area (the element) keeps about 13 px, but reaches only 6 px
-   outside the block, as it always did, and grows inward instead, so it never covers a selected line's end grip (UI16)
-   or a line leaving the block. World sizes are capped when zoomed far out, so a handle never swallows a small block.
-   Shown on hover and on the selected block. --zoom is set by the canvas. */
-.fm-handle {
-  --hs: clamp(14px, calc(13px / var(--zoom, 1)), 36px);
-  --out: 6px;
-  --dot: clamp(3px, calc(12px / var(--zoom, 1)), 27px);
-  position: absolute;
-  width: var(--hs);
-  height: var(--hs);
-  opacity: 0;
-  transition: opacity 0.12s;
-  cursor: crosshair;
-}
-
-.fm-handle::after {
-  content: '';
-  position: absolute;
-  width: var(--dot);
-  height: var(--dot);
-  box-sizing: border-box;
-  border-radius: 50%;
-  background: var(--canvas-bg);
-  border: calc(var(--dot) * 0.2) solid var(--accent);
-  pointer-events: none;
-  transition: transform 0.12s, background 0.12s;
-}
-
-/* Along the side: centred. Across it: the box starts --out outside the block; the dot's centre sits on the side. */
-.fm-handle.fm-LR {
-  top: calc(50% - var(--hs) / 2);
-}
-
-.fm-handle.fm-LR::after {
-  top: calc(50% - var(--dot) / 2);
-}
-
-.fm-handle.fm-LR.fm-handle-target {
-  left: calc(0px - var(--out));
-}
-
-.fm-handle.fm-LR.fm-handle-target::after {
-  left: calc(var(--out) - var(--dot) / 2);
-}
-
-.fm-handle.fm-LR.fm-handle-source {
-  right: calc(0px - var(--out));
-}
-
-.fm-handle.fm-LR.fm-handle-source::after {
-  right: calc(var(--out) - var(--dot) / 2);
-}
-
-.fm-handle.fm-TB {
-  left: calc(50% - var(--hs) / 2);
-}
-
-.fm-handle.fm-TB::after {
-  left: calc(50% - var(--dot) / 2);
-}
-
-.fm-handle.fm-TB.fm-handle-target {
-  top: calc(0px - var(--out));
-}
-
-.fm-handle.fm-TB.fm-handle-target::after {
-  top: calc(var(--out) - var(--dot) / 2);
-}
-
-.fm-handle.fm-TB.fm-handle-source {
-  bottom: calc(0px - var(--out));
-}
-
-.fm-handle.fm-TB.fm-handle-source::after {
-  bottom: calc(var(--out) - var(--dot) / 2);
-}
-
-.fm-node:hover .fm-handle,
-.fm-node[data-selected='true'] .fm-handle {
-  opacity: 1;
-}
-
-.fm-handle:hover::after {
-  transform: scale(1.3);
-  background: var(--accent);
-}
-
-.fm-canvas[data-dragging='true'] .fm-handle,
-.fm-canvas[data-readonly='true'] .fm-handle,
-.fm-canvas[data-placing='true'] .fm-handle {
-  opacity: 0 !important;
 }
 
 /* legend */

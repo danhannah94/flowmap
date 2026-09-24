@@ -13,13 +13,13 @@
 //
 // v1.1 adds "Keeping the layout file in step" (§8.2): `rekeyEdgeEntries` re-keys edge entries by position after an
 // operation changes the edge list, and `commit` re-expresses bend points in `_unassigned` when an operation makes the
-// Unassigned lane disappear, and (ruling R12) re-expresses the old first lane's pins and bend points when an operation
-// changes which lane is displayed first. A config whose note ids clash with node or lane ids has errors (§4, UI31).
+// Unassigned lane disappear, and (rulings R12, R14, R15) re-expresses the old first lane's pins and bend points, and
+// the stored note and title positions, when an operation changes which lane is displayed first. A config whose note ids clash with node or lane ids has errors (§4, UI31).
 
 import { checkNoteClashes, ConfigDoc, laneOrder, parseConfig, type EditResult, type FlowConfig } from '../config';
 import {
-  checkPinRanges, effectivePlacements, firstLaneOf, movePointsToLane, parseLayoutFile, pinOf, rekeyEdgesByPosition,
-  serializeLayoutFile, setPins,
+  checkPinRanges, effectivePlacements, firstLaneOf, movePointsToLane, parseLayoutFile, reexpressOldFirstLane,
+  rekeyEdgesByPosition, serializeLayoutFile,
 } from '../layoutfile';
 import { pinTranslation, type LayoutOutput, type Translation } from '../layout';
 import { loadDocument } from '../document';
@@ -27,7 +27,7 @@ import {
   declaredNodes, edgeIds, findNode, format, isIdForm, isReservedId, parse, toGraph, undeclaredNodes,
   type Diagram, type Edge, type NodeDecl,
 } from '../mmd';
-import { UNASSIGNED, type Graph, type LayoutFile, type Pin } from '../types';
+import { UNASSIGNED, type Graph, type LayoutFile } from '../types';
 
 /** The diagram's three files. `null` means the file doesn't exist (only the `.mmd` is required, §2). */
 export interface Files {
@@ -329,7 +329,10 @@ export class Ctx {
    * Ruling R12: when an operation changes which lane is displayed first (reordering lanes, adding a lane to a
    * lane-free diagram, deleting the first lane…), the old first lane's pins and bend points get its growth U (the
    * frame's `across`, §6) added to every `across`, in the same write: every value is then at least 0 (§5) and nothing
-   * moves on screen (the old first lane's zero line was U after its start edge; now it is its start edge).
+   * moves on screen (the old first lane's zero line was U after its start edge; now it is its start edge). R14: stale
+   * and orphaned pins and ignored bend points in that lane get U too, and so do stored note and title positions on the
+   * across axis. R15: that applies when the first lane is deleted as well, and a pin or bend point that would still be
+   * negative (it applies to nothing) is removed.
    */
   private keepOldFirstLane(): void {
     const before = this.graphIn().lanes[0]?.id;
@@ -344,14 +347,7 @@ export class Ctx {
       }
       return;
     }
-    const u = this.frame().across;
-    if (u === 0 || !this.layout) return;
-    const pins = Object.entries(this.layout.nodes)
-      .map(([id, e]) => [id, pinOf(e)] as const)
-      .filter((x): x is readonly [string, Pin] => x[1] !== null && x[1].lane === before)
-      .map(([id, pin]): [string, Pin] => [id, { ...pin, across: pin.across + u }]);
-    if (pins.length) this.layout = setPins(this.layout, pins);
-    this.layout = movePointsToLane(this.layout, before, before, { across: u });
+    this.layout = reexpressOldFirstLane(this.layout, before, this.frame().across, this.original.direction);
   }
 
   commit(): Files {

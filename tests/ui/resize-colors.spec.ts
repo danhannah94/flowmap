@@ -10,7 +10,7 @@ import { labelNeeds } from '../../src/core/measure';
 import { format, parse } from '../../src/core/mmd';
 import { E2E_DIR } from './env';
 import {
-  attrs, eventually, expectMatchesCli, makeDiagram, node, open, saved, zoomOf, type Diagram, type Files,
+  attrs, expectMatchesCli, makeDiagram, node, open, saved, settled, zoomOf, type Diagram, type Files,
 } from './helpers';
 
 const canon = (text: string) => format(parse(text).diagram);
@@ -56,9 +56,8 @@ const round = (v: number) => Math.ceil(v - 0.5) + 0;
 
 const sameFiles = (a: Files, b: Files) => a.mmd === b.mmd && a.config === b.config && a.layout === b.layout;
 
-async function onDisk(d: Diagram, check: (f: Files) => boolean): Promise<Files> {
-  return eventually(() => d.read(), check, 2000);
-}
+/** The files once the action has landed and the page has saved (helpers `settled`). */
+const onDisk = (page: Page, d: Diagram, check: (f: Files) => boolean): Promise<Files> => settled(page, d, check);
 
 /** The layout file as parsed, without `hints` (§10 Part 3 compares it that way). */
 function layoutOf(text: string | null): LayoutFile | null {
@@ -72,10 +71,10 @@ function layoutOf(text: string | null): LayoutFile | null {
 async function expectUndoRedo(page: Page, d: Diagram, before: Files, after: Files): Promise<void> {
   await saved(page);
   await page.getByTestId('undo').click();
-  expect(await onDisk(d, (f) => sameFiles(f, before))).toEqual(before);
+  expect(await onDisk(page, d, (f) => sameFiles(f, before))).toEqual(before);
   await saved(page);
   await page.getByTestId('redo').click();
-  expect(await onDisk(d, (f) => sameFiles(f, after))).toEqual(after);
+  expect(await onDisk(page, d, (f) => sameFiles(f, after))).toEqual(after);
   await saved(page);
 }
 
@@ -192,7 +191,7 @@ test('every handle resizes its side or corner: the opposite edge stays, width an
     // whose zero line is the diagram's top while nothing sits above it; along is x while nothing sits left of it).
     const hand = layoutOf(files.layout)!;
     hand.nodes.a1 = { lane: 'alpha', along: want.x, across: want.y, width: want.width, height: want.height };
-    const after = await onDisk(d, (f) => JSON.stringify(layoutOf(f.layout)) === JSON.stringify(hand));
+    const after = await onDisk(page, d, (f) => JSON.stringify(layoutOf(f.layout)) === JSON.stringify(hand));
     expect(layoutOf(after.layout), `${handle}: layout file`).toEqual(hand);
     expect(after.mmd).toBe(files.mmd);
     expect(after.config).toBe(files.config);
@@ -224,28 +223,44 @@ test('a top or left handle pins a block that wasn’t pinned, in its own lane (P
   const want = grown(before, 'nw', dx, dy);
   const hand = layoutOf(RC.layout)!;
   hand.nodes.b1 = { lane: 'beta', along: want.x, across: want.y - betaZero, width: want.width, height: want.height };
-  const after = await onDisk(d, (f) => JSON.stringify(layoutOf(f.layout)) === JSON.stringify(hand));
+  const after = await onDisk(page, d, (f) => JSON.stringify(layoutOf(f.layout)) === JSON.stringify(hand));
   expect(layoutOf(after.layout)).toEqual(hand);
   await expect(node(page, 'b1')).toHaveAttribute('data-pinned', 'true');
   expect(box(await attrs(node(page, 'b1')))).toEqual(want);
   await expectUndoRedo(page, d, RC, after);
 });
 
-test('right and bottom handles write only the size of an unpinned block (no pin)', async ({ page }, info) => {
+test('A6: a right or bottom handle pins an unpinned block where it is drawn; the preview shows it pinned and it lands without a jump', async ({ page }, info) => {
   const d = makeDiagram(info, RC);
   await open(page, d);
   await zoomInOn(page, 'a2', 3);
   await select(page, 'a2');
-  const before = box(await attrs(node(page, 'a2')));
-  const { dx, dy } = await dragHandle(page, 'a2', 'se', 40, 30);
-  const want = grown(before, 'se', dx, dy);
-  const hand = layoutOf(RC.layout)!;
-  hand.nodes.a2 = { width: want.width, height: want.height };
-  const after = await onDisk(d, (f) => JSON.stringify(layoutOf(f.layout)) === JSON.stringify(hand));
-  expect(layoutOf(after.layout)).toEqual(hand);
   await expect(node(page, 'a2')).toHaveAttribute('data-pinned', 'false');
-  const now = await attrs(node(page, 'a2'));
-  expect({ width: now.width, height: now.height }).toEqual({ width: want.width, height: want.height });
+  const before = box(await attrs(node(page, 'a2')));
+  const hb = (await node(page, 'a2').locator('[data-resize="se"]').boundingBox())!;
+  const from = { x: Math.round(hb.x + hb.width / 2), y: Math.round(hb.y + hb.height / 2) };
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  for (let i = 1; i <= 6; i++) await page.mouse.move(from.x + (70 * i) / 6, from.y + (50 * i) / 6);
+  // While dragging: drawn at the preview box, from the same top-left, and already shown pinned (what will land).
+  await expect(node(page, 'a2')).toHaveAttribute('data-pinned', 'true');
+  await expect(node(page, 'a2')).toHaveAttribute('data-sized', 'true');
+  const preview = box(await attrs(node(page, 'a2')));
+  expect({ x: preview.x, y: preview.y }).toEqual({ x: before.x, y: before.y });
+  expect(preview.width).toBeGreaterThan(before.width);
+  await page.mouse.up();
+  // The hand edit: both sizes, and a pin at the block's top-left as drawn (Alpha is the first lane, nothing is
+  // negative, so its zero line is the diagram's top and `along` is x).
+  const hand = layoutOf(RC.layout)!;
+  hand.nodes.a2 = { lane: 'alpha', along: before.x, across: before.y, width: preview.width, height: preview.height };
+  const after = await onDisk(page, d, (f) => JSON.stringify(layoutOf(f.layout)) === JSON.stringify(hand));
+  expect(layoutOf(after.layout)).toEqual(hand);
+  await expect(node(page, 'a2')).toHaveAttribute('data-pinned', 'true');
+  // No jump on release: exactly the preview.
+  expect(box(await attrs(node(page, 'a2')))).toEqual(preview);
+  await expectMatchesCli(page, d);
+  await expectUndoRedo(page, d, RC, after);
+  await expect(node(page, 'a2')).toHaveAttribute('data-pinned', 'true');
 });
 
 test('the handles stop at the label’s needs: narrowest width, then the height it needs at that width (L9)', async ({ page }, info) => {
@@ -262,8 +277,8 @@ test('the handles stop at the label’s needs: narrowest width, then the height 
   const want = { width: needs.minWidth, height: labelNeeds(label, 'step', needs.minWidth).height };
   expect(want.width).toBeGreaterThanOrEqual(40);
   const hand = layoutOf(RC.layout)!;
-  hand.nodes.a2 = { ...want };
-  const after = await onDisk(d, (f) => JSON.stringify(layoutOf(f.layout)) === JSON.stringify(hand));
+  hand.nodes.a2 = { lane: 'alpha', along: before.x, across: before.y, ...want }; // A6: pinned where it was drawn
+  const after = await onDisk(page, d, (f) => JSON.stringify(layoutOf(f.layout)) === JSON.stringify(hand));
   expect(layoutOf(after.layout)).toEqual(hand);
   const now = await attrs(node(page, 'a2'));
   expect({ width: now.width, height: now.height }).toEqual(want);
@@ -282,7 +297,7 @@ test('the handles stop at the label’s needs: narrowest width, then the height 
   await dragHandle(page, 'a2', 'nw', 2000, 2000);
   const hand2 = layoutOf(after.layout)!;
   hand2.nodes.a2 = { lane: 'alpha', along: b1.x + b1.width - want.width, across: b1.y + b1.height - want.height, ...want };
-  const after2 = await onDisk(d, (f) => JSON.stringify(layoutOf(f.layout)) === JSON.stringify(hand2));
+  const after2 = await onDisk(page, d, (f) => JSON.stringify(layoutOf(f.layout)) === JSON.stringify(hand2));
   expect(layoutOf(after2.layout)).toEqual(hand2);
   const now2 = await attrs(node(page, 'a2'));
   expect(now2.x + now2.width).toBe(b1.x + b1.width);
@@ -355,7 +370,7 @@ test('Reset size (context menu) removes the stored size and keeps the pin; it sh
   await menuItem(page, 'reset-size').click();
   const hand = layoutOf(withSizes.layout)!;
   hand.nodes.a1 = { lane: 'alpha', along: 60, across: 40 };
-  const after = await onDisk(d, (f) => JSON.stringify(layoutOf(f.layout)) === JSON.stringify(hand));
+  const after = await onDisk(page, d, (f) => JSON.stringify(layoutOf(f.layout)) === JSON.stringify(hand));
   expect(layoutOf(after.layout)).toEqual(hand);
   await expect(node(page, 'a1')).toHaveAttribute('data-sized', 'false');
   await expect(node(page, 'a1')).toHaveAttribute('data-pinned', 'true');
@@ -367,7 +382,7 @@ test('Reset size (context menu) removes the stored size and keeps the pin; it sh
   await menuItem(page, 'reset-size').click();
   const hand2 = layoutOf(after.layout)!;
   delete hand2.nodes.a2;
-  const after2 = await onDisk(d, (f) => JSON.stringify(layoutOf(f.layout)) === JSON.stringify(hand2));
+  const after2 = await onDisk(page, d, (f) => JSON.stringify(layoutOf(f.layout)) === JSON.stringify(hand2));
   expect(layoutOf(after2.layout)).toEqual(hand2);
   await expect(page.locator('[data-sized="true"]')).toHaveCount(0);
 });
@@ -393,7 +408,7 @@ test('a resize that creates the layout file is undone by deleting it, and redone
   await zoomInOn(page, 'a1', 3);
   await select(page, 'a1');
   await dragHandle(page, 'a1', 'se', 40, 20);
-  const after = await onDisk(d, (f) => f.layout !== null);
+  const after = await onDisk(page, d, (f) => f.layout !== null);
   expect(Object.keys(layoutOf(after.layout)!.nodes)).toEqual(['a1']);
   await expectUndoRedo(page, d, noLayout, after);
 });
@@ -416,13 +431,13 @@ test('the inspector sets fill, border and text colours, light and dark, as the n
   await node(page, 'a1').click();
   await expect(colors(page)).toBeVisible();
   await typeColor(colors(page), 'fill', 'light', '#FFCC00');
-  await onDisk(d, (f) => f.config !== RC.config);
+  await onDisk(page, d, (f) => f.config !== RC.config);
   await typeColor(colors(page), 'fill', 'dark', '#553300');
   await typeColor(colors(page), 'border_color', 'light', '#b85450');
   await typeColor(colors(page), 'text_color', 'light', '#123');
   await typeColor(colors(page), 'text_color', 'dark', '#eeeeee');
   const want = { confidence: 'confirmed', style: { fill: { light: '#ffcc00', dark: '#553300' }, border_color: '#b85450', text_color: { light: '#123', dark: '#eeeeee' } } };
-  const after = await onDisk(d, (f) => JSON.stringify(nodesOf(f.config).a1) === JSON.stringify(want));
+  const after = await onDisk(page, d, (f) => JSON.stringify(nodesOf(f.config).a1) === JSON.stringify(want));
   // The hand edit: a1 gets a `style` map; nothing else changes (the other lines byte for byte, comment included).
   const hand = parseYaml(RC.config!) as { nodes: Record<string, unknown> };
   hand.nodes.a1 = want;
@@ -439,7 +454,7 @@ test('the inspector sets fill, border and text colours, light and dark, as the n
   await expect(page.locator('[data-field="meta.confidence"]')).toHaveCount(1);
   // Emptying the light value clears the property (R5.11), leaving the others.
   await typeColor(colors(page), 'text_color', 'light', '');
-  const cleared = await onDisk(d, (f) => !('text_color' in ((nodesOf(f.config).a1?.style as object) ?? {})));
+  const cleared = await onDisk(page, d, (f) => !('text_color' in ((nodesOf(f.config).a1?.style as object) ?? {})));
   expect(nodesOf(cleared.config).a1).toEqual({ confidence: 'confirmed', style: { fill: { light: '#ffcc00', dark: '#553300' }, border_color: '#b85450' } });
   await expectUndoRedo(page, d, after, cleared);
 });
@@ -449,7 +464,7 @@ test('a swatch sets only the fill, to its light and dark values; the others stay
   await open(page, d);
   await node(page, 'b1').click();
   await typeColor(colors(page), 'border_color', 'light', '#334455');
-  await onDisk(d, (f) => nodesOf(f.config).b1 !== undefined);
+  await onDisk(page, d, (f) => nodesOf(f.config).b1 !== undefined);
   const before = d.read();
   const swatches = colors(page).getByTestId('swatch');
   expect(await swatches.count()).toBeGreaterThanOrEqual(6);
@@ -461,7 +476,7 @@ test('a swatch sets only the fill, to its light and dark values; the others stay
   expect(light).not.toBe(dark);
   await sw.click();
   const want = { style: { border_color: '#334455', fill: { light, dark } } };
-  const after = await onDisk(d, (f) => JSON.stringify(nodesOf(f.config).b1) === JSON.stringify(want));
+  const after = await onDisk(page, d, (f) => JSON.stringify(nodesOf(f.config).b1) === JSON.stringify(want));
   expect(nodesOf(after.config).b1).toEqual(want);
   expectLinesKept(after.config!, linesOutside(before.config!, ['b1']));
   await expect(sw).toHaveAttribute('aria-pressed', 'true');
@@ -483,9 +498,9 @@ test('with several blocks selected, the colours apply to all of them, in declara
   await colors(page).getByTestId('swatch').nth(1).click();
   const sw = colors(page).getByTestId('swatch').nth(1);
   const fill = { light: (await sw.getAttribute('data-color'))!, dark: (await sw.getAttribute('data-color-dark'))! };
-  await onDisk(d, (f) => nodesOf(f.config).b1 !== undefined);
+  await onDisk(page, d, (f) => nodesOf(f.config).b1 !== undefined);
   await typeColor(colors(page), 'text_color', 'light', '#0000ff');
-  const after = await onDisk(d, (f) => JSON.stringify(nodesOf(f.config).b1) === JSON.stringify({ style: { fill, text_color: '#0000ff' } }));
+  const after = await onDisk(page, d, (f) => JSON.stringify(nodesOf(f.config).b1) === JSON.stringify({ style: { fill, text_color: '#0000ff' } }));
   const nodes = nodesOf(after.config);
   expect(nodes.a2).toEqual({ style: { fill, text_color: '#0000ff' } });
   expect(nodes.b1).toEqual({ style: { fill, text_color: '#0000ff' } });
@@ -499,7 +514,7 @@ test('with several blocks selected, the colours apply to all of them, in declara
   await expect(page.getByTestId('inspector')).toHaveAttribute('data-count', '4');
   await expect(colorInput(colors(page), 'fill', 'light')).toHaveAttribute('placeholder', 'mixed');
   await colors(page).getByTestId('block-colors-reset').click();
-  const reset = await onDisk(d, (f) => nodesOf(f.config).b1 === undefined);
+  const reset = await onDisk(page, d, (f) => nodesOf(f.config).b1 === undefined);
   expect(parseYaml(reset.config!)).toEqual(parseYaml(RC.config!));
   await expectUndoRedo(page, d, after, reset);
 });
@@ -516,7 +531,7 @@ test('Reset colours removes only fill, border and text colour; other style prope
   await expect(colorInput(colors(page), 'text_color', 'dark')).toHaveValue('#eee');
   await expect(page.locator('[data-field="meta.style"]')).toHaveCount(0);
   await colors(page).getByTestId('block-colors-reset').click();
-  const after = await onDisk(d, (f) => f.config !== handStyled.config);
+  const after = await onDisk(page, d, (f) => f.config !== handStyled.config);
   expect(nodesOf(after.config).b2).toEqual({ kind: 'wait', style: { border_style: 'dashed', badge: 'late' } });
   expectLinesKept(after.config!, linesOutside(handStyled.config!, ['b2']));
   await expect(colors(page).getByTestId('block-colors-reset')).toBeDisabled();
@@ -528,7 +543,7 @@ test('the field form refuses the key "style"; the node YAML still shows it', asy
   await open(page, d);
   await node(page, 'a1').click();
   await colors(page).getByTestId('swatch').first().click();
-  const styled = await onDisk(d, (f) => f.config !== RC.config);
+  const styled = await onDisk(page, d, (f) => f.config !== RC.config);
   await expect(page.getByTestId('node-yaml')).toHaveValue(/style:/);
   await page.getByTestId('add-field').click();
   await page.getByTestId('field-key').fill('style');
@@ -549,13 +564,13 @@ test('the block context menu: colours inside the menu, swatches, reset colours o
   const menu = page.getByTestId('context-menu');
   await typeColor(menu, 'fill', 'light', '#ddeeff');
   await typeColor(menu, 'fill', 'dark', '#223344');
-  const after = await onDisk(d, (f) => JSON.stringify(nodesOf(f.config).a2) === JSON.stringify({ style: { fill: { light: '#ddeeff', dark: '#223344' } } }));
+  const after = await onDisk(page, d, (f) => JSON.stringify(nodesOf(f.config).a2) === JSON.stringify({ style: { fill: { light: '#ddeeff', dark: '#223344' } } }));
   expect(nodesOf(after.config).a2).toEqual({ style: { fill: { light: '#ddeeff', dark: '#223344' } } });
   // Swatches in the menu too.
   const sw = menu.getByTestId('swatch').last();
   const fill = { light: (await sw.getAttribute('data-color'))!, dark: (await sw.getAttribute('data-color-dark'))! };
   await sw.click();
-  await onDisk(d, (f) => JSON.stringify(nodesOf(f.config).a2) === JSON.stringify({ style: { fill } }));
+  await onDisk(page, d, (f) => JSON.stringify(nodesOf(f.config).a2) === JSON.stringify({ style: { fill } }));
   await page.keyboard.press('Escape');
   await expect(menu).toHaveCount(0);
   // Now reset-colors shows; on a1 and a2 selected together it resets both.
@@ -563,7 +578,7 @@ test('the block context menu: colours inside the menu, swatches, reset colours o
   await node(page, 'a2').click({ modifiers: ['Shift'] });
   await rightClick(page, node(page, 'a2'));
   await menuItem(page, 'reset-colors').click();
-  const reset = await onDisk(d, (f) => nodesOf(f.config).a2 === undefined);
+  const reset = await onDisk(page, d, (f) => nodesOf(f.config).a2 === undefined);
   expect(parseYaml(reset.config!)).toEqual(parseYaml(RC.config!));
 });
 
@@ -576,7 +591,7 @@ test('block colours draw on the canvas in both themes and in the SVG export', as
   await typeColor(colors(page), 'border_color', 'light', '#ff0000');
   await typeColor(colors(page), 'text_color', 'light', '#00ff00');
   await typeColor(colors(page), 'text_color', 'dark', '#aabbcc');
-  await onDisk(d, (f) => (nodesOf(f.config).a1?.style as Record<string, unknown> | undefined)?.text_color !== undefined);
+  await onDisk(page, d, (f) => (nodesOf(f.config).a1?.style as Record<string, unknown> | undefined)?.text_color !== undefined);
   await saved(page);
   const paint = () => node(page, 'a1').evaluate((el) => {
     // The block's shape (not the selection halo, which has no fill).

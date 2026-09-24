@@ -7,7 +7,7 @@
 //   drawn line except the two ends, plus an end that isn't at its side's port (the op's "manual form").
 // Previews follow the same rules the layout will apply after the drop (L11 for manual lines), so what is drawn during
 // the drag is what the line becomes.
-import { endAtPort, mergePolyline, nodePort, pointFromStored, type LayoutOutput } from '../../core/layout';
+import { endAtPort, facingSide as coreFacingSide, mergePolyline, nodePort, pointFromStored, type LayoutOutput } from '../../core/layout';
 import { roundPx } from '../../core/layoutfile';
 import { STUB, segmentRuns } from '../../core/ops/lines';
 import type { Direction, LayoutEdgeEntry, LayoutResult, Side } from '../../core/types';
@@ -56,23 +56,12 @@ export function manualPath(a: XY, sa: Side, pts: readonly XY[], b: XY, sb: Side,
 }
 
 /**
- * The side of a box that faces a point most (R11.7: a manual line's end with no stored side faces its nearest bend
- * point). Mirrors the layout's rule: the largest overshoot past a side wins; ties go +along, +across, −across, −along.
+ * The side of a box that faces a point (R11.7, R14.4: a manual line's end with no stored side faces its nearest bend
+ * point, along the axis with the larger distance from the box's centre; a tie goes along the flow). The layout's own
+ * rule, from the core, so a preview always shows the side the layout will draw.
  */
 export function facingSide(dir: Direction, box: Pick<NodeBox, 'x' | 'y' | 'width' | 'height'>, p: XY): Side {
-  const LR = dir !== 'TB';
-  // Abstract: x along the flow, y across it.
-  const bx = LR ? box.x : box.y;
-  const by = LR ? box.y : box.x;
-  const bw = LR ? box.width : box.height;
-  const bh = LR ? box.height : box.width;
-  const px = LR ? p[0] : p[1];
-  const py = LR ? p[1] : p[0];
-  const real: Side[] = LR ? ['right', 'bottom', 'top', 'left'] : ['bottom', 'right', 'left', 'top'];
-  const over = [px - (bx + bw), py - (by + bh), by - py, bx - px];
-  let best = 0;
-  for (let k = 1; k < 4; k++) if (over[k]! > over[best]!) best = k;
-  return real[best]!;
+  return coreFacingSide(dir, box, p);
 }
 
 /** Everything the handles and previews need about one line, read from the current layout and the layout file. */

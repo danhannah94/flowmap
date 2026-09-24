@@ -144,6 +144,20 @@ export async function saved(page: Page): Promise<void> {
   await expect(page.getByTestId('save-status')).toHaveText('saved');
 }
 
+/**
+ * The files on disk once an action has landed. Polls until `check` passes (the action's write is on disk), then waits
+ * for the page's `save-status` to say `saved` (no write in flight: one action can make more than one write, and a
+ * check that keys off the config or layout file can pass before the `.mmd`, which the server writes last, lands), then
+ * reads the three files again. If `check` never passes within `timeout`, returns what is on disk so the caller's
+ * assertions say what's wrong.
+ */
+export async function settled(page: Page, d: Diagram, check: (f: Files) => boolean, timeout = 2000): Promise<Files> {
+  const first = await eventually(() => d.read(), check, timeout);
+  if (!check(first)) return first;
+  await saved(page);
+  return d.read();
+}
+
 /** Every node, lane and edge in the UI equals `flowmap layout` output for the files on disk (U9). */
 export async function expectMatchesCli(page: Page, d: Diagram): Promise<void> {
   const cli = d.cliLayout();

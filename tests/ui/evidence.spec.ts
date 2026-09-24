@@ -6,7 +6,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { parseDocument } from 'yaml';
 import { lineDiff } from '../../src/core/config/testkit';
 import { canon, edit, RICH } from '../../src/core/ops/testkit';
-import { declaredLane, eventually, makeDiagram, node, open, PR, saved, type Diagram, type Files } from './helpers';
+import { declaredLane, makeDiagram, node, open, PR, saved, settled, type Diagram, type Files } from './helpers';
 
 const C = PR.config!;
 const NODES_END = '    quote: "three-way match, when the receipt shows up"\n';
@@ -24,7 +24,7 @@ const sameFiles = (a: Files, b: Files) => a.mmd === b.mmd && a.config === b.conf
 
 /** Wait until the files on disk differ from `prev` and the UI says saved; return them. */
 async function settle(page: Page, d: Diagram, prev: Files): Promise<Files> {
-  await eventually(() => d.read(), (f) => !sameFiles(f, prev), 3000);
+  await settled(page, d, (f) => !sameFiles(f, prev), 3000);
   await saved(page);
   return d.read();
 }
@@ -59,11 +59,11 @@ async function undoRedo(page: Page, d: Diagram, before: Files, after: Files): Pr
   // The UI's own saves never come back as an external change (which would clear the history).
   await expect(page.getByTestId('history-cleared')).toHaveCount(0);
   await page.getByTestId('undo').click();
-  await eventually(() => d.read(), (f) => sameFiles(f, before), 3000);
+  await settled(page, d, (f) => sameFiles(f, before), 3000);
   await saved(page);
   expect(d.read()).toEqual(before);
   await page.getByTestId('redo').click();
-  await eventually(() => d.read(), (f) => sameFiles(f, after), 3000);
+  await settled(page, d, (f) => sameFiles(f, after), 3000);
   await saved(page);
   expect(d.read()).toEqual(after);
 }

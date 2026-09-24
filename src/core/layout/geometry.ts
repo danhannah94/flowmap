@@ -169,3 +169,31 @@ export function storedFromPoint(layout: Pick<LayoutResult, 'direction' | 'lanes'
   const across = Math.round((LR ? y : x) - (LR ? lane.y : lane.x) - (li === 0 ? frame.across : 0)) + 0;
   return { lane: id, along, across: li === 0 ? across : Math.max(0, across) };
 }
+
+/** A side as an abstract direction code (x along the flow, y across it): 0 = +x, 1 = −x, 2 = +y, 3 = −y. */
+export type AbstractSide = 0 | 1 | 2 | 3;
+
+/**
+ * Rulings R11.7 and R14.4: the side a manual line's end with no stored side uses. It faces its nearest bend point `p`
+ * (the first for the source, the last for the target): toward `p` along the axis on which `p` is farther from the
+ * box's centre; on a tie, along the flow. In abstract coordinates (x along the flow, y across it).
+ */
+export function facingAbstract(b: { x: number; y: number; w: number; h: number }, p: readonly [number, number]): AbstractSide {
+  // Doubled, so the box's centre stays a whole number.
+  const dx = 2 * p[0] - (2 * b.x + b.w);
+  const dy = 2 * p[1] - (2 * b.y + b.h);
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 0 : 1;
+  return dy > 0 ? 2 : 3;
+}
+
+/** `facingAbstract` in diagram coordinates: the real side of a laid-out block that faces point `p` (R11.7, R14.4). */
+export function facingSide(
+  direction: LayoutResult['direction'], box: { x: number; y: number; width: number; height: number }, p: readonly [number, number],
+): Side {
+  const LR = direction !== 'TB';
+  const code = LR
+    ? facingAbstract({ x: box.x, y: box.y, w: box.width, h: box.height }, p)
+    : facingAbstract({ x: box.y, y: box.x, w: box.height, h: box.width }, [p[1], p[0]]);
+  const real: Side[] = LR ? ['right', 'left', 'bottom', 'top'] : ['bottom', 'top', 'right', 'left'];
+  return real[code]!;
+}

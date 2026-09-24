@@ -176,7 +176,6 @@
 
 /* ---- while a resize is in progress (<html data-fm-resizing>) and when resizing is off ---- */
 
-html[data-fm-resizing] .fm-handle,
 html[data-fm-resizing] .fm-port {
   opacity: 0 !important;
 }

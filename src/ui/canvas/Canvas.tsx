@@ -145,7 +145,7 @@ export function Canvas() {
       data-dragging={dragging ? 'true' : undefined}
       style={{
         ...themeVars(theme),
-        // Handles and grips keep a usable on-screen size at low zoom (styles.css `.fm-handle`, EdgesLayer grips).
+        // Handles and grips keep a usable on-screen size at low zoom (lines.css `.fm-port`, resize.css, EdgesLayer grips).
         ['--zoom' as string]: viewport.zoom,
         backgroundSize: `${grid}px ${grid}px`,
         backgroundPosition: `${viewport.x}px ${viewport.y}px`,

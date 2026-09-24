@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { format, parse } from '../../src/core/mmd';
 import type { LayoutResult } from '../../src/core/types';
-import { eventually, makeDiagram, node, open, PR, saved, type Diagram, type Files } from './helpers';
+import { makeDiagram, node, open, PR, saved, settled, type Diagram, type Files } from './helpers';
 
 // ---- files ---------------------------------------------------------------------------------------------------------
 
@@ -49,15 +49,14 @@ function withEdges(edges: Record<string, EdgeEntry>, base: string | null = PR.la
   return js;
 }
 
-async function onDisk(d: Diagram, check: (f: Files) => boolean): Promise<Files> {
-  return eventually(() => d.read(), check, 2000);
-}
+/** The files once the action has landed and the page has saved (helpers `settled`). */
+const onDisk = (page: Page, d: Diagram, check: (f: Files) => boolean): Promise<Files> => settled(page, d, check);
 
 const sameFiles = (a: Files, b: Files) => a.mmd === b.mmd && a.config === b.config && a.layout === b.layout;
 
 /** The files on disk, once the layout file's content (ignoring hints) is `layout` and the `.mmd` is `mmd`. */
-async function expectFiles(d: Diagram, mmd: string, layout: Json): Promise<Files> {
-  const f = await onDisk(d, (x) => x.mmd === mmd && JSON.stringify(layoutJs(x.layout)) === JSON.stringify(layout));
+async function expectFiles(page: Page, d: Diagram, mmd: string, layout: Json): Promise<Files> {
+  const f = await onDisk(page, d, (x) => x.mmd === mmd && JSON.stringify(layoutJs(x.layout)) === JSON.stringify(layout));
   expect(f.mmd).toBe(mmd);
   expect(f.config).toBe(PR.config); // untouched, byte for byte
   expect(layoutJs(f.layout)).toEqual(layout);
@@ -68,10 +67,10 @@ async function expectFiles(d: Diagram, mmd: string, layout: Json): Promise<Files
 async function expectUndoRedo(page: Page, d: Diagram, before: Files, after: Files): Promise<void> {
   await saved(page);
   await page.getByTestId('undo').click();
-  expect(await onDisk(d, (f) => sameFiles(f, before))).toEqual(before);
+  expect(await onDisk(page, d, (f) => sameFiles(f, before))).toEqual(before);
   await saved(page);
   await page.getByTestId('redo').click();
-  expect(await onDisk(d, (f) => sameFiles(f, after))).toEqual(after);
+  expect(await onDisk(page, d, (f) => sameFiles(f, after))).toEqual(after);
   await saved(page);
 }
 
@@ -195,7 +194,7 @@ test('bend drag on an automatic line: it becomes manual, storing its corners, th
   const want = withEdges({
     'm02->p05': { source_side: 'bottom', target_side: 'left', points: [pin(cli, 1479, 248 + up.world), pin(cli, 1616, 248)] },
   });
-  const files = await expectFiles(d, PR.mmd, want);
+  const files = await expectFiles(page, d, PR.mmd, want);
   await expect(line).toHaveAttribute('data-manual', 'true');
   await expect(line).toHaveAttribute('data-selected', 'true');
   await expectLinesMatchCli(page, d);
@@ -219,7 +218,7 @@ test('segment drag in the middle slides it sideways; both corners move (P23)', a
   await drag(page, await centre(page, '[data-edge-id="p05->v01"] [data-segment="1"]'), right.s, 17);
   const x = 1820 + right.world;
   const want = withEdges({ 'p05->v01': { source_side: 'right', target_side: 'left', points: [pin(cli, x, 264), pin(cli, x, 566)] } });
-  const files = await expectFiles(d, PR.mmd, want);
+  const files = await expectFiles(page, d, PR.mmd, want);
   await expect(line).toHaveAttribute('data-points', `1756,264 ${x},264 ${x},566 1828,566`);
   await expect(line).toHaveAttribute('data-manual', 'true');
   await expectLinesMatchCli(page, d);
@@ -246,7 +245,7 @@ test('segment drag attached to ports gets a 20 px stub at each end; dragging it 
       points: [pin(cli, 706, 264), pin(cli, 706, y), pin(cli, 738, y), pin(cli, 738, 264)],
     },
   });
-  const files1 = await expectFiles(d, PR.mmd, stubbed);
+  const files1 = await expectFiles(page, d, PR.mmd, stubbed);
   await expect(line).toHaveAttribute('data-points', `686,264 706,264 706,${y} 738,${y} 738,264 758,264`);
   await expect(line.locator('[data-segment]')).toHaveCount(5);
   await expect(line.locator('[data-bend]')).toHaveCount(4);
@@ -255,7 +254,7 @@ test('segment drag attached to ports gets a 20 px stub at each end; dragging it 
   // Tidy: the middle segment dragged back onto the ports' line. Every point is then in a straight row or on top of a
   // neighbour, so `points` goes and the line is automatic again; its sides stay.
   await drag(page, await centre(page, '[data-edge-id="p01->p02"] [data-segment="2"]'), 0, -down.s);
-  const files2 = await expectFiles(d, PR.mmd, withEdges({ 'p01->p02': { source_side: 'right', target_side: 'left' } }));
+  const files2 = await expectFiles(page, d, PR.mmd, withEdges({ 'p01->p02': { source_side: 'right', target_side: 'left' } }));
   await expect(line).toHaveAttribute('data-manual', 'false');
   await expect(line).toHaveAttribute('data-points', '686,264 758,264');
   await expectLinesMatchCli(page, d);
@@ -316,7 +315,7 @@ test('add a bend point where the line was right-clicked, remove one, reset the l
     'p05->v01': { source_side: 'right', target_side: 'left', points: [pin(cli, 1820, 264), pin(cli, 1820, y415), pin(cli, 1820, 566)] },
   });
   expect(pin(cli, 1820, y415)).toEqual({ lane: 'finance', along: 1820, across: y415 - 412 });
-  const files1 = await expectFiles(d, PR.mmd, added);
+  const files1 = await expectFiles(page, d, PR.mmd, added);
   const line = edge(page, 'p05->v01');
   await expect(line).toHaveAttribute('data-selected', 'true');
   await expect(line.locator('[data-bend]')).toHaveCount(3);
@@ -330,7 +329,7 @@ test('add a bend point where the line was right-clicked, remove one, reset the l
   expect(onBend).toContain('reset-line'); // manual now
   await menuItem(page, 'remove-bend');
   const removed = withEdges({ 'p05->v01': { source_side: 'right', target_side: 'left', points: [pin(cli, 1820, y415), pin(cli, 1820, 566)] } });
-  const files2 = await expectFiles(d, PR.mmd, removed);
+  const files2 = await expectFiles(page, d, PR.mmd, removed);
   await expectLinesMatchCli(page, d);
   await expectUndoRedo(page, d, files1, files2);
 
@@ -345,7 +344,7 @@ test('add a bend point where the line was right-clicked, remove one, reset the l
   });
   await page.mouse.click(mid.x, mid.y, { button: 'right' });
   await menuItem(page, 'reset-line');
-  const files3 = await expectFiles(d, PR.mmd, withEdges({}));
+  const files3 = await expectFiles(page, d, PR.mmd, withEdges({}));
   await expect(line).toHaveAttribute('data-manual', 'false');
   await expectLinesMatchCli(page, d);
   await expectUndoRedo(page, d, files2, files3);
@@ -391,7 +390,7 @@ test('drag a line’s label along its line: label_at is its projected centre, ro
   const labelAt = project(e.points, { x: e.label_pos![0] + dx / z, y: e.label_pos![1] + dy / z });
   expect(labelAt).toBeGreaterThan(0.4);
   expect(labelAt).toBeLessThan(0.9);
-  const files1 = await expectFiles(d, PR.mmd, withEdges({ 'p02->p03': { label_at: labelAt } }));
+  const files1 = await expectFiles(page, d, PR.mmd, withEdges({ 'p02->p03': { label_at: labelAt } }));
   // The label is drawn there: its centre at that fraction of the line (L8, within 2 px), and the line is unchanged.
   const after = cliLayout(d).edges.find((x) => x.id === 'p02->p03')!;
   expect(after.points).toEqual(e.points);
@@ -413,7 +412,7 @@ test('drag a line’s label along its line: label_at is its projected centre, ro
   // Reset label position (context menu), shown only while it has label_at.
   await label.click({ button: 'right' });
   await menuItem(page, 'reset-label');
-  const files2 = await expectFiles(d, PR.mmd, withEdges({}));
+  const files2 = await expectFiles(page, d, PR.mmd, withEdges({}));
   await expectUndoRedo(page, d, files1, files2);
   await label.click({ button: 'right' });
   const names = await page.getByTestId('context-menu').locator('[data-menu-item]').evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.menuItem));
@@ -544,7 +543,7 @@ test('connect from each side of a step: source_side is written, a drop elsewhere
     await connectFrom(page, 'p06', side, await centre(page, `[data-node-id="${target}"]`));
     mmd = canon(`${mmd}  p06 --> ${target}\n`);
     entries[`p06->${target}`] = { source_side: side };
-    const files = await expectFiles(d, mmd, withEdges(entries));
+    const files = await expectFiles(page, d, mmd, withEdges(entries));
     await expect(edge(page, `p06->${target}`)).toHaveAttribute('data-selected', 'true');
     const drawn = cliLayout(d).edges.find((e) => e.id === `p06->${target}`)!;
     expect(drawn.source_side).toBe(side);
@@ -566,7 +565,7 @@ test('connect from each vertex of a diamond (P25)', async ({ page }, info) => {
     await connectFrom(page, 'f01', side, await centre(page, `[data-node-id="${target}"]`));
     mmd = canon(`${mmd}  f01 --> ${target}\n`);
     entries[ids[side]!] = { source_side: side };
-    const files = await expectFiles(d, mmd, withEdges(entries));
+    const files = await expectFiles(page, d, mmd, withEdges(entries));
     // The line leaves from the vertex (§6 L12: diamonds at their vertices).
     const drawn = cliLayout(d).edges.find((e) => e.id === ids[side])!;
     const vertex = { top: [2327, 436], right: [2432, 464], bottom: [2327, 492], left: [2222, 464] }[side];
@@ -596,7 +595,7 @@ test('while connecting, the block under the pointer shows its connection points;
   await page.mouse.up();
   await expect(page.locator('[data-port-target]')).toHaveCount(0);
   const mmd = canon(`${PR.mmd}  p06 --> v02\n`);
-  const files = await expectFiles(d, mmd, withEdges({ 'p06->v02': { source_side: 'bottom', target_side: 'top' } }));
+  const files = await expectFiles(page, d, mmd, withEdges({ 'p06->v02': { source_side: 'bottom', target_side: 'top' } }));
   const drawn = cliLayout(d).edges.find((e) => e.id === 'p06->v02')!;
   expect(drawn.points[drawn.points.length - 1]).toEqual([2796, 540]); // v02's top port
   await expectLinesMatchCli(page, d);
@@ -624,7 +623,7 @@ test('reconnect an end onto another connection point of the same block: only its
   await page.mouse.move(bottom.x, bottom.y, { steps: 4 });
   await expect(node(page, 'p03').locator('[data-port-target="bottom"]')).toHaveAttribute('data-active', 'true');
   await page.mouse.up();
-  const files1 = await expectFiles(d, PR.mmd, withEdges({
+  const files1 = await expectFiles(page, d, PR.mmd, withEdges({
     'p02->p03': { points: [{ lane: 'purchasing', along: 823, across: 150 }], label_at: 0.3, target_side: 'bottom' },
   }));
   await expect(edge(page, 'p02->p03')).toHaveAttribute('data-selected', 'true');
@@ -644,7 +643,7 @@ test('reconnect an end onto another connection point of the same block: only its
   await page.mouse.move(p04bottom.x, p04bottom.y, { steps: 4 });
   await page.mouse.up();
   const mmd = canon(PR.mmd.replace('  p02 -->|no| p03\n', '  p04 -->|no| p03\n'));
-  const files2 = await expectFiles(d, mmd, withEdges({ 'p04->p03': { label_at: 0.3, target_side: 'bottom', source_side: 'bottom' } }));
+  const files2 = await expectFiles(page, d, mmd, withEdges({ 'p04->p03': { label_at: 0.3, target_side: 'bottom', source_side: 'bottom' } }));
   await expect(edge(page, 'p04->p03')).toHaveAttribute('data-selected', 'true');
   await expectLinesMatchCli(page, d);
   await expectUndoRedo(page, d, files1, files2);

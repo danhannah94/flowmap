@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { parse } from '../../src/core/mmd';
 import {
   attrs, declaredLane, dragBy, dragFromTo, emptyPointInLane, eventually, expectMatchesCli, lane, makeDiagram, node,
-  open, pins, PR, saved, zoomOf,
+  open, pins, PR, saved, settled, zoomOf,
 } from './helpers';
 
 const labelOf = (mmd: string, id: string) => {
@@ -72,7 +72,7 @@ test('a block dropped with its centre in another lane moves there, pinned at the
   const src = (await node(page, 'm03').boundingBox())!;
   const target = await emptyPointInLane(page, 'finance');
   await dragFromTo(page, { x: src.x + src.width / 2, y: src.y + src.height / 2 }, target);
-  const files = await eventually(() => d.read(), (f) => declaredLane(f.mmd, 'm03') === 'finance');
+  const files = await settled(page, d, (f) => declaredLane(f.mmd, 'm03') === 'finance');
   expect(declaredLane(files.mmd, 'm03')).toBe('finance');
   expect(pins(files.layout).m03?.lane).toBe('finance');
   // Canonical: appended as the last declaration of the finance subgraph.
@@ -94,7 +94,7 @@ test('add a block: click a shape, then click in a lane', async ({ page }, info) 
   await expect(editor).toHaveValue('New decision');
   await page.keyboard.press('Escape');
   await expect(editor).toHaveCount(0);
-  const files = await eventually(() => d.read(), (f) => f.mmd.includes('n1{"New decision"}'));
+  const files = await settled(page, d, (f) => f.mmd.includes('n1{"New decision"}'));
   expect(declaredLane(files.mmd, 'n1')).toBe('finance');
   expect(pins(files.layout).n1).toBeUndefined();
   await expect(node(page, 'n1')).toHaveAttribute('data-kind', 'decision');
@@ -114,7 +114,7 @@ test('add a block: select a lane, then click a shape; type its label', async ({ 
   await editor.fill('Vendor portal');
   await editor.press('Enter');
   await expect(editor).toHaveCount(0);
-  const files = await eventually(() => d.read(), (f) => f.mmd.includes('n1[("Vendor portal")]'));
+  const files = await settled(page, d, (f) => f.mmd.includes('n1[("Vendor portal")]'));
   expect(declaredLane(files.mmd, 'n1')).toBe('vendor');
   await expect(node(page, 'n1').locator('[data-role="label"]')).toHaveText('Vendor portal');
 });
@@ -133,7 +133,7 @@ test('add a block: drag a shape from the palette into a lane; it lands pinned', 
   await dragFromTo(page, { x: btn.x + btn.width / 2, y: btn.y + btn.height / 2 }, drop);
   await expect(page.getByTestId('label-editor')).toBeVisible();
   await page.keyboard.press('Escape');
-  const files = await eventually(() => d.read(), (f) => !!pins(f.layout).n1);
+  const files = await settled(page, d, (f) => !!pins(f.layout).n1);
   expect(files.mmd).toContain('n1@{ shape: doc, label: "New document" }');
   expect(declaredLane(files.mmd, 'n1')).toBe('manager');
   await saved(page);
@@ -162,7 +162,7 @@ test('edit a label: double-click, Enter commits, Escape cancels, empty is refuse
   await node(page, 'r01').dblclick();
   await editor.fill('Fill the "new" form #quot; & send');
   await editor.press('Enter');
-  const files = await eventually(() => d.read(), (f) => f.mmd !== PR.mmd);
+  const files = await settled(page, d, (f) => f.mmd !== PR.mmd);
   expect(labelOf(files.mmd, 'r01')).toBe('Fill the "new" form #quot; & send');
   await expect(node(page, 'r01').locator('[data-role="label"]')).toHaveText('Fill the "new" form #quot; & send');
   // Enter on a selected block opens the editor; an empty label is refused and the old one stays.

@@ -24,7 +24,9 @@ export function NodesLayer({ layout, styles, theme }: { layout: LayoutResult; st
     <div className="fm-nodes">
       {layout.nodes.map((n) => {
         const m = moving.has(n.id);
-        const box = resizing?.id === n.id ? { ...n, ...resizing.box } : n;
+        // While resizing, the block is drawn as it will land: at the preview box, pinned and sized (UI34, A6).
+        const r = resizing?.id === n.id;
+        const box = r ? { ...n, ...resizing.box, pinned: true } : n;
         return (
           <NodeView
             key={n.id}
@@ -36,7 +38,7 @@ export function NodesLayer({ layout, styles, theme }: { layout: LayoutResult; st
             dy={m ? drag!.dy : 0}
             dragging={m}
             editing={editingNode === n.id}
-            sized={!!sizes?.[n.id]}
+            sized={r || !!sizes?.[n.id]}
             resizable={canResize && selected.has(n.id) && editingNode !== n.id}
           />
         );

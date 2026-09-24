@@ -1,6 +1,6 @@
 // Sync and safety (UI28–UI31; U6, U7): external edits, the disk winning, autosave status, files with errors.
 import { expect, test, type Page } from '@playwright/test';
-import { attrs, dragBy, eventually, expectMatchesCli, makeDiagram, node, open, pins, PR, saved } from './helpers';
+import { attrs, dragBy, eventually, expectMatchesCli, makeDiagram, node, open, pins, PR, saved, settled } from './helpers';
 
 const worldTransform = (page: Page) => page.locator('.fm-world').evaluate((el) => (el as HTMLElement).style.transform);
 
@@ -134,7 +134,7 @@ test('E-config: default styles, the diagram stays editable, the config is untouc
   expect(await node(page, 'p03').locator('svg > :not(.fm-node-halo)').first().getAttribute('stroke-dasharray')).toBeNull();
   const before = await attrs(node(page, 'p01'));
   await dragBy(page, node(page, 'p01'), 40, 0);
-  const files = await eventually(() => d.read(), (f) => !!pins(f.layout).p01);
+  const files = await settled(page, d, (f) => !!pins(f.layout).p01);
   expect(pins(files.layout).p01!.along).toBeGreaterThan(before.x);
   expect(files.config).toBe(config);
   await saved(page);
@@ -159,6 +159,6 @@ test('E-layout: drawn without pins; dragging and nudging are off; the layout fil
   await node(page, 'p01').dblclick();
   await page.getByTestId('label-editor').fill('Check it');
   await page.keyboard.press('Enter');
-  const files = await eventually(() => d.read(), (f) => f.mmd.includes('p01["Check it"]'));
+  const files = await settled(page, d, (f) => f.mmd.includes('p01["Check it"]'));
   expect(files.layout).toBe(layout);
 });

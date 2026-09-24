@@ -4,7 +4,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { format, parse } from '../../src/core/mmd';
 import { formatNodeDecl } from '../../src/core/mmd/format';
-import { Diagram, eventually, makeDiagram, node, open, PR, saved, zoomOf, type Files } from './helpers';
+import { Diagram, makeDiagram, node, open, PR, saved, settled, zoomOf, type Files } from './helpers';
 
 const canon = (text: string) => format(parse(text).diagram);
 
@@ -53,9 +53,8 @@ const overlaps = (a: Awaited<ReturnType<typeof box>>, b: Awaited<ReturnType<type
 /** The on-screen font size of an element, in px. */
 const fontPx = (loc: Locator) => loc.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
 
-async function onDisk(d: Diagram, check: (f: Files) => boolean): Promise<Files> {
-  return eventually(() => d.read(), check, 2000);
-}
+/** The files once the action has landed and the page has saved (helpers `settled`). */
+const onDisk = (page: Page, d: Diagram, check: (f: Files) => boolean): Promise<Files> => settled(page, d, check);
 
 async function clearSelection(page: Page): Promise<void> {
   await page.keyboard.press('Escape');
@@ -112,7 +111,7 @@ test('a document block label with a backslash and quotes round-trips; undo and r
   const line = formatNodeDecl({ id: 'f', shape: 'document', label, className: null });
   const want = canon(EDGE_OF_CANVAS.replace('f@{ shape: doc, label: "Vendor quote" }', line));
   expect(want).toContain(`    ${line}\n`);
-  expect((await onDisk(d, (x) => x.mmd === want)).mmd).toBe(want);
+  expect((await onDisk(page, d, (x) => x.mmd === want)).mmd).toBe(want);
   expect(parse(want).diagram.lanes[0]!.nodes.find((n) => n.id === 'f')!.label).toBe(label);
   await expect(node(page, 'f').locator('[data-role="label"]')).toHaveText(label);
   await expect(node(page, 'f')).toHaveAttribute('data-kind', 'document');
@@ -123,10 +122,10 @@ test('a document block label with a backslash and quotes round-trips; undo and r
   // Undo and redo, byte for byte.
   await saved(page);
   await page.getByTestId('undo').click();
-  expect((await onDisk(d, (x) => x.mmd === EDGE_OF_CANVAS)).mmd).toBe(EDGE_OF_CANVAS);
+  expect((await onDisk(page, d, (x) => x.mmd === EDGE_OF_CANVAS)).mmd).toBe(EDGE_OF_CANVAS);
   await saved(page);
   await page.getByTestId('redo').click();
-  expect((await onDisk(d, (x) => x.mmd === want)).mmd).toBe(want);
+  expect((await onDisk(page, d, (x) => x.mmd === want)).mmd).toBe(want);
   await saved(page);
 });
 
@@ -299,7 +298,7 @@ test('handles and line-end grips keep a usable size at fit zoom; handles show on
   await node(page, 'intake').hover();
   await handle('intake', 'right').dragTo(node(page, 'p05'));
   const want = canon(`${PR.mmd}  intake --> p05\n`);
-  expect((await onDisk(d, (f) => f.mmd === want)).mmd).toBe(want);
+  expect((await onDisk(page, d, (f) => f.mmd === want)).mmd).toBe(want);
   await expect(page.locator('[data-edge-id="intake->p05"]')).toHaveAttribute('data-selected', 'true');
   // With that line selected, another of the block's handles still starts another (a duplicate, P5). (v1.1: the
   // selected line is drawn above the blocks with its own handles, which win where they meet a connection handle:
@@ -307,7 +306,7 @@ test('handles and line-end grips keep a usable size at fit zoom; handles show on
   await node(page, 'intake').hover();
   await handle('intake', 'bottom').dragTo(node(page, 'p05'));
   const dup = canon(`${want}  intake --> p05\n`);
-  expect((await onDisk(d, (f) => f.mmd === dup)).mmd).toBe(dup);
+  expect((await onDisk(page, d, (f) => f.mmd === dup)).mmd).toBe(dup);
   // The new line is selected; its end grips are big enough to grab.
   const line = page.locator('[data-edge-id="intake->p05#2"]');
   await expect(line).toHaveAttribute('data-selected', 'true');
@@ -318,7 +317,7 @@ test('handles and line-end grips keep a usable size at fit zoom; handles show on
   // Grips aren't under the blocks' handles: dragging the target grip reconnects.
   await line.locator('[data-edge-end="target"]').dragTo(node(page, 'p06'));
   const moved = canon(`${want}  intake --> p06\n`);
-  expect((await onDisk(d, (f) => f.mmd === moved)).mmd).toBe(moved);
+  expect((await onDisk(page, d, (f) => f.mmd === moved)).mmd).toBe(moved);
 });
 
 // ---- UX sweep: dragging across lanes, a map from scratch ---------------------------------------------------------
@@ -367,7 +366,7 @@ test('a new Swimlanes diagram from the home page: create it, then the first-step
   await editor.fill('Fill the form');
   await editor.press('Enter');
   await expect(page.locator('.fm-empty-hint')).toHaveCount(0);
-  expect((await onDisk(d, (f) => f.mmd.includes('Fill the form'))).mmd).toBe(
+  expect((await onDisk(page, d, (f) => f.mmd.includes('Fill the form'))).mmd).toBe(
     canon('flowchart LR\n  subgraph requester [Requester]\n    n1["Fill the form"]\n  end\n'),
   );
   // An existing name is refused, and nothing is overwritten.

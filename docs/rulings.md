@@ -18,6 +18,8 @@ rule 3. Newest at the bottom.
 | R11 | 2026-09-24 | A | v1.1 edge cases from Build A's core wave (list below). | Adopted as listed below. | Build B: in its starting context |
 | R12 | 2026-09-24 | A | Reordering lanes, adding a lane to a lane-free diagram, or deleting the first lane can leave a negative `across` in a lane that is no longer first, which §5 forbids. | Any operation that changes which lane is displayed first first re-expresses the old first lane's pins and bend points with its growth U added to every `across`, so all values are at least 0 and nothing moves on screen, in the same write. | Build B: in its starting context |
 | R13 | 2026-09-24 | A | Resizing an automatically placed block from its right or bottom edge makes it jump on release. | Amendment A6: every resize pins the block (UI34). | Build B: in its starting context |
+| R14 | 2026-09-24 | acceptance suite | Six points left open by R11 and R12 (list below). | Adopted as listed below. | Build B: in its starting context |
+| R15 | 2026-09-24 | acceptance suite | (1) Do stored note and title positions get U when the first lane is deleted? (2) What if a stale pin or ignored bend point is below −U? | (1) Yes: deleting the first lane changes which lane is first, so R14.1 applies. (2) A stale pin or ignored bend point that would still be negative after adding U is removed (it applies to nothing anyway), so the file stays valid. | Build B: in its starting context |
 
 ## R4: parser edge cases
 
@@ -111,3 +113,17 @@ rule 3. Newest at the bottom.
 7. On a manual line, an end with no stored side faces its nearest bend point (the first for the source, the last for
    the target).
 8. The layout JSON `points` of a manual line drop repeated points but keep bend points that lie in a straight row.
+
+## R14: points left open by R11 and R12
+
+1. **R12 and notes and the title.** When the first lane changes, stored note and title positions get the old first
+   lane's U added on the across axis (y for `LR`, x for `TB`) in the same write, so they don't move on screen.
+2. **R12 and entries that don't count toward U.** Stale pins and ignored bend points in the old first lane also get U
+   added, so the file stays valid.
+3. **R12 when the first lane is deleted.** Only leftovers are affected (orphaned pins and bend points in that lane get
+   U added); everything else is already removed by §8.2.
+4. **R11.7, diagonal bend points.** An end with no stored side faces the side toward its nearest bend point along the
+   axis with the larger distance from the box's centre; on a tie, the flow-axis side.
+5. **R11.8, repeated points.** "Repeated" includes a bend point that coincides with the port next to it; it is dropped
+   from the layout JSON's `points`.
+6. **The title under `E-config`.** It shows the file's base name (the config can't be read).

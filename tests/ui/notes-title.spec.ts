@@ -6,7 +6,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { parse as parseYaml } from 'yaml';
 import { format, parse } from '../../src/core/mmd';
-import { attrs, eventually, makeDiagram, node, open, pins, saved, type Diagram, type Files } from './helpers';
+import { attrs, makeDiagram, node, open, pins, saved, settled, type Diagram, type Files } from './helpers';
 
 const canon = (text: string) => format(parse(text).diagram);
 
@@ -117,7 +117,7 @@ async function expectFiles(page: Page, d: Diagram, expected: Files, original: Fi
       return false;
     }
   };
-  const files = await eventually(() => d.read(), same, 3000);
+  const files = await settled(page, d, same, 3000);
   expectHandEdit(files, expected, original);
   await saved(page);
   return d.read();
@@ -126,11 +126,11 @@ async function expectFiles(page: Page, d: Diagram, expected: Files, original: Fi
 /** Undo restores all three files byte for byte; redo re-applies the edit byte for byte (UI28). */
 async function expectUndoRedo(page: Page, d: Diagram, before: Files, after: Files): Promise<void> {
   await page.getByTestId('undo').click();
-  const undone = await eventually(() => d.read(), (f) => f.mmd === before.mmd && f.config === before.config && f.layout === before.layout, 3000);
+  const undone = await settled(page, d, (f) => f.mmd === before.mmd && f.config === before.config && f.layout === before.layout, 3000);
   expect(undone).toEqual(before);
   await saved(page);
   await page.getByTestId('redo').click();
-  const redone = await eventually(() => d.read(), (f) => f.mmd === after.mmd && f.config === after.config && f.layout === after.layout, 3000);
+  const redone = await settled(page, d, (f) => f.mmd === after.mmd && f.config === after.config && f.layout === after.layout, 3000);
   expect(redone).toEqual(after);
   await saved(page);
 }
@@ -240,7 +240,7 @@ test('add a note from the toolbar: nothing is written until a commit with text, 
   // One step: a single undo takes away the text and the position together.
   await expectUndoRedo(page, d, PLAIN, after);
   await page.getByTestId('undo').click();
-  await eventually(() => d.read(), (f) => f.config === PLAIN.config);
+  await settled(page, d, (f) => f.config === PLAIN.config);
   await expect(page.getByTestId('undo')).toBeDisabled();
 });
 
@@ -407,6 +407,30 @@ test('a note is selected on its own; Delete removes it; the arrow keys move it',
   await note(page, 'note1').click();
   await node(page, 'b').click();
   await expect(note(page, 'note1')).toHaveAttribute('data-selected', 'false');
+});
+
+test('the toolbar Delete button deletes a selected note; with the title selected it is disabled and does nothing', async ({ page }, info) => {
+  const d = makeDiagram(info, NOTED);
+  await open(page, d);
+  const del = page.getByTestId('delete');
+  await expect(del).toBeDisabled(); // nothing selected
+  await title(page).click();
+  await expect(title(page)).toHaveAttribute('data-selected', 'true');
+  await expect(del).toBeDisabled(); // the title can be hidden (its menu), not deleted
+  await page.keyboard.press('Delete');
+  await page.waitForTimeout(300);
+  await saved(page);
+  expect(d.read()).toEqual(NOTED);
+  await expect(title(page)).toBeVisible();
+
+  await note(page, 'note1').click();
+  await expect(note(page, 'note1')).toHaveAttribute('data-selected', 'true');
+  await expect(del).toBeEnabled();
+  await del.click();
+  await expect(note(page, 'note1')).toHaveCount(0);
+  const gone = await expectFiles(page, d, PLAIN, NOTED);
+  await expect(del).toBeDisabled(); // the selection went with the note
+  await expectUndoRedo(page, d, NOTED, gone);
 });
 
 test('the note menu: edit, font size, bold and colour; defaults remove their keys; delete', async ({ page }, info) => {

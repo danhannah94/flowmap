@@ -134,3 +134,120 @@ describe('R12: the old first lane keeps its place when another lane becomes firs
     expect(ok(ops.reorderLanes(three, ['top', 'z', 'bottom'])).files.layout).toBe(three.layout);
   });
 });
+
+// Rulings R14 (points 1–3) and R15: notes and the title, entries that don't count toward U, and deleting the first lane.
+describe('R14, R15: notes, the title, stale pins and ignored bend points when the first lane changes', () => {
+  const NOTES_CONFIG = `${SHAPE_CONFIG}notes:\n  n1:\n    text: Remember this\n  n2:\n    text: And this\n`;
+  /** NEG (U = 45) plus: two placed notes, a placed title, stale pins and an ignored point set in the top lane. */
+  const MORE: Files = {
+    mmd: NEG.mmd,
+    config: NOTES_CONFIG,
+    layout: editJson(NEG.layout, (js) => {
+      // Stale: c is declared in the bottom lane, so these pins don't apply (and don't count toward U).
+      js.nodes.c = { lane: 'top', along: 50, across: -10 }; // -10 + 45 = 35: kept
+      js.nodes.d = { lane: 'top', along: 60, across: -70, width: 90, height: 60 }; // still -25: the pin goes, the size stays
+      js.nodes.ghost = { lane: 'top', along: 5, across: -99 }; // an orphan, still negative: the whole entry goes
+      // Ignored: a point in a lane that doesn't exist. Its top-lane points get U, or go if still negative.
+      js.edges['a->b'] = { points: [{ lane: 'top', along: 200, across: -5 }, { lane: 'top', along: 220, across: -80 }, { lane: 'gone', along: 1, across: 1 }] };
+      js.edges['b->d'] = { label_at: 0.5, points: [{ lane: 'top', along: 300, across: -60 }, { lane: 'nope', along: 1, across: 1 }] };
+      js.notes = { n1: { x: 10, y: -30 }, n2: { x: -20, y: 400 } };
+      js.title = { x: 0, y: -80 };
+    }),
+  };
+  const before = layoutOf(MORE);
+  const U = before.translation.across;
+  /** The hand edit, as a person applying R12/R14/R15 would write it. */
+  const handMore = (js: any) => {
+    js.nodes.a.across += U;
+    js.nodes.b.across += U;
+    js.nodes.zz.across += U;
+    js.nodes.c.across += U;
+    js.nodes.d = { width: 90, height: 60 };
+    delete js.nodes.ghost;
+    js.edges['c->d'].points[0].across += U;
+    js.edges['a->b'].points = [{ lane: 'top', along: 200, across: 40 }, { lane: 'gone', along: 1, across: 1 }];
+    js.edges['b->d'].points = [{ lane: 'nope', along: 1, across: 1 }]; // only the negative point goes
+    js.notes.n1.y += U;
+    js.notes.n2.y += U;
+    js.title.y += U;
+  };
+  const shown = (out: LayoutOutput) => ({ notes: out.result.notes, title: out.result.title });
+
+  test('the fixture: U is still 45 (stale pins and ignored points don\'t count), and the file is valid', () => {
+    expect(U).toBe(45);
+    expectValid(MORE);
+  });
+
+  test('reorder lanes: notes and the title get U on y (LR); stale and ignored entries get U or go', () => {
+    const r = ops.reorderLanes(MORE, ['bottom', 'top']);
+    const after = expectParity(r, MORE, {
+      config: `${NOTES_CONFIG}lanes:\n  - id: bottom\n  - id: top\n`,
+      layout: editJson(MORE.layout, handMore),
+    });
+    const out = expectValid(after);
+    expect(out.translation.across).toBe(0);
+    // Notes and the title don't move on screen.
+    expect(shown(out)).toEqual(shown(before));
+  });
+
+  test('TB: notes and the title get U on x', () => {
+    const tb: Files = { ...MORE, mmd: MORE.mmd.replace('flowchart LR', 'flowchart TB') };
+    const tbBefore = layoutOf(tb);
+    expect(tbBefore.translation.across).toBe(45);
+    const r = ops.reorderLanes(tb, ['bottom', 'top']);
+    const after = expectParity(r, tb, {
+      config: `${NOTES_CONFIG}lanes:\n  - id: bottom\n  - id: top\n`,
+      layout: editJson(tb.layout, (js) => {
+        handMore(js);
+        js.notes.n1 = { x: 10 + U, y: -30 };
+        js.notes.n2 = { x: -20 + U, y: 400 };
+        js.title = { x: U, y: -80 };
+      }),
+    });
+    expect(shown(expectValid(after))).toEqual(shown(tbBefore));
+  });
+
+  test('U = 0: a stale pin or ignored point that is negative is still removed (it would be invalid in a later lane)', () => {
+    const zero: Files = {
+      ...SHAPE,
+      layout: editJson(SHAPE_LAYOUT, (js) => {
+        js.nodes.c = { lane: 'top', along: 50, across: -10 };
+        js.edges = { 'a->b': { points: [{ lane: 'top', along: 200, across: -5 }, { lane: 'gone', along: 1, across: 1 }] } };
+        js.notes = { n1: { x: 3, y: -4 } };
+      }),
+    };
+    expect(layoutOf(zero).translation.across).toBe(0);
+    const r = ops.reorderLanes(zero, ['bottom', 'top']);
+    const after = expectParity(r, zero, {
+      config: `${SHAPE_CONFIG}lanes:\n  - id: bottom\n  - id: top\n`,
+      layout: editJson(zero.layout, (js) => {
+        delete js.nodes.c;
+        js.edges['a->b'].points = [{ lane: 'gone', along: 1, across: 1 }];
+      }),
+    });
+    expect(loadDocument(after.mmd, after.config, after.layout, 'x.mmd').problems.errors).toEqual([]);
+  });
+
+  test('R15: deleting the first lane gives notes and the title U too, and removes what would stay negative', () => {
+    const r = ops.deleteLane(MORE, 'top', { mode: 'move', target: 'bottom' });
+    const after = expectParity(r, MORE, {
+      mmd: SHAPE_MMD.replace('  subgraph top [Top]\n    a["Alpha"]\n    b["Beta"]\n  end\n\n', '')
+        .replace('    d{"Delta?"}\n', '    d{"Delta?"}\n    a["Alpha"]\n    b["Beta"]\n'),
+      layout: editJson(MORE.layout, (js) => {
+        js.nodes.a = { width: 130, height: 60 }; // moved out of the deleted lane: pins removed (§8.2)
+        delete js.nodes.b;
+        js.nodes.zz.across += U; // leftovers in the deleted lane get U
+        js.nodes.c.across += U;
+        js.nodes.d = { width: 90, height: 60 };
+        delete js.nodes.ghost;
+        delete js.edges['c->d'].points; // point sets in the deleted lane are removed (§8.2)
+        delete js.edges['a->b'];
+        js.edges['b->d'] = { label_at: 0.5 };
+        js.notes.n1.y += U;
+        js.notes.n2.y += U;
+        js.title.y += U;
+      }),
+    });
+    expectValid(after);
+  });
+});

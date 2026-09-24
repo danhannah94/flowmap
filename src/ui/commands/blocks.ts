@@ -12,6 +12,7 @@ import type { Rect } from '../canvas/viewport';
 import { icons } from '../chrome/icons';
 import { overlays } from '../chrome/Panels';
 import { ShapePicker } from '../chrome/ShapePicker';
+import { removeNote } from '../notes/actions';
 import type { State, Store } from '../store/store';
 import { editable, type Command } from './types';
 
@@ -109,13 +110,21 @@ function duplicateSelection(store: Store): void {
   if (r.ok) store.select({ nodes: r.ids });
 }
 
-// ---- UI14 Delete
+// ---- UI14 Delete (and UI41: a selected note)
+
+/** A note is what's selected (a note's selection leaves no block or line selected, UI10). The title isn't deleted. */
+const selectedNote = (s: State): string | null => (s.selection.annotation?.kind === 'note' ? s.selection.annotation.id : null);
 
 function deleteSelection(store: Store): void {
-  const { nodes, edges } = store.getState().selection;
-  if (nodes.length === 0 && edges.length === 0) return;
-  const r = store.apply(deleteItems, { nodes, edges });
-  if (r.ok) store.clearSelection();
+  const s = store.getState();
+  const { nodes, edges } = s.selection;
+  if (nodes.length || edges.length) {
+    const r = store.apply(deleteItems, { nodes, edges });
+    if (r.ok) store.clearSelection();
+    return;
+  }
+  const note = selectedNote(s);
+  if (note !== null) removeNote(store, note);
 }
 
 // The shape picker (UI7), mounted over the canvas while one block is selected.
@@ -158,8 +167,8 @@ export const blockCommands: Command[] = [
     title: 'Delete',
     icon: icons.delete,
     keys: ['Delete', 'Backspace'],
-    help: 'Delete the selected blocks and lines',
-    enabled: (s) => editable(s) && (s.selection.nodes.length > 0 || s.selection.edges.length > 0),
+    help: 'Delete the selected blocks and lines, or the selected note',
+    enabled: (s) => editable(s) && (s.selection.nodes.length > 0 || s.selection.edges.length > 0 || selectedNote(s) !== null),
     run: deleteSelection,
   },
   {

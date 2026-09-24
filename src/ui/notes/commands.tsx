@@ -1,11 +1,12 @@
 // Toolbar and keyboard commands for notes and the title (design.md §8.2 UI41, UI42, UI33; §8.3 toolbar `add-note`).
 // The keyed ones apply while a note or the title is selected, which leaves no block or line selected (UI10), so they
-// never compete with the block commands for the same key.
+// never compete with the block commands for the same key. Deleting a selected note is the toolbar's and the keys'
+// one `delete` command (commands/blocks.ts); the title has no delete (hide it from its menu instead).
 import type { Command } from '../commands/types';
 import { editable } from '../commands/types';
 import type { State } from '../store/store';
 import {
-  addNoteAtViewCentre, editAnnotation, nudgeAnnotation, removeNote, selectedAnnotation,
+  addNoteAtViewCentre, editAnnotation, nudgeAnnotation, selectedAnnotation,
 } from './actions';
 
 const NOTE_ICON = (
@@ -18,7 +19,6 @@ const NOTE_ICON = (
 );
 
 const annotation = (s: State) => s.selection.annotation ?? null;
-const noteSelected = (s: State) => editable(s) && annotation(s)?.kind === 'note';
 const anySelected = (s: State) => editable(s) && !!annotation(s);
 
 const ARROWS: Record<string, [number, number]> = {
@@ -36,18 +36,9 @@ export const noteCommands: Command[] = [
     run: (store) => addNoteAtViewCentre(store),
   },
   {
-    id: 'delete-note',
-    title: 'Delete the selected note',
-    keys: ['Delete', 'Backspace'],
-    enabled: noteSelected,
-    run: (store) => {
-      const a = selectedAnnotation(store);
-      if (a?.kind === 'note') removeNote(store, a.id);
-    },
-  },
-  {
     id: 'edit-annotation',
     title: 'Edit the selected note or title',
+    help: 'Edit the selected note or the title',
     keys: ['Enter'],
     enabled: anySelected,
     run: (store) => {
@@ -59,6 +50,7 @@ export const noteCommands: Command[] = [
     // One command for the four arrows, so the shortcut list shows one row.
     id: 'move-annotation',
     title: 'Move the selected note or title 10 px',
+    help: 'Move the selected note or the title 10 px',
     keys: Object.keys(ARROWS),
     enabled: anySelected,
     run: (store, e) => {

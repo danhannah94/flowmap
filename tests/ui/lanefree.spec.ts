@@ -6,8 +6,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { format, parse } from '../../src/core/mmd';
 import {
-  attrs, declaredLane, Diagram, dragBy, dragFromTo, eventually, expectMatchesCli, lane, makeDiagram, node, open, pins,
-  saved, type Files,
+  attrs, declaredLane, Diagram, dragBy, dragFromTo, expectMatchesCli, lane, makeDiagram, node, open, pins,
+  saved, settled, type Files,
 } from './helpers';
 
 const canon = (text: string) => format(parse(text).diagram);
@@ -65,9 +65,8 @@ async function viewTransform(page: Page, refId: string) {
   };
 }
 
-async function onDisk(d: Diagram, check: (f: Files) => boolean): Promise<Files> {
-  return eventually(() => d.read(), check, 2000);
-}
+/** The files once the action has landed and the page has saved (helpers `settled`). */
+const onDisk = (page: Page, d: Diagram, check: (f: Files) => boolean): Promise<Files> => settled(page, d, check);
 
 async function canvasBox(page: Page) {
   return (await page.getByTestId('canvas').boundingBox())!;
@@ -109,7 +108,7 @@ test('A4a: a diagram without subgraphs draws no lane band or header, and matches
   }
   // Top to bottom too.
   await page.getByTestId('direction-toggle').click();
-  await onDisk(d, (f) => f.mmd.startsWith('flowchart TB'));
+  await onDisk(page, d, (f) => f.mmd.startsWith('flowchart TB'));
   await saved(page);
   await expect(page.getByTestId('canvas')).toHaveAttribute('data-direction', 'TB');
   await expect(page.locator('[data-lane-header]')).toHaveCount(0);
@@ -139,7 +138,7 @@ test('A4b: clicking a palette shape adds an unlaned, unpinned block at once, in 
   await editor.fill('Paid in full?');
   await editor.press('Enter');
   await expect(editor).toHaveCount(0);
-  const files = await onDisk(d, (f) => f.mmd.includes('n1{"Paid in full?"}'));
+  const files = await onDisk(page, d, (f) => f.mmd.includes('n1{"Paid in full?"}'));
   expect(declaredLane(files.mmd, 'n1')).toBe('_unassigned');
   expect(parse(files.mmd).diagram.lanes).toEqual([]);
   expect(pins(files.layout).n1).toBeUndefined();
@@ -163,7 +162,7 @@ test('A4b: clicking a palette shape adds an unlaned, unpinned block at once, in 
     await expect(node(page, `n${i + 2}`)).toHaveAttribute('data-kind', shape);
     await expect(node(page, `n${i + 2}`)).toHaveAttribute('data-lane', '_unassigned');
   }
-  const after = await onDisk(d, (f) => f.mmd.includes('n8@{'));
+  const after = await onDisk(page, d, (f) => f.mmd.includes('n8@{'));
   for (let i = 2; i <= 8; i++) expect(declaredLane(after.mmd, `n${i}`)).toBe('_unassigned');
   expect(Object.keys(pins(after.layout))).toEqual([]);
   await saved(page);
@@ -184,7 +183,7 @@ test('A4b: dragging a shape from the palette onto the canvas adds it pinned at t
   await dragFromTo(page, { x: btn.x + btn.width / 2, y: btn.y + btn.height / 2 }, target);
   await expect(page.getByTestId('label-editor')).toBeVisible();
   await page.keyboard.press('Escape');
-  const files = await onDisk(d, (f) => !!pins(f.layout).n1);
+  const files = await onDisk(page, d, (f) => !!pins(f.layout).n1);
   expect(declaredLane(files.mmd, 'n1')).toBe('_unassigned');
   expect(parse(files.mmd).diagram.lanes).toEqual([]);
   await saved(page);
@@ -204,7 +203,7 @@ test('A4b: dragging a block in a lane-free diagram pins it where dropped, still 
   const before = await attrs(node(page, 'reorder'));
   const t = await viewTransform(page, 'reorder');
   await dragBy(page, node(page, 'reorder'), 0, 140 * t.z, { alt: true });
-  const files = await onDisk(d, (f) => !!pins(f.layout).reorder);
+  const files = await onDisk(page, d, (f) => !!pins(f.layout).reorder);
   expect(declaredLane(files.mmd, 'reorder')).toBe('_unassigned');
   await saved(page);
   const after = await attrs(node(page, 'reorder'));
@@ -239,7 +238,7 @@ test('A4c: a block dropped below the last lane moves to Unassigned, pinned at th
   await page.mouse.up();
   await page.keyboard.up('Alt');
   await expect(page.locator('[data-drop-preview]')).toHaveCount(0);
-  const files = await onDisk(d, (f) => declaredLane(f.mmd, 'a2') === '_unassigned');
+  const files = await onDisk(page, d, (f) => declaredLane(f.mmd, 'a2') === '_unassigned');
   expect(declaredLane(files.mmd, 'a2')).toBe('_unassigned');
   await saved(page);
   const moved = await attrs(node(page, 'a2'));
@@ -254,7 +253,7 @@ test('A4c: a block dropped below the last lane moves to Unassigned, pinned at th
   await expectMatchesCli(page, d);
   // One undo step restores all three files.
   await page.getByTestId('undo').click();
-  expect(await onDisk(d, (f) => f.mmd === LANES.mmd && f.layout === null)).toEqual(LANES);
+  expect(await onDisk(page, d, (f) => f.mmd === LANES.mmd && f.layout === null)).toEqual(LANES);
 });
 
 test('v1.1: a block dropped beyond the lanes along the flow stays in the lane under it, exactly where dropped', async ({ page }, info) => {
@@ -269,7 +268,7 @@ test('v1.1: a block dropped beyond the lanes along the flow stays in the lane un
   expect(inside(to, await canvasBox(page))).toBe(true);
   const from = t.toScreen({ x: b1.x + b1.width / 2, y: b1.y + b1.height / 2 });
   await dragFromTo(page, from, to, { alt: true });
-  const files = await onDisk(d, (f) => !!pins(f.layout).b1);
+  const files = await onDisk(page, d, (f) => !!pins(f.layout).b1);
   expect(declaredLane(files.mmd, 'b1')).toBe('beta');
   await saved(page);
   const moved = await attrs(node(page, 'b1'));
@@ -300,7 +299,7 @@ test('A4c: with Unassigned showing, dropping outside the lanes highlights it and
   await expect(page.locator('[data-drop-target="true"]')).toHaveCount(1);
   await page.mouse.up();
   await page.keyboard.up('Alt');
-  const files = await onDisk(d, (f) => declaredLane(f.mmd, 'a1') === '_unassigned');
+  const files = await onDisk(page, d, (f) => declaredLane(f.mmd, 'a1') === '_unassigned');
   await saved(page);
   const moved = await attrs(node(page, 'a1'));
   expect(moved.lane).toBe('_unassigned');
@@ -330,7 +329,7 @@ test('A4c: a multi-block drag applies the rule per block: outside every lane to 
   const to = t.toScreen({ x: a1.x + a1.width / 2, y: a1.y + a1.height / 2 + dy });
   expect(inside(t.toScreen({ x: b2.x, y: b2.y + b2.height + dy }), await canvasBox(page))).toBe(true);
   await dragFromTo(page, from, to, { alt: true });
-  const files = await onDisk(d, (f) => declaredLane(f.mmd, 'b2') === '_unassigned' && declaredLane(f.mmd, 'a1') === 'beta');
+  const files = await onDisk(page, d, (f) => declaredLane(f.mmd, 'b2') === '_unassigned' && declaredLane(f.mmd, 'a1') === 'beta');
   expect(declaredLane(files.mmd, 'a1')).toBe('beta');
   expect(declaredLane(files.mmd, 'b2')).toBe('_unassigned');
   expect(pins(files.layout).a1?.lane).toBe('beta');
@@ -342,7 +341,7 @@ test('A4c: a multi-block drag applies the rule per block: outside every lane to 
   await expectMatchesCli(page, d);
   // One drag, one undo step.
   await page.getByTestId('undo').click();
-  expect(await onDisk(d, (f) => f.mmd === LANES.mmd && f.layout === null)).toEqual(LANES);
+  expect(await onDisk(page, d, (f) => f.mmd === LANES.mmd && f.layout === null)).toEqual(LANES);
 });
 
 // ---- (d) New diagram: Flowchart or Swimlanes -------------------------------------------------------------------------
@@ -375,7 +374,7 @@ test('A4d: New diagram offers Flowchart (the default) and Swimlanes; Flowchart m
   await editor.fill('Start');
   await editor.press('Enter');
   await expect(hint).toHaveCount(0);
-  const files = await onDisk(d, (f) => f.mmd.includes('Start'));
+  const files = await onDisk(page, d, (f) => f.mmd.includes('Start'));
   expect(files.mmd).toBe(canon('flowchart LR\n  n1(["Start"])\n'));
   expect(files.layout).toBeNull();
   await expect(page.locator('[data-lane-header]')).toHaveCount(0);
@@ -395,7 +394,7 @@ test('A4d: an existing lane-free file opened directly also gets the flowchart hi
   await dragFromTo(page, { x: btn.x + btn.width / 2, y: btn.y + btn.height / 2 }, { x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height / 2 });
   await expect(page.getByTestId('label-editor')).toBeVisible();
   await page.keyboard.press('Escape');
-  const files = await onDisk(d, (f) => !!pins(f.layout).n1);
+  const files = await onDisk(page, d, (f) => !!pins(f.layout).n1);
   expect(declaredLane(files.mmd, 'n1')).toBe('_unassigned');
   expect(pins(files.layout).n1!.lane).toBe('_unassigned');
   await saved(page);

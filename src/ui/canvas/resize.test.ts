@@ -1,6 +1,6 @@
-// UI34: the live preview (`resizeBox`) is exactly what `resizeNode` writes, and, for a block the resize pins (a top or
-// left handle) or that was pinned already, exactly where the layout then draws it (L4), allowing for the frame
-// moving when a first-lane block grows above everything (§6: the UI pans by that, so nothing moves on screen).
+// UI34: the live preview (`resizeBox`) is exactly what `resizeNode` writes, and, since every resize pins the block
+// (A6), exactly where the layout then draws it (L4) from every handle, allowing for the frame moving when a first-lane
+// block grows above everything (§6: the UI pans by that, so nothing moves on screen).
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
@@ -57,14 +57,24 @@ describe.each([
           const after = doc(r.files);
           const drawn = after.layout!.result.nodes.find((n) => n.id === id)!;
           expect({ width: drawn.width, height: drawn.height }, `drawn size after ${dx},${dy}`).toEqual({ width: box.width, height: box.height });
-          if (handle.includes('n') || handle.includes('w') || node.pinned) {
-            // The frame can move (a first-lane block grown above everything): the whole diagram shifts with it.
-            const t0 = out.translation;
-            const t1 = after.layout!.translation;
-            const shift = LR
-              ? { x: t1.along - t0.along, y: t1.across - t0.across }
-              : { x: t1.across - t0.across, y: t1.along - t0.along };
-            expect({ x: drawn.x, y: drawn.y }, `position after ${dx},${dy}`).toEqual({ x: box.x + shift.x, y: box.y + shift.y });
+          expect(drawn.pinned, `pinned after ${dx},${dy}`).toBe(true);
+          // The frame can move (a first-lane block grown above everything): the whole diagram shifts with it.
+          const t0 = out.translation;
+          const t1 = after.layout!.translation;
+          const shift = LR
+            ? { x: t1.along - t0.along, y: t1.across - t0.across }
+            : { x: t1.across - t0.across, y: t1.along - t0.along };
+          expect({ x: drawn.x, y: drawn.y }, `position after ${dx},${dy}`).toEqual({ x: box.x + shift.x, y: box.y + shift.y });
+          // The opposite edges stay where they were drawn (on screen, i.e. less the frame's shift).
+          if (!handle.includes('e')) expect(drawn.x + drawn.width - shift.x, `right edge after ${dx},${dy}`).toBe(node.x + node.width);
+          if (!handle.includes('w')) expect(drawn.x - shift.x, `left edge after ${dx},${dy}`).toBe(node.x);
+          if (!handle.includes('n') && !handle.includes('s')) {
+            // A width-only drag may grow the height downward to what the label needs; the top stays.
+            expect(drawn.y - shift.y, `top edge after ${dx},${dy}`).toBe(node.y);
+          } else if (!handle.includes('s')) {
+            expect(drawn.y + drawn.height - shift.y, `bottom edge after ${dx},${dy}`).toBe(node.y + node.height);
+          } else {
+            expect(drawn.y - shift.y, `top edge after ${dx},${dy}`).toBe(node.y);
           }
         }
       });

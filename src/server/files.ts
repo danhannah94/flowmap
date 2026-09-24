@@ -111,12 +111,30 @@ export interface PutResult {
   snapshot: DiagramSnapshot;
 }
 
+/** The file operations `applyPut` uses (a seam for tests that check their order). */
+export interface PutIo {
+  write(path: string, data: string): Promise<void>;
+  remove(path: string): Promise<void>;
+}
+
+const DISK_IO: PutIo = { write: writeAtomic, remove: deleteIfExists };
+
+/**
+ * The order a PUT changes the three files in: the config and layout file first, the `.mmd` last. A reader or watcher
+ * that keys off the `.mmd` (the UI's own tests, an editor, another tool) sees the `.mmd` change only once its
+ * companions are already in their new state, so it never pairs a new `.mmd` with an old layout or config. A deleted
+ * file follows the same order: companions first, the `.mmd` last.
+ */
+export const PUT_ORDER: readonly FileKey[] = ['config', 'layout', 'mmd'];
+
 /**
  * Applies a PUT. If the current on-disk versions don't match `base`, nothing is written and `conflict` is true
  * ("disk wins"). Otherwise writes only the files whose content actually changed and deletes those set to `null`,
- * atomically, then returns the new snapshot.
+ * each atomically (a temp file, then rename), in `PUT_ORDER`, then returns the new snapshot.
  */
-export async function applyPut(dir: string, mmdFile: string, base: DiagramVersions, patch: FilesPatch): Promise<PutResult> {
+export async function applyPut(
+  dir: string, mmdFile: string, base: DiagramVersions, patch: FilesPatch, io: PutIo = DISK_IO,
+): Promise<PutResult> {
   const names = diagramFileNames(mmdFile);
   const current = await readDiagram(dir, mmdFile);
   if (!versionsEqual(current.versions, base)) {
@@ -128,12 +146,12 @@ export async function applyPut(dir: string, mmdFile: string, base: DiagramVersio
     config: join(dir, names.config),
     layout: join(dir, names.layout),
   };
-  for (const key of ['mmd', 'config', 'layout'] as const) {
+  for (const key of PUT_ORDER) {
     const value = patch[key];
     if (value === null) {
-      await deleteIfExists(paths[key]);
+      if (current.files[key] !== null) await io.remove(paths[key]);
     } else if (value !== current.files[key]) {
-      await writeAtomic(paths[key], value);
+      await io.write(paths[key], value);
     }
   }
 

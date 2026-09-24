@@ -23,13 +23,13 @@ import type {
 import { UNASSIGNED, isLaneFree, pinOf, sizeOf } from '../types';
 import { effectiveSize, edgeLabelSize, noteSize, roundRadius, SHAPE_GEOMETRY, TITLE_FONT, titleSize } from '../measure';
 import { portPoint } from '../shapes';
-import { pointAtFraction } from './geometry';
+import { facingAbstract, pointAtFraction } from './geometry';
 
 // Geometry the UI and the edit operations share with the layout (v1.1): polylines (UI36, UI37), lanes of points
 // (§5), ports (§6 L12) and the stored frame of bend points.
 export {
   polylineLength, pointAtFraction, projectOntoPolyline, mergePolyline, laneAt, nodePort, nodePorts, endAtPort,
-  pointFromStored, storedFromPoint, type Point, type Frame,
+  pointFromStored, storedFromPoint, facingAbstract, facingSide, type AbstractSide, type Point, type Frame,
 } from './geometry';
 import { stronglyConnected, backEdges, assignRanks, heights, type IndexedEdge } from './graphalg';
 import { readHints, type Hints } from './hints';
@@ -574,8 +574,8 @@ function routeEdges(
   edges.forEach((e, k) => {
     const pts = bends[k];
     if (pts) {
-      srcSide[k] = fixSrc[k] ?? facing(boxes[e.s]!, pts[0]!);
-      tgtSide[k] = fixTgt[k] ?? facing(boxes[e.t]!, pts[pts.length - 1]!);
+      srcSide[k] = fixSrc[k] ?? facingAbstract(boxes[e.s]!, pts[0]!);
+      tgtSide[k] = fixTgt[k] ?? facingAbstract(boxes[e.t]!, pts[pts.length - 1]!);
       return;
     }
     if (fixSrc[k] !== null) srcSide[k] = fixSrc[k]!;
@@ -798,14 +798,6 @@ function routeEdges(
     out.set(e.i, { points, labelPos, sides, manual: manual[k]! });
   }
   return out;
-}
-
-/** The abstract side of box `b` that faces point `p` most (ties: +along, +across, -across, -along). */
-function facing(b: RBox, p: [number, number]): Side {
-  const over: [Side, number][] = [[0, p[0] - (b.x + b.w)], [2, p[1] - (b.y + b.h)], [3, b.y - p[1]], [1, b.x - p[0]]];
-  let best = over[0]!;
-  for (const o of over) if (o[1] > best[1]) best = o;
-  return best[0];
 }
 
 /**

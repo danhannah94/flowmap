@@ -333,6 +333,41 @@ export function movePointsToLane(
 }
 
 /**
+ * Rulings R12, R14 and R15: lane `lane` stops being the first displayed lane, and `u` is the growth it had toward its
+ * start (§6 Frame). In one write:
+ * - every pin and bend point stored in that lane gets `u` added to its `across`, whether it applies or not (stale and
+ *   orphaned pins, ignored point sets: R14.2, R14.3);
+ * - stored note and title positions get `u` added on the across axis, y for `LR` and x for `TB` (R14.1);
+ * - a pin or bend point there that would still be negative applies to nothing (it didn't count toward U), and is
+ *   removed so the file stays valid (R15.2): the pin goes (a size stays), the point goes, and a point set left empty
+ *   goes (a manual line needs a bend point, R11.1).
+ * Entries keep their place. No file stays no file.
+ */
+export function reexpressOldFirstLane(
+  file: LayoutFile | null, lane: string, u: number, direction: 'LR' | 'TB',
+): LayoutFile | null {
+  if (!file) return null;
+  if (!isCoord(u) || u < 0) throw new Error('reexpressOldFirstLane: u must be an integer of at least 0');
+  const nodes = mapEntries(file.nodes, (_id, e) => {
+    const pin = pinOf(e);
+    if (!pin || pin.lane !== lane) return { value: e };
+    const across = pin.across + u;
+    return { value: nodeEntry(across < 0 ? null : { ...pin, across }, sizeOf(e)) };
+  });
+  const edges = mapEntries(file.edges, (_id, e) => {
+    if (!e.points || !e.points.some((p) => p.lane === lane)) return { value: e };
+    const points = e.points
+      .map((p) => (p.lane === lane ? { lane: p.lane, along: p.along, across: p.across + u + 0 } : p))
+      .filter((p) => p.across >= 0 || p.lane !== lane);
+    return { value: patchEntry(e, { points: points.length ? points : null }) };
+  });
+  const LR = direction !== 'TB';
+  const shift = (p: XY): XY => (LR ? { x: p.x, y: p.y + u + 0 } : { x: p.x + u + 0, y: p.y });
+  const notes = mapEntries(file.notes, (_id, p) => ({ value: shift(p) }));
+  return build({ ...partsOf(file), nodes, edges, notes, title: file.title ? shift(file.title) : undefined });
+}
+
+/**
  * UI12 "Re-layout all": remove every pin and every line's `points`; keep sizes, sides, `label_at`, notes, the title
  * position and `hints`. No file stays no file.
  */

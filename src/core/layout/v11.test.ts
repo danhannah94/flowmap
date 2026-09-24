@@ -7,7 +7,8 @@ import { labelNeeds, nodeSize, noteSize, textArea, titleSize, wrapLabel } from '
 import { portPoint } from '../shapes';
 import { layout, layoutDiagram, TITLE_GAP, NOTE_GAP } from './index';
 import {
-  endAtPort, laneAt, mergePolyline, nodePort, pointAtFraction, pointFromStored, projectOntoPolyline, storedFromPoint,
+  endAtPort, facingSide, laneAt, mergePolyline, nodePort, pointAtFraction, pointFromStored, projectOntoPolyline,
+  storedFromPoint,
 } from './geometry';
 import { checkLayout, expectedPort, randomGraph, randomShaping, rng } from './testkit';
 
@@ -230,6 +231,85 @@ describe('L11 manual lines', () => {
     const res = run({ graph: LANES, file: f }).result;
     expect(checkLayout(LANES, {}, res, { file: f, strict: true })).toEqual([]);
   });
+});
+
+describe('R11.7 / R14.4: an end with no stored side faces its nearest bend point', () => {
+  // a1 pinned with an even size, so its centre is whole; its line to a2 gets one bend point placed around it.
+  const pins = { a1: { lane: 'a', along: 100, across: 40 }, a2: { lane: 'a', along: 900, across: 40 } };
+  const sized = file({ nodes: { a1: { ...pins.a1, width: 240, height: 100 }, a2: pins.a2 } });
+  for (const g of [LANES, tb(LANES)]) {
+    const LR = g.direction === 'LR';
+    const base = run({ graph: g, file: sized }).result;
+    const a1 = node(base, 'a1');
+    /**
+     * The source side of a1→a2 with its one bend point at (x, y), in the diagram coordinates of `base`. Stored relative
+     * to a1's pin, so a point before everything (which moves the frame, §6) keeps its place relative to a1.
+     */
+    const sideFor = (x: number, y: number) => {
+      const [dx, dy] = [x - a1.x, y - a1.y];
+      const pt = LR ? { lane: 'a', along: 100 + dx, across: 40 + dy } : { lane: 'a', along: 100 + dy, across: 40 + dx };
+      const res = run({ graph: g, file: { ...sized, edges: { 'a1->a2': { points: [pt] } } } }).result;
+      const moved = node(res, 'a1');
+      expect([moved.width, moved.height]).toEqual([a1.width, a1.height]);
+      return edge(res, 'a1->a2').source_side;
+    };
+    const cx = a1.x + a1.width / 2;
+    const cy = a1.y + a1.height / 2;
+    it(`${g.direction}: the axis with the larger distance from the centre wins, not the larger overshoot past a side`, () => {
+      expect([a1.width, a1.height]).toEqual([240, 100]);
+      // Just past the right edge and further past the bottom one: farther from the centre across x (130 vs 80).
+      expect(sideFor(a1.x + a1.width + 10, a1.y + a1.height + 30)).toBe('right');
+      // Just past the left edge and further past the top one.
+      expect(sideFor(a1.x - 10, a1.y - 30)).toBe('left');
+      // Mostly vertical from the centre.
+      expect(sideFor(cx + 20, a1.y + a1.height + 200)).toBe('bottom');
+      expect(sideFor(cx - 20, a1.y - 200)).toBe('top');
+    });
+    it(`${g.direction}: a tie goes to the side along the flow`, () => {
+      const flowPlus = LR ? 'right' : 'bottom';
+      const flowMinus = LR ? 'left' : 'top';
+      expect(sideFor(cx + 150, cy + 150)).toBe(flowPlus);
+      expect(sideFor(cx - 150, cy - 150)).toBe(flowMinus);
+      expect(sideFor(cx + 150, cy - 150)).toBe(LR ? 'right' : 'top');
+      expect(sideFor(cx - 150, cy + 150)).toBe(LR ? 'left' : 'bottom');
+    });
+  }
+  it('facingSide (the UI\'s preview) is the same rule', () => {
+    const box = { x: 100, y: 40, width: 240, height: 100 };
+    expect(facingSide('LR', box, [350, 170])).toBe('right');
+    expect(facingSide('LR', box, [370, 240])).toBe('right'); // tie: along the flow
+    expect(facingSide('TB', box, [370, 240])).toBe('bottom');
+    expect(facingSide('TB', box, [350, 170])).toBe('right');
+    expect(facingSide('LR', box, [230, 400])).toBe('bottom');
+  });
+});
+
+describe('R11.8 / R14.5: a bend point on the port next to it is dropped from `points`', () => {
+  const pins = { a1: { lane: 'a', along: 100, across: 30 }, a2: { lane: 'a', along: 600, across: 30 } };
+  for (const g of [LANES, tb(LANES)]) {
+    it(`${g.direction}: first and last bend points on the ports; a repeated point; points in a straight row stay`, () => {
+      const LR = g.direction === 'LR';
+      const base = run({ graph: g, file: file({ nodes: pins }) }).result;
+      const la = lane(base, 'a');
+      const src = portPoint('step', node(base, 'a1'), 'right');
+      const tgt = portPoint('decision', node(base, 'a2'), 'left');
+      const store = ([x, y]: readonly number[]) => (LR ? { lane: 'a', along: x!, across: y! - la.y } : { lane: 'a', along: y!, across: x! - la.x });
+      const mid = [src[0] + 30, src[1]];
+      const f = file({ nodes: pins, edges: { 'a1->a2': { source_side: 'right', target_side: 'left', points: [
+        store(src), store(mid), store(mid), store(tgt),
+      ] } } });
+      const res = run({ graph: g, file: f }).result;
+      const e = edge(res, 'a1->a2');
+      expect(e.manual).toBe(true);
+      expect(e.points[0]).toEqual(src);
+      expect(e.points[e.points.length - 1]).toEqual(tgt);
+      // No two consecutive points are equal: the ports' own bend points and the repeated one are gone.
+      for (let i = 1; i < e.points.length; i++) expect(e.points[i], `point ${i}`).not.toEqual(e.points[i - 1]);
+      expect(e.points.filter(([x, y]) => x === src[0] && y === src[1])).toHaveLength(1);
+      expect(e.points.filter(([x, y]) => x === tgt[0] && y === tgt[1])).toHaveLength(1);
+      expect(e.points).toContainEqual(mid);
+    });
+  }
 });
 
 describe('L8 label_at', () => {
