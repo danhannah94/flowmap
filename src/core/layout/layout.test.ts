@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Graph, LayoutResult, Pin } from '../types';
-import { layout } from './index';
+import { isLaneFree, type Graph, type LayoutResult, type Pin } from '../types';
+import { headerLength, LANE_HEADER, layout } from './index';
 import { checkLayout, qualityStats, randomGraph, randomPins, purchaseRequest, rng } from './testkit';
 
 const run = (g: Graph, pins: Record<string, Pin> = {}, hints?: unknown) => layout(g, pins, hints);
@@ -204,4 +204,75 @@ describe('performance (C7)', () => {
     }
     expect(worst).toBeLessThan(1500);
   }, 30000);
+});
+
+// Amendment A4: a diagram without subgraphs is a plain flowchart. Its layout JSON has the same shape (one
+// `_unassigned` lane), reserves no lane-label strip, and still satisfies every §6 rule.
+describe('lane-free diagrams (amendment A4)', () => {
+  const laned = (g: Graph): Graph => ({
+    ...g,
+    lanes: [{ id: 'only', label: 'Only' }],
+    nodes: g.nodes.map((n) => ({ ...n, lane: 'only' })),
+  });
+  it('isLaneFree and headerLength tell the two kinds of diagram apart', () => {
+    const free = run(randomGraph(7, { nodes: 20, lanes: 0 })).result;
+    expect(free.lanes.map((l) => l.id)).toEqual(['_unassigned']);
+    expect(isLaneFree(free.lanes)).toBe(true);
+    expect(headerLength(free)).toBe(0);
+    expect(isLaneFree([])).toBe(true); // an empty diagram
+    const { graph } = purchaseRequest();
+    const withLanes = run(graph).result;
+    expect(isLaneFree(withLanes.lanes)).toBe(false);
+    expect(headerLength(withLanes)).toBe(LANE_HEADER);
+  });
+  for (const dir of ['LR', 'TB'] as const) {
+    it(`${dir}: reserves no lane-label strip: every node sits LANE_HEADER px nearer the start than in one lane`, () => {
+      for (const seed of [3, 4, 5]) {
+        const g = randomGraph(seed, { nodes: 25, lanes: 0, direction: dir });
+        const free = run(g).result;
+        const one = run(laned(g)).result;
+        const along = (n: { x: number; y: number }) => (dir === 'LR' ? n.x : n.y);
+        const across = (n: { x: number; y: number }) => (dir === 'LR' ? n.y : n.x);
+        const byId = new Map(one.nodes.map((n) => [n.id, n]));
+        for (const n of free.nodes) {
+          expect(along(n)).toBe(along(byId.get(n.id)!) - LANE_HEADER);
+          expect(across(n)).toBe(across(byId.get(n.id)!));
+        }
+        // The first column starts right after the diagram's start margin, well inside where a header would be.
+        expect(Math.min(...free.nodes.map(along))).toBeLessThan(LANE_HEADER);
+        expect(dir === 'LR' ? free.width : free.height).toBe((dir === 'LR' ? one.width : one.height) - LANE_HEADER);
+      }
+    });
+  }
+  it('an empty lane-free diagram has no lanes at all', () => {
+    const r = run({ direction: 'LR', lanes: [], nodes: [], edges: [] }).result;
+    expect(r.lanes).toEqual([]);
+  });
+  it('pins are exact, including ones at along 0 (nothing to overlap there)', () => {
+    const g = randomGraph(11, { nodes: 30, lanes: 0 });
+    const pins: Record<string, Pin> = {
+      n0: { lane: '_unassigned', along: 0, across: 12 },
+      n5: { lane: '_unassigned', along: 500, across: 300 },
+    };
+    const r = run(g, pins).result;
+    expect(checkLayout(g, pins, r, { strict: true })).toEqual([]);
+    const n0 = r.nodes.find((n) => n.id === 'n0')!;
+    expect([n0.x, n0.y, n0.pinned]).toEqual([0, 12, true]);
+  });
+  const COUNT = Number(process.env.FLOWMAP_RANDOM_LANEFREE ?? 60);
+  const rr = rng(4242);
+  const cases = Array.from({ length: COUNT }, (_, k) => {
+    const nodes = 10 + Math.floor(rr() * 141);
+    return { seed: 5000 + k, nodes, dir: k % 2 ? 'TB' : 'LR', pinFrac: k % 3 === 0 ? 0 : k % 3 === 1 ? 0.1 : 0.3 } as const;
+  });
+  it.each(cases)('random seed $seed: $nodes nodes $dir pins $pinFrac satisfy L1–L8 and L10', ({ seed, nodes, dir, pinFrac }) => {
+    const g = randomGraph(seed, { nodes, direction: dir, lanes: 0 });
+    expect(g.nodes.every((n) => n.lane === '_unassigned')).toBe(true);
+    const pins = pinFrac ? randomPins(seed, g, pinFrac, nodes * 40) : {};
+    const a = run(g, pins);
+    expect(checkLayout(g, pins, a.result)).toEqual([]);
+    expect(a.result.lanes.map((l) => l.id)).toEqual(['_unassigned']);
+    if (seed % 4 === 0) expect(run(g, pins).result).toEqual(a.result); // L10
+    if (seed % 5 === 0) expect(run(g, pins, a.hints).result).toEqual(a.result); // hints stay a fixpoint
+  }, 15000);
 });

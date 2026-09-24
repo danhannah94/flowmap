@@ -1,10 +1,10 @@
 // The SVG export (design.md §7.1). Pure: takes a Graph, a LayoutResult, resolved per-node styles and
 // a legend, and returns an SVG document as a string. No fs — the CLI and the UI both write the bytes
 // this returns. Layout and drawing details beyond §7.1's structural contract are this module's choice.
-import type { Graph, LayoutResult, LegendItem, ResolvedStyle } from '../types';
+import { isLaneFree, type Graph, type LayoutResult, type LegendItem, type ResolvedStyle } from '../types';
 import { shapeGeometry, type DecorationShape, type OutlineShape } from '../shapes';
 import { getTheme, resolveStyle, type ResolvedNodeStyle, type Theme, type ThemeName } from '../theme';
-import { LABEL_FONT, textArea, textWidth, wrapLabel } from '../measure';
+import { BADGE_FONT, LABEL_FONT, badgeBox, textArea, textWidth, wrapLabel } from '../measure';
 
 export interface RenderSvgOptions {
   title: string;
@@ -94,13 +94,23 @@ function renderLabelLines(lines: string[], area: { x: number; y: number; width: 
     .join('');
 }
 
+/** The badge as a tag on the node's top edge, clear of the label's text area (`badgeBox`, shared with the UI). */
 function renderBadge(badge: string, node: LayoutResult['nodes'][number], theme: Theme): string {
-  const x = node.x + node.width - 6;
-  const y = node.y + 14;
-  return `<text data-role="badge" x="${num(x)}" y="${num(y)}" text-anchor="end" font-size="10" font-weight="600" fill="${theme.badgeText}">${escapeXml(badge)}</text>`;
+  const b = badgeBox(node.kind, node.width, node.height, badge);
+  const x = node.x + b.x;
+  const y = node.y + b.y;
+  return [
+    `<rect x="${num(x)}" y="${num(y)}" width="${num(b.width)}" height="${num(b.height)}" rx="${num(b.height / 2)}" ry="${num(b.height / 2)}" fill="${theme.badgeFill}" stroke="${theme.canvasBackground}" stroke-width="1.5"/>`,
+    `<text data-role="badge" x="${num(x + b.width / 2)}" y="${num(y + b.height / 2 + BADGE_FONT.size * 0.35)}" text-anchor="middle" font-size="${BADGE_FONT.size}" font-weight="${BADGE_FONT.weight}" fill="${theme.badgeText}">${escapeXml(badge)}</text>`,
+  ].join('');
 }
 
-function renderLane(lane: LayoutResult['lanes'][number], index: number, theme: Theme): string {
+function renderLane(lane: LayoutResult['lanes'][number], index: number, theme: Theme, laneFree: boolean): string {
+  if (laneFree) {
+    // Amendment A4: a diagram without subgraphs is a plain flowchart: no band, no header. The lane's group and its
+    // label stay in the file (hidden) so the §7.1 structure still lists every lane of `flowmap layout`.
+    return `<g data-lane-id="${escapeXml(lane.id)}"><text visibility="hidden" x="${num(lane.x)}" y="${num(lane.y)}" font-size="12">${escapeXml(lane.label)}</text></g>`;
+  }
   const fill = theme.laneFill[index % 2];
   return [
     `<g data-lane-id="${escapeXml(lane.id)}">`,
@@ -210,7 +220,8 @@ export function renderSvg(options: RenderSvgOptions): string {
   parts.push(`<text data-role="title" x="${num(MARGIN + contentWidth / 2)}" y="${num(MARGIN + TITLE_FONT_SIZE)}" text-anchor="middle" font-size="${TITLE_FONT_SIZE}" font-weight="700" fill="${theme.titleColor}">${escapeXml(title)}</text>`);
 
   parts.push(`<g transform="translate(${num(MARGIN)}, ${num(diagramTop)})">`);
-  layout.lanes.forEach((lane, index) => parts.push(renderLane(lane, index, theme)));
+  const laneFree = isLaneFree(layout.lanes);
+  layout.lanes.forEach((lane, index) => parts.push(renderLane(lane, index, theme, laneFree)));
   for (const node of layout.nodes) parts.push(renderNode(node, styles[node.id], theme));
   for (const edge of layout.edges) parts.push(renderEdge(edge, theme));
   parts.push('</g>');

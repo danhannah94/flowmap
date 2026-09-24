@@ -1,11 +1,13 @@
 // UI6: the shape palette. Three ways to add a block: click a shape then click in a lane; select a lane then click a
 // shape; or drag a shape into a lane (lands pinned where dropped). Each new block opens in label editing.
+// In a diagram without lanes (amendment A4), a click adds the block at once (unlaned, placed by the layout) and a drag
+// adds it pinned wherever it is dropped on the canvas.
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { nodeSize } from '../../core/measure';
 import { NEW_BLOCK_LABELS } from '../../core/ops';
-import { SHAPE_KINDS, type ShapeKind } from '../../core/types';
-import { addBlock, addBlockAt } from '../actions';
+import { isLaneFree, SHAPE_KINDS, UNASSIGNED, type ShapeKind } from '../../core/types';
+import { addBlock, addBlockAt, laneFreeNow } from '../actions';
 import { Shape } from '../canvas/Shape';
 import { toWorld } from '../canvas/viewport';
 import { useStore, useStoreState } from '../store/hooks';
@@ -50,8 +52,14 @@ export function Palette() {
 
   const canvasEl = () => document.querySelector<HTMLElement>('[data-testid="canvas"]');
 
+  const laneFree = useStoreState((s) => !!s.shown?.layout && isLaneFree(s.shown.layout.lanes));
+
   const click = (kind: ShapeKind) => {
     const s = store.getState();
+    if (laneFreeNow(store)) {
+      addBlock(store, kind, UNASSIGNED);
+      return;
+    }
     if (s.selection.lane) {
       addBlock(store, kind, s.selection.lane);
       return;
@@ -101,7 +109,11 @@ export function Palette() {
           type="button"
           className={`fm-palette-btn${tool.kind === 'place' && tool.shape === kind ? ' fm-active' : ''}`}
           data-shape={kind}
-          title={`${SHAPE_NAMES[kind]}: click, then click in a lane (or drag into a lane)`}
+          title={
+            laneFree
+              ? `${SHAPE_NAMES[kind]}: click to add (or drag onto the canvas)`
+              : `${SHAPE_NAMES[kind]}: click, then click in a lane (or drag into a lane)`
+          }
           aria-label={SHAPE_NAMES[kind]}
           disabled={!editableNow}
           onPointerDown={(e) => onPointerDown(e, kind)}

@@ -492,6 +492,32 @@ a.fm-home:hover {
   color: var(--accent);
 }
 
+/* Amendment A4: the one lane of a diagram without subgraphs is invisible and lets clicks through to the canvas. */
+.fm-lane.fm-lane-bare {
+  box-shadow: none;
+  background: transparent;
+  pointer-events: none;
+}
+
+/* Where the Unassigned lane will appear, while a block is dragged outside every lane (UI11, A4). */
+.fm-lane-preview {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 70%, transparent);
+  border-radius: 6px;
+  background: var(--accent-soft);
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+.fm-lane-preview-label {
+  font: 600 12px/16px Inter, sans-serif;
+  color: var(--accent);
+  letter-spacing: 0.01em;
+}
+
 .fm-canvas[data-placing='true'] .fm-lane,
 .fm-canvas[data-placing='true'] .fm-node {
   cursor: crosshair;
@@ -653,10 +679,10 @@ a.fm-home:hover {
 
 .fm-badge {
   position: absolute;
-  top: -9px;
-  right: 10px;
+  box-sizing: border-box;
   font: 600 10px/16px Inter, sans-serif;
-  padding: 0 6px;
+  text-align: center;
+  overflow: visible;
   border-radius: 8px;
   background: var(--badge-fill);
   color: var(--badge-text);
@@ -1196,8 +1222,8 @@ a.fm-home:hover {
 .fm-new-diagram {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 6px 8px;
-  width: 340px;
+  gap: 8px;
+  width: 380px;
 }
 
 .fm-new-diagram-input {
@@ -1215,6 +1241,65 @@ a.fm-home:hover {
 .fm-new-diagram-input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.fm-new-diagram-kind {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.fm-new-diagram-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--editor-bg);
+  color: var(--muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fm-new-diagram-choice:hover {
+  border-color: var(--accent);
+}
+
+.fm-new-diagram-choice.fm-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.fm-new-diagram-choice:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.fm-new-diagram-icon {
+  flex: none;
+}
+
+.fm-new-diagram-choice-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.fm-new-diagram-choice-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.fm-new-diagram-choice-note {
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--faint);
 }
 
 .fm-new-diagram-note {

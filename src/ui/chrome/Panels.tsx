@@ -1,6 +1,6 @@
 // Error banner (UI31), notices and toasts (UI28, UI30), the confirmation dialog, and the side-panel slot.
 import { useLayoutEffect, useState, type ComponentType } from 'react';
-import type { Problem } from '../../core/types';
+import { isLaneFree, type Problem } from '../../core/types';
 import type { State } from '../store/store';
 import { useStore, useStoreState } from '../store/hooks';
 
@@ -15,11 +15,15 @@ export function ErrorBanner() {
   const readOnly = useStoreState((s) => s.derived?.readOnly ?? false);
   const configBroken = useStoreState((s) => s.derived?.configBroken ?? false);
   const layoutBroken = useStoreState((s) => s.derived?.layoutBroken ?? false);
+  const laneFree = useStoreState((s) => !!s.derived && isLaneFree(s.derived.doc.graph.lanes));
   if (!problems) return null;
-  const all = [...problems.errors.map((p) => ({ p, level: 'error' as const })), ...problems.warnings.map((p) => ({ p, level: 'warning' as const }))];
+  // Amendment A4: in a diagram without subgraphs every block is meant to be unlaned, so "not in any subgraph"
+  // (W-no-lane, which `flowmap validate` still reports, §3.2) is no news here and isn't listed.
+  const warnings = laneFree ? problems.warnings.filter((p) => p.code !== 'W-no-lane') : problems.warnings;
+  const all = [...problems.errors.map((p) => ({ p, level: 'error' as const })), ...warnings.map((p) => ({ p, level: 'warning' as const }))];
   if (all.length === 0) return null;
   const nErr = problems.errors.length;
-  const nWarn = problems.warnings.length;
+  const nWarn = warnings.length;
   let summary = [nErr ? `${nErr} error${nErr > 1 ? 's' : ''}` : '', nWarn ? `${nWarn} warning${nWarn > 1 ? 's' : ''}` : '']
     .filter(Boolean)
     .join(', ');

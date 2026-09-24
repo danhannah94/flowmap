@@ -16,17 +16,20 @@
 // real x/y for LR or TB.
 
 import type { Direction, Graph, LayoutResult, Pin, ShapeKind } from '../types';
-import { UNASSIGNED } from '../types';
+import { UNASSIGNED, isLaneFree } from '../types';
 import { nodeSize, edgeLabelSize, roundRadius, SHAPE_GEOMETRY } from '../measure';
 import { stronglyConnected, backEdges, assignRanks, heights, type IndexedEdge } from './graphalg';
 import { readHints, type Hints } from './hints';
 import { Router, MARGIN, type Dir, type Port, type RBox } from './router';
 
-/** Length along the flow of the strip at the start of every lane that holds its label. Nodes start after it. */
+/**
+ * Length along the flow of the strip at the start of every lane that holds its label. Nodes start after it. A
+ * lane-free diagram (amendment A4) draws no header, so it reserves no strip: see `headerLength`.
+ */
 export const LANE_HEADER = 40;
 /** Minimum lane thickness across the flow (L1). */
 export const MIN_LANE = 100;
-const FIRST = LANE_HEADER + 32; // along position of the first column
+const LEAD = 32; // along gap between the header strip (or the diagram's start) and the first column
 const END_MARGIN = 48;
 const LANE_PAD = 24; // across padding inside a lane (L2 requires 12)
 const ROW_GAP = 44; // across gap between rows of one lane
@@ -35,6 +38,11 @@ const CLEAR = 24; // clearance kept between an unpinned node and a pinned one (L
 const PIN_PAD = 16; // room a lane keeps after a pinned node
 const LABEL_REACH = 58; // label centres stay this close to the source box (L8 allows 60)
 const ALT_SIDE = 90; // router cost of using a side other than the planned one
+
+/** Length along the flow of the lane-label strip in a layout: LANE_HEADER, or 0 for a lane-free diagram (A4). */
+export function headerLength(layout: Pick<LayoutResult, 'lanes'>): number {
+  return isLaneFree(layout.lanes) ? 0 : LANE_HEADER;
+}
 
 export interface LayoutOutput {
   result: LayoutResult;
@@ -87,6 +95,9 @@ export function layout(graph: Graph, pins: Record<string, Pin>, hintsIn?: unknow
   if (graph.lanes.some((l) => l.id === UNASSIGNED) || graph.nodes.some((n) => n.lane === UNASSIGNED)) {
     addLane(UNASSIGNED, unassignedLabel);
   }
+  // Amendment A4: no subgraphs means no lane labels, so no header strip; the first column moves up to the start.
+  const head = isLaneFree(laneList) ? 0 : LANE_HEADER;
+  const FIRST = head + LEAD; // along position of the first column
 
   // ---- Nodes.
   const byId = new Map<string, number>();
@@ -287,7 +298,7 @@ export function layout(graph: Graph, pins: Record<string, Pin>, hintsIn?: unknow
 
   // ---- Edges.
   const boxes: RBox[] = nodes.map((v) => ({ x: v.x, y: v.y, w: v.sa, h: v.sc }));
-  const routed = routeEdges(nodes, edges, boxes, mainSucc, height, back, dir, totalA, totalC, laneStart.slice(1));
+  const routed = routeEdges(nodes, edges, boxes, mainSucc, height, back, dir, totalA, totalC, laneStart.slice(1), head);
 
   // ---- Output in real coordinates.
   const P = (x: number, y: number): [number, number] => (dir === 'LR' ? [x, y] : [y, x]);
@@ -364,7 +375,7 @@ type Side = Dir;
 
 function routeEdges(
   nodes: N[], edges: E[], boxes: RBox[], mainSucc: number[], height: number[], back: boolean[], dir: Direction,
-  totalA: number, totalC: number, laneBorders: number[],
+  totalA: number, totalC: number, laneBorders: number[], headerEnd: number,
 ): Map<number, Routed> {
   const cy = (b: RBox) => b.y + b.h / 2;
   const cx = (b: RBox) => b.x + b.w / 2;
@@ -525,7 +536,7 @@ function routeEdges(
     xs.push(p.x);
     ys.push(p.y);
   }
-  const router = new Router(boxes, { width: totalA, height: totalC, laneBorders, headerEnd: LANE_HEADER, xs, ys });
+  const router = new Router(boxes, { width: totalA, height: totalC, laneBorders, headerEnd, xs, ys });
 
   // Order: straight neighbours first (they claim the straight tracks), then decision branches (their labels matter),
   // then the rest by length; edges against the flow last.

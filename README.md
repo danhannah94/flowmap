@@ -21,8 +21,8 @@ pnpm exec flowmap serve <dir>            # the editor for every .mmd in <dir>, o
 pnpm exec flowmap serve <dir> --port 5000
 ```
 
-Open the address it prints, pick a diagram (or start an empty one with New diagram), and edit. `/?file=<name>.mmd`
-opens one directly.
+Open the address it prints, pick a diagram (or start one with New diagram: a Flowchart, or Swimlanes with a lane
+per role), and edit. `/?file=<name>.mmd` opens one directly.
 
 The other commands (each takes the path to a `.mmd`; its config and layout files are found beside it):
 
@@ -58,6 +58,35 @@ Anything you can do by editing these files, you can do in the editor, and it wri
 are deliberately text-only and are kept untouched: comments in the `.mmd` (the AI's working notes), `:::class`
 suffixes and `classDef`/`style` lines, and the order of statements in the `.mmd`.
 
+## Flowcharts without lanes
+
+Lanes are optional. A `.mmd` with no `subgraph` is a plain flowchart: no lane bands, no lane headers, just the blocks
+and lines on the canvas (in the editor, the SVG and the PNG alike). Its layout is the same as any other diagram's,
+with every block in the `_unassigned` lane, so `flowmap layout` and pins work as usual (a pin's `across` is simply its
+distance from the top, or from the left for top-to-bottom).
+
+```mermaid
+flowchart LR
+  start(["Ticket arrives"])
+  known{"Known issue?"}
+  reply["Reply with the fix"]
+  repro["Reproduce the problem"]
+  start --> known
+  known -->|yes| reply
+  known -->|no| repro
+  repro --> reply
+```
+
+In the editor, New diagram asks for **Flowchart** (no lanes) or **Swimlanes**; both create the same empty `.mmd`, and
+the choice only decides what the first-steps hint suggests. In a flowchart, clicking a shape in the palette adds the
+block straight away (placed automatically and opened for its label), and dragging a shape onto the canvas adds it
+pinned where you drop it. Adding a lane at any time turns it into a swimlane map; the blocks you already have show in
+the Unassigned lane until you move them. `flowmap validate` still notes each block that isn't in a subgraph
+(`W-no-lane`); the editor doesn't list those for a diagram that has no lanes at all.
+
+![A flowchart without lanes, light theme](docs/screenshots/flowchart-light.png)
+![The same flowchart, dark theme](docs/screenshots/flowchart-dark.png)
+
 ## Using the editor
 
 **Blocks.** The palette on the left has the eight shapes (step, decision, start/end, subprocess, system/data,
@@ -67,7 +96,9 @@ a block, or select it and press Enter, to rename it. Change its shape from the s
 inspector.
 
 **Moving.** Drag a block to move it; it is pinned where you drop it (saved within a second). Drop it in another lane
-to move it there (the lane it will land in lights up while you drag). Shift-click adds to the selection, Shift-drag on
+to move it there (the lane it will land in lights up while you drag). Drop it outside every lane (below the last
+one, or past their end) to make it unassigned: it moves to the Unassigned lane, pinned where you dropped it, and
+while you drag, the place that lane will appear is outlined. Shift-click adds to the selection, Shift-drag on
 the background draws a selection box, and the arrow keys nudge by 10 px. Unpin puts selected blocks back under
 automatic placement; Re-layout all clears every pin. Drag the background to pan; scroll or pinch to zoom; Fit shows
 everything.
@@ -89,7 +120,8 @@ flips between left-to-right and top-to-bottom; pins keep their values.
 Add, edit or delete fields as text, a list, a map or raw YAML; values that the style rules match on are offered as
 one-click choices. With several blocks selected, set or remove a field on all of them. The Styles panel lists the
 rules in order with their legend text and a swatch; add, reorder and delete rules, and edit their conditions and
-looks (fill, border colour, style and width, text colour, font style, badge, each with light and dark colours).
+looks (fill, border colour, style and width, text colour, font style, badge, each with light and dark colours). A
+badge is a small tag on the top edge of the block, never over its label.
 Config entries for things that no longer exist show in the warnings list with a button to delete them.
 
 **Undo.** Every edit, to any of the three files, is one undo step: Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z, or the toolbar

@@ -1,6 +1,7 @@
 // Canvas geometry in layout (world) coordinates: lanes under a point, drop positions as pins (§5), edge paths.
 import { outlineInset } from '../../core/measure';
-import type { LayoutResult, ShapeKind } from '../../core/types';
+import { MIN_LANE } from '../../core/layout';
+import { UNASSIGNED, type LayoutResult, type ShapeKind } from '../../core/types';
 import type { DropPosition } from '../../core/ops';
 import type { Point, Rect } from './viewport';
 
@@ -14,6 +15,28 @@ export function laneAt(layout: LayoutResult, p: Point): LayoutLane | null {
     if (p.x >= lane.x && p.x < lane.x + lane.width && p.y >= lane.y && p.y < lane.y + lane.height) return lane;
   }
   return null;
+}
+
+/**
+ * The lane a block whose centre is at `p` is dropped into (UI11, amendment A4): the lane under it, or Unassigned when
+ * it is outside every lane (beyond the last lane, or outside the lanes' extent along the flow). In a lane-free
+ * diagram every block is unlaned, so a drop anywhere keeps it there.
+ */
+export function dropLaneAt(layout: LayoutResult, p: Point): string {
+  return laneAt(layout, p)?.id ?? UNASSIGNED;
+}
+
+/**
+ * The band of `lane` for drop positions: its band in the layout, or, for an Unassigned lane that isn't showing yet
+ * (no block is unlaned), where it will appear: after the last lane (a first estimate: the drop action corrects it
+ * against the layout that results).
+ */
+export function dropBand(layout: LayoutResult, lane: string): LayoutLane {
+  const found = layout.lanes.find((l) => l.id === lane);
+  if (found) return found;
+  return layout.direction === 'TB'
+    ? { id: lane, label: 'Unassigned', x: layout.width, y: 0, width: MIN_LANE, height: layout.height }
+    : { id: lane, label: 'Unassigned', x: 0, y: layout.height, width: layout.width, height: MIN_LANE };
 }
 
 /**

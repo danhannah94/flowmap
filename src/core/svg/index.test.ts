@@ -41,6 +41,11 @@ vi.mock('../measure', () => ({
   wrapLabel: stubWrapLabel,
   textArea: stubTextArea,
   nodeSize: stubNodeSize,
+  BADGE_FONT: { size: 10, weight: 600, height: 16, padX: 6 },
+  badgeBox: (_kind: ShapeKind, width: number, _height: number, text: string) => {
+    const w = stubTextWidth(text) + 12;
+    return { x: width - 10 - w, y: -10, width: w, height: 16 };
+  },
 }));
 
 const { renderSvg } = await import('./index');

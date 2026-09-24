@@ -217,6 +217,34 @@ export function textArea(kind: ShapeKind, width: number, height: number): { x: n
   }
 }
 
+/** The style badge (§4 `badge`): a small tag in 10 px semibold Inter, 16 px tall, 6 px of padding each side. */
+export const BADGE_FONT = { size: 10, weight: 600, height: 16, padX: 6 } as const;
+
+/**
+ * Where a node's badge goes, relative to the node box's top-left: a tag sitting on the top edge, towards the right,
+ * whose bottom never comes below the top of the shape's text area. So the badge can never cover the label, whatever
+ * the label's length or the shape, and it needs no room in the node's size (the layout ignores styles). It stands
+ * out above the box by at most 10 px, which the layout's gaps (L3's 16 px and more) leave free.
+ * - Round ends (terminal, delay): right-aligned where the round end starts, on the straight part of the top.
+ * - Decision: just right of the top point, so an edge entering the point stays clear of it.
+ * - Everything else: 10 px in from the right edge.
+ */
+export function badgeBox(kind: ShapeKind, width: number, height: number, text: string): { x: number; y: number; width: number; height: number } {
+  const w = badgeWidth(text);
+  const bottom = Math.min(textArea(kind, width, height).y, 6);
+  const y = bottom - BADGE_FONT.height;
+  let x: number;
+  if (kind === 'decision') x = Math.round(width / 2) + 10;
+  else if (kind === 'terminal' || kind === 'delay') x = Math.round(width - roundRadius(height)) - w;
+  else x = width - 10 - w;
+  return { x, y, width: w, height: BADGE_FONT.height };
+}
+
+/** Width of a badge tag: the text at 10/13 of the label font, with room for the heavier weight, plus padding. */
+export function badgeWidth(text: string): number {
+  return Math.ceil(textWidth(text) * (BADGE_FONT.size / LABEL_FONT.size) * 1.1) + 2 * BADGE_FONT.padX;
+}
+
 /** Longest line an edge label is allowed before it wraps. */
 export const EDGE_LABEL_MAX = 140;
 

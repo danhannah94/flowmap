@@ -329,7 +329,7 @@ test('while a block is dragged into another lane, that lane is highlighted', asy
   await expect(node(page, 'r01')).toHaveAttribute('data-lane', 'manager');
 });
 
-test('a new diagram from the home page: create it, then the first-steps hint adds a lane', async ({ page }, info) => {
+test('a new Swimlanes diagram from the home page: create it, then the first-steps hint adds a lane', async ({ page }, info) => {
   const name = `New map ${info.workerIndex} ${Date.now() % 100000}`;
   const file = `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.mmd`;
   await page.goto('/');
@@ -337,8 +337,9 @@ test('a new diagram from the home page: create it, then the first-steps hint add
   await page.getByRole('button', { name: 'New diagram' }).click();
   await page.getByLabel('New diagram name').fill(name);
   await expect(page.getByText(`Creates ${file}`)).toBeVisible();
+  await page.getByRole('radio', { name: /Swimlanes/ }).click();
   await page.getByLabel('New diagram name').press('Enter');
-  await page.waitForURL(`**/?file=${file}`);
+  await page.waitForURL(`**/?file=${file}&new=swimlanes`);
   await expect(page.getByTestId('canvas')).toBeVisible();
   const d = new Diagram(file.replace(/\.mmd$/, ''));
   expect(d.read()).toEqual({ mmd: 'flowchart LR\n', config: null, layout: null });

@@ -10,6 +10,15 @@ export type ShapeKind = (typeof SHAPE_KINDS)[number];
 
 export const UNASSIGNED = '_unassigned';
 
+/**
+ * Amendment A4: a diagram whose `.mmd` has no subgraphs is a plain flowchart. Every node sits in `_unassigned`, and
+ * nothing draws a lane band or header for it (no room is reserved for a lane label either). Works on the graph's or
+ * the layout's lane list (they list the same lanes).
+ */
+export function isLaneFree(lanes: readonly { id: string }[]): boolean {
+  return lanes.every((l) => l.id === UNASSIGNED);
+}
+
 /** A problem found in one of the three files (§7). `line` is a 1-based .mmd line, or null for config/layout. */
 export interface Problem {
   code: string;

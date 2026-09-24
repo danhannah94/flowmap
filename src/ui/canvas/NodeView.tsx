@@ -1,7 +1,7 @@
 // One block on the canvas. The element's box is exactly the layout box (`data-x/y/width/height`, U9); the label is
 // wrapped with the shared `wrapLabel` inside the shape's `textArea`, in Inter 13/18, as the layout measured it (U10).
 import { Fragment, memo } from 'react';
-import { textArea, wrapLabel } from '../../core/measure';
+import { badgeBox, textArea, wrapLabel } from '../../core/measure';
 import type { ResolvedNodeStyle } from '../../core/theme';
 import type { Direction } from '../../core/types';
 import { labelPieces, type LayoutNode } from './geometry';
@@ -80,10 +80,20 @@ export const NodeView = memo(function NodeView({ node, style, direction, selecte
           ))}
         </div>
       </div>
-      {style.badge ? <div className="fm-badge" data-role="badge">{style.badge}</div> : null}
+      {style.badge ? <Badge node={node} text={style.badge} /> : null}
       {node.pinned ? <div className="fm-pin" title="Pinned" aria-hidden="true" /> : null}
       <div className={`fm-handle fm-handle-target fm-${direction}`} data-handle="target" />
       <div className={`fm-handle fm-handle-source fm-${direction}`} data-handle="source" />
     </div>
   );
 });
+
+/** The style badge: a tag on the top edge, clear of the label's text area (`badgeBox`, shared with the SVG export). */
+function Badge({ node, text }: { node: LayoutNode; text: string }) {
+  const b = badgeBox(node.kind, node.width, node.height, text);
+  return (
+    <div className="fm-badge" data-role="badge" style={{ left: b.x, top: b.y, width: b.width, height: b.height }}>
+      {text}
+    </div>
+  );
+}

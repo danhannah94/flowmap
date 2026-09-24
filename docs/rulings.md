@@ -12,6 +12,7 @@ rule 3. Newest at the bottom.
 | R5 | 2026-09-24 | A | Config and layout-file edge cases the contract leaves open (list below). | Adopted as listed below. | Build B: in its starting context |
 | R6 | 2026-09-24 | A | Edit-operation edge cases the contract leaves open (list below). | Adopted as listed below. | Build B: in its starting context |
 | R7 | 2026-09-24 | A | §9 lists React Flow for the canvas. It positions nodes itself and fights exact layout coordinates. May a build draw its own canvas? | Yes. §9's library list is a recommendation; the DOM contract (§8.3) and the layout rules are binding. Say why in the README, as §9 asks. | Build B: in its starting context |
+| R8 | 2026-09-24 | Dan (CEO) | Can a person make a generic flowchart without lanes? | Yes: amendment A4 in `design.md` §12. | Build B: in its starting context |
 
 ## R4: parser edge cases
 

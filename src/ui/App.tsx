@@ -146,10 +146,23 @@ function diagramFileName(name: string): string | null {
   return slug ? `${slug}.mmd` : null;
 }
 
-/** Home page: name a new diagram, create its empty `.mmd`, and open it. */
+/** What a new diagram starts as (amendment A4). Both write the same empty `.mmd`; the choice only shapes the first steps. */
+type NewMode = 'flowchart' | 'swimlanes';
+
+const NEW_MODES: { mode: NewMode; label: string; note: string }[] = [
+  { mode: 'flowchart', label: 'Flowchart', note: 'Blocks and lines, no lanes' },
+  { mode: 'swimlanes', label: 'Swimlanes', note: 'A lane for each role or team' },
+];
+
+/**
+ * Home page: name a new diagram, choose Flowchart (no lanes) or Swimlanes, create its empty `.mmd`, and open it. The
+ * choice is a UI convenience (A4): the file is the same `flowchart LR` either way, and the editor's first-steps hint
+ * follows the choice (`&new=` on the editor's address).
+ */
 function NewDiagram({ taken }: { taken: readonly string[] }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
+  const [mode, setMode] = useState<NewMode>('flowchart');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const file = diagramFileName(name);
@@ -162,8 +175,13 @@ function NewDiagram({ taken }: { taken: readonly string[] }) {
     setBusy(true);
     const r = await createDiagram(file);
     setBusy(false);
-    if (r.ok) location.href = `/?file=${encodeURIComponent(file)}`;
+    if (r.ok) location.href = `/?file=${encodeURIComponent(file)}&new=${mode}`;
     else setError(r.error);
+  };
+  const cancel = () => {
+    setOpen(false);
+    setName('');
+    setError(null);
   };
   if (!open) {
     return (
@@ -179,6 +197,9 @@ function NewDiagram({ taken }: { taken: readonly string[] }) {
         e.preventDefault();
         void submit();
       }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') cancel();
+      }}
     >
       <input
         autoFocus
@@ -191,20 +212,56 @@ function NewDiagram({ taken }: { taken: readonly string[] }) {
           setName(e.target.value);
           setError(null);
         }}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') {
-            setOpen(false);
-            setName('');
-            setError(null);
-          }
-        }}
       />
       <button type="submit" className="fm-btn fm-btn-primary" disabled={!file || busy}>
         Create
       </button>
+      <div className="fm-new-diagram-kind" role="radiogroup" aria-label="Kind of diagram">
+        {NEW_MODES.map((m) => (
+          <button
+            key={m.mode}
+            type="button"
+            role="radio"
+            aria-checked={mode === m.mode}
+            data-mode={m.mode}
+            className={`fm-new-diagram-choice${mode === m.mode ? ' fm-active' : ''}`}
+            onClick={() => setMode(m.mode)}
+          >
+            <KindIcon mode={m.mode} />
+            <span className="fm-new-diagram-choice-text">
+              <span className="fm-new-diagram-choice-label">{m.label}</span>
+              <span className="fm-new-diagram-choice-note">{m.note}</span>
+            </span>
+          </button>
+        ))}
+      </div>
       <div className={error ? 'fm-new-diagram-note fm-error-text' : 'fm-new-diagram-note'}>
         {error ?? (file ? `Creates ${file}` : 'Enter to create, Esc to cancel')}
       </div>
     </form>
+  );
+}
+
+/** A tiny picture of each kind of diagram: three linked boxes, bare or in two lanes. */
+function KindIcon({ mode }: { mode: NewMode }) {
+  return (
+    <svg width="34" height="24" viewBox="0 0 34 24" aria-hidden="true" className="fm-new-diagram-icon">
+      {mode === 'swimlanes' ? (
+        <>
+          <rect x="0.5" y="0.5" width="33" height="11.5" rx="2" fill="none" stroke="currentColor" strokeOpacity="0.45" />
+          <rect x="0.5" y="12" width="33" height="11.5" rx="2" fill="none" stroke="currentColor" strokeOpacity="0.45" />
+          <rect x="4" y="3.5" width="8" height="5.5" rx="1" fill="currentColor" />
+          <rect x="22" y="15" width="8" height="5.5" rx="1" fill="currentColor" />
+          <path d="M12 6.25h5v11.5h5" fill="none" stroke="currentColor" strokeWidth="1.2" />
+        </>
+      ) : (
+        <>
+          <rect x="1" y="9" width="8" height="6" rx="1" fill="currentColor" />
+          <path d="M17 6l4.5 6-4.5 6-4.5-6z" fill="currentColor" />
+          <rect x="25" y="9" width="8" height="6" rx="1" fill="currentColor" />
+          <path d="M9 12h3.5M21.5 12H25" fill="none" stroke="currentColor" strokeWidth="1.2" />
+        </>
+      )}
+    </svg>
   );
 }
