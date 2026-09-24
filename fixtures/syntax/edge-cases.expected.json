@@ -1,0 +1,14 @@
+{
+  "errors": [],
+  "warnings": [
+    {"code": "W-no-lane", "line": 4, "node": "intake"},
+    {"code": "W-direction", "line": 6},
+    {"code": "W-no-lane", "line": 19, "node": "e"},
+    {"code": "W-no-lane", "line": 20, "node": "finish"},
+    {"code": "W-no-lane", "line": 22, "node": "audit"}
+  ],
+  "lanes": {"ops": ["a", "b"], "fin": ["c", "d"], "_unassigned": ["intake", "e", "finish", "audit"]},
+  "edge_ids": ["intake->a", "b->a", "b->c", "c->d", "c->e", "d->finish", "d->finish#2", "d->audit"],
+  "labels": {"audit": "audit", "d": "Say \"done\"", "fin": "Finance & approvals"},
+  "note": "Warning order is not part of the contract; codes, lines and nodes are. The node key is informational (not in the validate --json schema)."
+}

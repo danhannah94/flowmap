@@ -1,0 +1,16 @@
+flowchart LR
+  subgraph s [Shapes]
+    a[Plain step]
+    b{Decide}
+    c([Begin])
+    d[[Run the sub-process]]
+    e[(ERP)]
+    f[/Enter the form/]
+    g@{ label: "Vendor quote", shape: doc }
+    h@{shape: delay,label: "Wait for freight"}
+    i[/"Upload a/b test"/]:::hot
+  end
+  a --> b
+  b -->|"two  spaces"| d
+  e --> f --> g --> h
+  h -- done --> i

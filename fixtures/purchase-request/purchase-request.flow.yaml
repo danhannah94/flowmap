@@ -1,0 +1,92 @@
+version: 1
+title: Purchase request approval (current state, synthetic)
+lanes:
+  - id: requester
+  - id: manager
+  - id: purchasing
+  - id: finance
+  - id: vendor
+styles:
+  - legend: Confirmed by two or more people
+    match: {confidence: confirmed}
+    style: {border_style: solid, border_width: 2}
+  - legend: One source only
+    match: {confidence: single-source}
+    style: {border_style: dashed, border_width: 1}
+  - legend: Inferred, nobody said it directly
+    match: {confidence: inferred}
+    style: {border_style: dotted, font_style: italic}
+  - legend: Done in the ERP
+    match: {system: erp}
+    style: {fill: {light: "#dae8fc", dark: "#1e3a5f"}}
+  - legend: Done in a spreadsheet
+    match: {system: excel}
+    style: {fill: {light: "#d5e8d4", dark: "#1f4a2c"}}
+  - legend: Waiting on someone
+    match: {kind: wait}
+    style: {fill: {light: "#fff2cc", dark: "#4a3f12"}, badge: wait}
+  - legend: Open question
+    match: {open_question: present}
+    style: {border_color: {light: "#b85450", dark: "#f08080"}}
+nodes:
+  intake:
+    confidence: confirmed
+    source: [sam-09-01, lee-09-03]
+  r01:
+    system: excel
+    confidence: confirmed
+    source: [sam-09-01, lee-09-03]
+    quote: "the form is a spreadsheet somebody made in 2014"
+  p01:
+    confidence: confirmed
+    source: [lee-09-03, pat-09-04]
+  p03:
+    system: email
+    confidence: single-source
+    source: [lee-09-03]
+    quote: "half of them come back at least once"
+    open_question: Which fields are missing most often?
+  p04:
+    confidence: single-source
+    source: [pat-09-04]
+    open_question: Is the threshold $1,000 everywhere, or only at the main plant?
+  m01:
+    kind: wait
+    confidence: confirmed
+    source: [sam-09-01, pat-09-04]
+    quote: "it sits in his inbox for a week"
+  m03:
+    confidence: inferred
+    source: [sam-09-01]
+  p05:
+    kind: wait
+    confidence: single-source
+    source: [pat-09-04]
+    open_question: Are three quotes required, or just the habit?
+    variants:
+      main plant: three quotes over $1,000
+      warehouse: one quote is fine under $5,000
+  v01:
+    # Deliberate: a document shape whose effective kind is wait, so it also gets the waiting style.
+    kind: wait
+    confidence: confirmed
+    source: [pat-09-04, lee-09-03]
+  f01:
+    system: erp
+    confidence: single-source
+    source: [kim-09-05]
+  f02:
+    kind: wait
+    confidence: single-source
+    source: [kim-09-05]
+  p07:
+    system: erp
+    confidence: confirmed
+    source: [pat-09-04, kim-09-05]
+  r02:
+    confidence: inferred
+  f03:
+    system: erp
+    confidence: confirmed
+    source: [kim-09-05, pat-09-04]
+    quote: "three-way match, when the receipt shows up"

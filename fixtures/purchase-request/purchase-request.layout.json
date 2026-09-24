@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "nodes": {
+    "closed": { "lane": "requester", "along": 1400, "across": 40 }
+  }
+}

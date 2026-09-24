@@ -1,0 +1,60 @@
+flowchart LR
+%% Purchase request approval at a small manufacturer: a synthetic process for testing flowmap.
+
+  subgraph requester [Requester]
+    intake(["Needs a part or service"])
+    r01["Fill the purchase request form"]
+    r02["Receive the delivery and sign for it"]
+    closed(["Request closed"])
+  end
+
+  subgraph manager [Manager]
+    m01["Review the request"]
+    m02{"Approved?"}
+    m03["Tell the requester why not"]
+  end
+
+  subgraph purchasing [Purchasing]
+    p01["Check the request is complete"]
+    p02{"Complete?"}
+    p03["Send it back with what is missing"]
+    p04{"Over $1,000?"}
+    p05["Get three quotes"]
+    p06["Pick the vendor"]
+    p07["Create the PO in the ERP"]
+  end
+
+  subgraph finance [Finance]
+    f01{"Budget available?"}
+    f02["Move budget or defer to next quarter"]
+    f03["Match the invoice to the PO and the receipt"]
+    f04(["Vendor paid"])
+  end
+
+  subgraph vendor [Vendor]
+    v01@{ shape: doc, label: "Send a quote" }
+    v02["Ship the order"]
+  end
+
+  intake --> r01
+  r01 --> p01
+  p01 --> p02
+  p02 -->|no| p03
+  p03 --> r01
+  p02 -->|yes| p04
+  p04 -->|yes| m01
+  p04 -->|no| p05
+  m01 --> m02
+  m02 -->|no| m03
+  m03 --> closed
+  m02 -->|yes| p05
+  p05 --> v01
+  v01 --> p06
+  p06 --> f01
+  f01 -->|yes| p07
+  f01 -->|no| f02
+  f02 --> f01
+  p07 --> v02
+  v02 --> r02
+  r02 --> f03
+  f03 --> f04

@@ -1,0 +1,24 @@
+graph TD
+%% Edge cases for the flowmap parser and canonical formatter.
+%% Covers many of the rules in design.md section 3, not all.
+    intake([Start here]) --> a
+    subgraph ops [Operations team]
+      direction LR
+      a[Check the order];
+      b{Is it complete?}
+      %% the loop back
+      b -->|no| a
+      b -- yes --> c
+      %% end of ops
+    end
+    subgraph fin ["Finance & approvals"]
+      c["Approve (over $5k)"]:::hot
+      d["Say #quot;done#quot;"]
+    end
+    c --> d & e
+    e[Unlaned step]
+    d --> finish([End])
+    d --> finish
+    d --> audit
+    classDef hot fill:#f96
+%% trailing note

@@ -1,0 +1,32 @@
+flowchart TB
+%% Edge cases for the flowmap parser and canonical formatter.
+%% Covers many of the rules in design.md section 3, not all.
+
+  intake(["Start here"])
+  e["Unlaned step"]
+  finish(["End"])
+
+  subgraph ops [Operations team]
+    a["Check the order"]
+    b{"Is it complete?"}
+    %% end of ops
+  end
+
+  subgraph fin ["Finance & approvals"]
+    c["Approve (over $5k)"]:::hot
+    d["Say #quot;done#quot;"]
+  end
+
+  intake --> a
+  %% the loop back
+  b -->|no| a
+  b -->|yes| c
+  c --> d
+  c --> e
+  d --> finish
+  d --> finish
+  d --> audit
+
+  classDef hot fill:#f96
+
+%% trailing note

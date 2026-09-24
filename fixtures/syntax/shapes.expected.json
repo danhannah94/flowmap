@@ -1,0 +1,9 @@
+{
+  "errors": [],
+  "warnings": [],
+  "kinds": {"a": "step", "b": "decision", "c": "terminal", "d": "subprocess", "e": "database",
+            "f": "io", "g": "document", "h": "delay", "i": "io"},
+  "edge_ids": ["a->b", "b->d", "e->f", "f->g", "g->h", "h->i"],
+  "labels": {"i": "Upload a/b test"},
+  "edge_labels": {"b->d": "two  spaces", "h->i": "done"}
+}
