@@ -78,6 +78,10 @@ body {
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
+  /* No ligatures or contextual alternates (Inter turns -> and ==> into arrows): text must show exactly what the
+     files say, and match the per-character widths the layout measured with (src/core/measure.ts). */
+  font-variant-ligatures: none;
+  font-feature-settings: 'calt' 0, 'liga' 0;
 }
 
 button {

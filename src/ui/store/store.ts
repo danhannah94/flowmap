@@ -472,7 +472,7 @@ export class Store {
     const s = this.state;
     const bounds = contentBounds(s.shown);
     if (!bounds || s.viewportSize.width === 0) return;
-    this.set({ viewport: fitViewport(bounds, s.viewportSize) });
+    this.set({ viewport: fitViewport(bounds, s.viewportSize, 40, PALETTE_INSET) });
   }
 
   zoomBy(factor: number, center?: { x: number; y: number }): void {
@@ -560,6 +560,9 @@ function pruneSelection(sel: Selection, layout: LayoutResult | null): Selection 
     ? sel
     : next;
 }
+
+/** Room the floating shape palette takes at the canvas's left edge (fit keeps the diagram clear of it). */
+export const PALETTE_INSET = 92;
 
 /** Title band above the diagram and legend below it, in world coordinates (shared with the canvas). */
 export const TITLE_BAND = 64;

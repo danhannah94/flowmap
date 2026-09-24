@@ -40,13 +40,13 @@ export function zoomAround(v: Viewport, factor: number, c: Point): Viewport {
 }
 
 /** The viewport that shows `bounds` whole, centred, with a margin; never zoomed in past 100%. */
-export function fitViewport(bounds: Rect, size: { width: number; height: number }, margin = 48): Viewport {
-  const zw = (size.width - margin * 2) / Math.max(1, bounds.width);
+export function fitViewport(bounds: Rect, size: { width: number; height: number }, margin = 48, insetLeft = 0): Viewport {
+  const zw = (size.width - insetLeft - margin * 2) / Math.max(1, bounds.width);
   const zh = (size.height - margin * 2) / Math.max(1, bounds.height);
   const zoom = clampZoom(Math.min(1, zw, zh));
   return {
     zoom,
-    x: (size.width - bounds.width * zoom) / 2 - bounds.x * zoom,
+    x: insetLeft + (size.width - insetLeft - bounds.width * zoom) / 2 - bounds.x * zoom,
     y: (size.height - bounds.height * zoom) / 2 - bounds.y * zoom,
   };
 }

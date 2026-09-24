@@ -191,9 +191,25 @@ registerGesture('node', (hit, e, ctx) => {
 
 registerGesture('edge', (hit, e, ctx) => {
   const { store } = ctx;
-  if (e.shiftKey) store.select({ edges: [hit.id] }, 'toggle');
-  else store.select({ edges: [hit.id] });
-  return null;
+  if (!e.shiftKey) {
+    store.select({ edges: [hit.id] });
+    return null;
+  }
+  // Shift: a click toggles the edge; a drag draws a selection box (edges are thin, easy to start on by accident).
+  const box = marquee(ctx, e);
+  const start = ctx.local(e);
+  let dragged = false;
+  return {
+    move(ev) {
+      if (moved(start, ctx.local(ev))) dragged = true;
+      box.move(ev);
+    },
+    up(ev) {
+      if (dragged) box.up(ev);
+      else store.select({ edges: [hit.id] }, 'toggle');
+    },
+    cancel: () => box.cancel(),
+  };
 });
 
 /** Double-click on a block opens its label editor (UI8). Features can add double-click targets here. */

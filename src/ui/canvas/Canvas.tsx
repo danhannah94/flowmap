@@ -118,7 +118,8 @@ export function Canvas() {
   }, []);
 
   const onDoubleClickCapture = (e: React.MouseEvent) => {
-    const hit = hitTest(e.target);
+    // Pointer capture retargets click/dblclick to the canvas itself, so hit-test what is under the pointer.
+    const hit = hitTest(document.elementFromPoint(e.clientX, e.clientY));
     if (hit.kind === 'control') return;
     if (onDoubleClick(store, hit)) e.preventDefault();
   };

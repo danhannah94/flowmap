@@ -16,7 +16,7 @@
     "dev:ui": "vite",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:ui": "playwright test"
+    "test:ui": "pnpm build && playwright test"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",

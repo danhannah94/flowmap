@@ -342,7 +342,10 @@ describe('serve', () => {
       expect(list.files).toContain('purchase-request.mmd');
       const page = await fetch(`http://127.0.0.1:${port}/`);
       expect(page.status).toBe(200);
-      expect(await page.text()).toContain('flowmap');
+      // The built UI (dist/ui), not the server's "not built yet" page.
+      const html = await page.text();
+      expect(html).toContain('<div id="root"></div>');
+      expect(html).toMatch(/src="\/assets\/index-[^"]+\.js"/);
     } finally {
       const exited = new Promise((r) => child.on('exit', r));
       child.kill('SIGTERM');

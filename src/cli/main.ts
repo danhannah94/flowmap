@@ -309,12 +309,12 @@ async function cmdServe(argv: string[]): Promise<void> {
   const port = flags.port ? Number(flags.port) : 4870;
   if (!Number.isInteger(port) || port < 0 || port > 65535) usageError('--port must be a port number');
 
+  // The server prints the address it serves on.
   const handle = await serve({
     dir,
     port,
     exportFn: (mmdPath, format, theme) => exportDiagram(mmdPath, format, theme),
   });
-  process.stdout.write(`flowmap: serving ${dir} on http://127.0.0.1:${handle.port}\n`);
 
   // Run until stopped, then close the server (SSE connections and the directory watcher included).
   await new Promise<void>((resolveStop) => {
