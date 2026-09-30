@@ -403,6 +403,76 @@ describe('style rules (UI25)', () => {
   });
 });
 
+// A17 (§12): rewriting `link:` values after a diagram moves or its folder is renamed. `rewriteLinks` isn't an
+// `EditResult` (it never refuses; a config that fails to parse is just left alone), so these check `{text, count}`
+// directly rather than going through `ok`/`refused`.
+describe('rewriteLinks (A17, §12)', () => {
+  const LINKS_FIXTURE = `version: 1
+nodes:
+  a:
+    kind: step
+    link: brehob/stage-2   # a comment worth keeping
+  b:
+    link: brehob/stage-2x
+  c:
+    kind: wait
+  d:
+    link: other/thing
+`;
+
+  test('rewrites an exact match only, keeping every other byte (a line comment included)', () => {
+    const result = new ConfigDoc(LINKS_FIXTURE).rewriteLinks((t) => (t === 'brehob/stage-2' ? 'brehob/hub/stage-2' : null));
+    expect(result.count).toBe(1);
+    changed(LINKS_FIXTURE, result.text!, ['    link: brehob/stage-2   # a comment worth keeping']);
+    expect(result.text).toContain('link: brehob/hub/stage-2   # a comment worth keeping');
+    // Everything else — including targets that merely start with the same text — is untouched.
+    expect(result.text).toContain('link: brehob/stage-2x');
+    expect(result.text).toContain('link: other/thing');
+  });
+
+  test('several matches are all rewritten, in one pass', () => {
+    const fixture = 'nodes:\n  a:\n    link: x\n  b:\n    link: y\n  c:\n    link: x\n';
+    const result = new ConfigDoc(fixture).rewriteLinks((t) => (t === 'x' ? 'z' : null));
+    expect(result.count).toBe(2);
+    expect(result.text).toBe('nodes:\n  a:\n    link: z\n  b:\n    link: y\n  c:\n    link: z\n');
+  });
+
+  test('folder-rename remap: a nested link keeps its tail, a same-prefixed sibling is untouched', () => {
+    const fixture = [
+      'nodes:', '  a:', '    link: brehob/stage-2', '  b:', '    link: brehob/hub/stage-2',
+      '  c:', '    link: brehob-other/x', '  d:', '    link: brehobx/x', '',
+    ].join('\n');
+    const remap = (t: string) => (t.startsWith('brehob/') ? `brehob-bc/${t.slice('brehob/'.length)}` : null);
+    const result = new ConfigDoc(fixture).rewriteLinks(remap);
+    expect(result.count).toBe(2);
+    expect(result.text).toContain('link: brehob-bc/stage-2');
+    expect(result.text).toContain('link: brehob-bc/hub/stage-2');
+    expect(result.text).toContain('link: brehob-other/x');
+    expect(result.text).toContain('link: brehobx/x');
+  });
+
+  test('no-op when nothing links: the exact same text, byte for byte, and count 0', () => {
+    const result = new ConfigDoc(RICH).rewriteLinks(() => 'whatever');
+    expect(result).toEqual({ text: RICH, count: 0 });
+  });
+
+  test('a remap returning the same value back is not a match: no rewrite, count 0', () => {
+    const fixture = 'nodes:\n  a:\n    link: x\n';
+    const result = new ConfigDoc(fixture).rewriteLinks((t) => t);
+    expect(result).toEqual({ text: fixture, count: 0 });
+  });
+
+  test('a config that fails to parse is left untouched rather than risked, count 0', () => {
+    const broken = 'nodes: [this is: not: valid\n';
+    const result = new ConfigDoc(broken).rewriteLinks(() => 'anything');
+    expect(result).toEqual({ text: broken, count: 0 });
+  });
+
+  test('no file (null text): still safe, nothing to rewrite', () => {
+    expect(new ConfigDoc(null).rewriteLinks(() => 'anything')).toEqual({ text: null, count: 0 });
+  });
+});
+
 describe('safety', () => {
   test('a config with errors refuses every edit', () => {
     const broken = new ConfigDoc('styles: [this is: not: valid\n');

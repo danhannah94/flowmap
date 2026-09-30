@@ -11,5 +11,5 @@ export {
 } from './doc';
 export {
   checkLinks, isWellFormedLinkTarget, linkHasTraversal, linkOf, linkTargetsByNode, linkTargetToMmdPath,
-  normalizeLinkTarget,
+  movedLinkTarget, normalizeLinkTarget, renamedFolderLinkTarget,
 } from './links';

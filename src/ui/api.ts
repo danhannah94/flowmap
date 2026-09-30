@@ -57,10 +57,21 @@ export async function listFolder(dir: string): Promise<FolderListing> {
   return (await res.json()) as FolderListing;
 }
 
-export type FolderOutcome = { ok: true; dir: string } | { ok: false; error: string };
+/** A17 (design.md §12): one `.flow.yaml` a move or folder rename rewrote, and how many `link:` values it changed. */
+export interface LinkRewrite {
+  file: string;
+  count: number;
+}
+
+export type FolderOutcome =
+  | { ok: true; dir: string; rewrittenLinks?: LinkRewrite[] }
+  | { ok: false; error: string };
 
 async function folderResult(res: Response): Promise<FolderOutcome> {
-  if (res.ok) return { ok: true, dir: ((await res.json()) as { dir: string }).dir };
+  if (res.ok) {
+    const body = (await res.json()) as { dir: string; rewrittenLinks?: LinkRewrite[] };
+    return { ok: true, dir: body.dir, rewrittenLinks: body.rewrittenLinks };
+  }
   let error = await failure(res);
   try {
     const body = (await res.clone().json()) as { error?: string };
@@ -107,15 +118,21 @@ export async function deleteFolder(dir: string): Promise<{ ok: true } | { ok: fa
 
 /**
  * Moves a diagram (its `.mmd`, `.flow.yaml`, `.layout.json` and anything else sharing its base name, §8.2 A16) into
- * folder `to` (`''` for the served root). Returns the diagram's new root-relative `.mmd` path.
+ * folder `to` (`''` for the served root). Returns the diagram's new root-relative `.mmd` path, and (A17, §12) every
+ * `.flow.yaml` elsewhere whose `link:` was rewritten to follow it.
  */
-export async function moveDiagram(file: string, to: string): Promise<{ ok: true; file: string } | { ok: false; error: string }> {
+export async function moveDiagram(
+  file: string, to: string,
+): Promise<{ ok: true; file: string; rewrittenLinks?: LinkRewrite[] } | { ok: false; error: string }> {
   const res = await fetch('/api/diagram/move', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ file, to }),
   });
-  if (res.ok) return { ok: true, file: ((await res.json()) as { file: string }).file };
+  if (res.ok) {
+    const body = (await res.json()) as { file: string; rewrittenLinks?: LinkRewrite[] };
+    return { ok: true, file: body.file, rewrittenLinks: body.rewrittenLinks };
+  }
   let error = await failure(res);
   try {
     const body = (await res.clone().json()) as { error?: string };
