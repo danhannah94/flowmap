@@ -2,7 +2,7 @@
 // API over the three files. The config writer keeps every untouched byte (UI26); these add the shared rules (an
 // `.mmd` with errors refuses everything; several blocks are handled in file declaration order) and check that the
 // blocks exist.
-import type { ColorProp, ConfigDoc, EditResult, FieldValue, MatchInput, StyleProp } from '../config';
+import { normalizeLinkTarget, type ColorProp, type ConfigDoc, type EditResult, type FieldValue, type MatchInput, type StyleProp } from '../config';
 import { removeEdgeEntries, removeNodeEntries, removeNoteEntries } from '../layoutfile';
 import { run, type Ctx, type Files, type OpResult } from './context';
 
@@ -117,6 +117,32 @@ export function applySwatch(files: Files, ids: readonly string[], light: string,
 /** UI35 "Reset colours": remove `fill`, `border_color` and `text_color` from each block's own style. */
 export function resetBlockColors(files: Files, ids: readonly string[]): OpResult {
   return configOp(files, (doc, ctx) => doc.resetBlockColors(ctx.sortByDeclaration(ids)));
+}
+
+// ---- A15 Links ("Links to" field, the block's context menu)
+
+/**
+ * A15: set a block's link to another diagram (§4 "Setting a link"). `target` is what the Inspector's picker or the
+ * context menu's field holds; it is normalised (trimmed, backslashes to forward slashes, a trailing `.mmd` dropped)
+ * and refused if the result isn't a well-formed path (letters, digits, `_`, `-`, `.` and `/`-separated segments, no
+ * leading or trailing slash). A `..` segment is accepted here (it's a warning, not a refusal, §4): the UI decides
+ * separately whether to follow it.
+ */
+export function setNodeLink(files: Files, id: string, target: string): OpResult {
+  return configOp(files, (doc, ctx) => {
+    ctx.requireNode(id);
+    const t = normalizeLinkTarget(target);
+    if (t === null) return { ok: false, error: `"${target}" isn't a valid diagram path (letters, digits, "_", "-", "." and "/" between segments)` };
+    return doc.setNodeLink(id, t);
+  });
+}
+
+/** A15: clear a block's link (removes the `link` field; the entry too if that empties it, §4). */
+export function clearNodeLink(files: Files, id: string): OpResult {
+  return configOp(files, (doc, ctx) => {
+    ctx.requireNode(id);
+    return doc.clearNodeLink(id);
+  });
 }
 
 // ---- UI27 Orphans

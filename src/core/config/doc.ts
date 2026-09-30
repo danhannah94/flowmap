@@ -6,7 +6,7 @@ import { isValidColor, sameColor } from './color';
 import { deepEqual, isPlainObject, isScalarValue, renderDocument, type Path } from './emit';
 import { isIdForm, isReservedId } from '../mmd/syntax';
 import {
-  BLOCK_STYLE_KEY, BORDER_STYLES, COLOR_PROPS, FONT_STYLES, NOTE_FONT_MAX, NOTE_FONT_MIN, NOTE_FONT_SIZE,
+  BLOCK_STYLE_KEY, BORDER_STYLES, COLOR_PROPS, FONT_STYLES, LINK_KEY, NOTE_FONT_MAX, NOTE_FONT_MIN, NOTE_FONT_SIZE,
   type ColorProp, type FlowConfig, type StyleProp,
 } from './model';
 import { parseConfig, readRules, scalarString } from './parse';
@@ -123,9 +123,14 @@ function removeBlockStyleProps(src: string, id: string, props: readonly string[]
   return out;
 }
 
-const refuseStyleKey = (key: string) => {
+/** A15: `style` and `link` are reserved (§4): each has its own control (colours; the Links to field), so the
+ *  generic field form refuses them as a key. Both still round-trip through the node YAML editor untouched. */
+const refuseReservedKey = (key: string) => {
   if (key === BLOCK_STYLE_KEY) {
     refuse('"style" holds the block\'s colours: set them with the colour controls, or edit the node YAML');
+  }
+  if (key === LINK_KEY) {
+    refuse('"link" holds the block\'s link to another diagram: set it from the Links to field, or edit the node YAML');
   }
 };
 
@@ -242,7 +247,7 @@ export class ConfigDoc {
   setFieldOnNodes(ids: readonly string[], key: string, value: FieldValue): EditResult {
     return this.run((src) => {
       if (key.trim() === '') refuse('A field needs a name');
-      refuseStyleKey(key);
+      refuseReservedKey(key);
       const v = fieldValueToJs(value);
       let out = src;
       for (const id of ids) out = setIn(out, ['nodes', id, key], v);
@@ -253,7 +258,7 @@ export class ConfigDoc {
   /** Remove a field from several nodes; a node left with no fields loses its entry (§4). */
   removeFieldFromNodes(ids: readonly string[], key: string): EditResult {
     return this.run((src) => {
-      refuseStyleKey(key);
+      refuseReservedKey(key);
       let out = src;
       for (const id of ids) {
         const entry = valueAt(out, ['nodes', id]);
@@ -312,6 +317,24 @@ export class ConfigDoc {
   /** UI27: delete a node's entry (an emptied `nodes` becomes `nodes: {}`). */
   deleteNodeEntry(id: string): EditResult {
     return this.run((src) => deleteIn(src, ['nodes', id]));
+  }
+
+  // ---- A15: a block's link to another diagram (`nodes.<id>.link`, model.ts's LINK_KEY). Written directly (not
+  // through `setFieldOnNodes`/`removeFieldFromNodes`, which refuse `link` as a key for the *generic* field form,
+  // §4): this is the field's own control.
+
+  /** Set a block's link to `target` (already normalised and validated by the caller, ops/config.ts). */
+  setNodeLink(id: string, target: string): EditResult {
+    return this.run((src) => setIn(src, ['nodes', id, LINK_KEY], target));
+  }
+
+  /** Clear a block's link; the entry too if that empties it (§4). */
+  clearNodeLink(id: string): EditResult {
+    return this.run((src) => {
+      const entry = valueAt(src, ['nodes', id]);
+      if (!isPlainObject(entry) || !Object.hasOwn(entry, LINK_KEY)) return src;
+      return Object.keys(entry).length === 1 ? deleteIn(src, ['nodes', id]) : deleteIn(src, ['nodes', id, LINK_KEY]);
+    });
   }
 
   // ---- style rules (UI25)

@@ -743,6 +743,34 @@ a.fm-home:hover {
   opacity: 0.9;
 }
 
+/* A15: the link badge on a block that links to another diagram (top-right corner, clear of .fm-pin). Always
+   visible (not just on hover/select), readable in both themes: --accent has enough contrast against --accent-text
+   in both palettes (styles.css :root blocks). */
+.fm-link-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  box-shadow: 0 0 0 1.5px var(--canvas-bg);
+  cursor: pointer;
+  pointer-events: auto;
+  /* Above the resize handles (resize.css .fm-resize, z-index: 2), which share this corner while the block is
+     selected: the badge stays clickable there instead of starting a resize. */
+  z-index: 3;
+}
+
+.fm-link-badge:hover {
+  background: var(--accent-strong);
+}
+
 /* legend */
 .fm-legend {
   position: absolute;

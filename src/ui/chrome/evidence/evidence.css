@@ -242,6 +242,20 @@
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
+  text-decoration: none;
+}
+
+/* ---- A15: a block's link to another diagram (the Inspector's "Links to" field and its context-menu twin) ---- */
+
+.fm-links-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fm-links-menu {
+  min-width: 240px;
+  padding: 8px 10px 4px;
 }
 
 .fm-ev-link-btn:hover:not(:disabled) {

@@ -31,7 +31,8 @@ const MENUS: Files = {
   layout: JSON.stringify({ version: 1, nodes: { b1: { lane: 'beta', along: 420, across: 30 } } }),
 };
 
-const UI40_BLOCK = ['edit-label', 'rename-id', 'shape', 'colors', 'duplicate', 'unpin', 'reset-size', 'reset-colors', 'delete'];
+// A15 adds 'link' ("Link to diagram…") as an always-shown block item.
+const UI40_BLOCK = ['edit-label', 'rename-id', 'shape', 'colors', 'link', 'duplicate', 'unpin', 'reset-size', 'reset-colors', 'delete'];
 const UI40_LINE = ['edit-label', 'add-bend', 'remove-bend', 'reset-line', 'reset-label', 'delete'];
 const SHAPES = ['step', 'decision', 'terminal', 'subprocess', 'database', 'io', 'document', 'delay'];
 
@@ -78,7 +79,7 @@ test('a right-click on a block opens its menu at the pointer and selects it; Esc
   // Exactly UI40's block items: the always-shown ones; not unpin, reset-size or reset-colors (a1 has none of those).
   const names = await itemNames(page);
   for (const n of names) expect(UI40_BLOCK).toContain(n);
-  for (const n of ['edit-label', 'rename-id', 'shape', 'duplicate', 'delete']) expect(names).toContain(n);
+  for (const n of ['edit-label', 'rename-id', 'shape', 'link', 'duplicate', 'delete']) expect(names).toContain(n);
   for (const n of ['unpin', 'reset-size', 'reset-colors']) expect(names).not.toContain(n);
   // Escape closes the menu only: the selection stays.
   await page.keyboard.press('Escape');

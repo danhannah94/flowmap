@@ -1,8 +1,9 @@
 // Error banner (UI31), notices and toasts (UI28, UI30), the confirmation dialog, and the side-panel slot.
 import { useEffect, useLayoutEffect, useMemo, useState, type ComponentType } from 'react';
 import { isLaneFree, type Problem } from '../../core/types';
+import { linkProblems } from '../links';
 import type { State } from '../store/store';
-import { useStore, useStoreState } from '../store/hooks';
+import { shallow, useStore, useStoreState } from '../store/hooks';
 import { loadDismissed, pruneDismissed, saveDismissed, warningKey } from './dismissedWarnings';
 
 /**
@@ -18,6 +19,13 @@ export function ErrorBanner() {
   const configBroken = useStoreState((s) => s.derived?.configBroken ?? false);
   const layoutBroken = useStoreState((s) => s.derived?.layoutBroken ?? false);
   const laneFree = useStoreState((s) => !!s.derived && isLaneFree(s.derived.doc.graph.lanes));
+  // A15: a block's link to a diagram that doesn't exist (or points outside the served root), checked against the
+  // diagrams the server lists (§8.2). Not part of `doc.problems`: that's the pure core's, and knowing which diagrams
+  // exist needs the server's list, fetched once per open (store.ts).
+  const config = useStoreState((s) => s.derived?.doc.config ?? null);
+  const nodeIds = useStoreState((s) => s.derived?.doc.graph.nodes.map((n) => n.id) ?? [], shallow);
+  const diagramList = useStoreState((s) => s.diagramList, shallow);
+  const linkWarnings = useMemo(() => linkProblems(config, nodeIds, diagramList), [config, nodeIds, diagramList]);
   // Amendment A9: warnings (never errors) can be dismissed, per diagram, keyed by code+message so a dismissal
   // survives the line moving as the person edits. `dismissed` is loaded from localStorage for the current file and
   // pruned whenever the active warnings change, so fixing a warning's cause forgets its dismissal (§ dismissedWarnings.ts).
@@ -26,10 +34,10 @@ export function ErrorBanner() {
 
   // Amendment A4: in a diagram without subgraphs every block is meant to be unlaned, so "not in any subgraph"
   // (W-no-lane, which `flowmap validate` still reports, §3.2) is no news here and isn't listed.
-  const warnings = useMemo(
-    () => (laneFree ? (problems?.warnings ?? []).filter((p) => p.code !== 'W-no-lane') : problems?.warnings ?? []),
-    [laneFree, problems],
-  );
+  const warnings = useMemo(() => {
+    const base = laneFree ? (problems?.warnings ?? []).filter((p) => p.code !== 'W-no-lane') : problems?.warnings ?? [];
+    return problems ? [...base, ...linkWarnings] : base;
+  }, [laneFree, problems, linkWarnings]);
   const activeWarningKeys = useMemo(() => new Set(warnings.map(warningKey)), [warnings]);
 
   useEffect(() => {

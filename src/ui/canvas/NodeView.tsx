@@ -4,6 +4,8 @@ import { Fragment, memo } from 'react';
 import { badgeBox, textArea, wrapLabel } from '../../core/measure';
 import type { ResolvedNodeStyle } from '../../core/theme';
 import type { Direction } from '../../core/types';
+import { followLink } from '../links';
+import { useStore } from '../store/hooks';
 import { labelPieces, type LayoutNode } from './geometry';
 import { PortHandles } from './ports';
 import { ResizeHandles } from './ResizeHandles';
@@ -24,9 +26,14 @@ interface Props {
   sized?: boolean;
   /** v1.1 UI34: show the resize handles (the one selected block, when resizing is allowed). */
   resizable?: boolean;
+  /** A15: the block's link target (§4 `link`), or null. Draws the corner badge; Cmd/Ctrl+click (gestures.ts) also
+   *  follows it. */
+  link?: string | null;
 }
 
-export const NodeView = memo(function NodeView({ node, style, direction, selected, dx, dy, dragging, editing, sized = false, resizable = false }: Props) {
+export const NodeView = memo(function NodeView({
+  node, style, direction, selected, dx, dy, dragging, editing, sized = false, resizable = false, link = null,
+}: Props) {
   const area = textArea(node.kind, node.width, node.height);
   const lines = wrapLabel(node.label, area.width);
   const pieces = labelPieces(node.label, lines);
@@ -90,6 +97,7 @@ export const NodeView = memo(function NodeView({ node, style, direction, selecte
       </div>
       {style.badge ? <Badge node={node} text={style.badge} /> : null}
       {node.pinned ? <div className="fm-pin" title="Pinned" aria-hidden="true" /> : null}
+      {link ? <LinkBadge target={link} /> : null}
       {/* v1.1 UI38: four connection handles (top, right, bottom, left) and, while a line is dragged over, its connection points */}
       <PortHandles node={node} />
     </div>
@@ -103,5 +111,33 @@ function Badge({ node, text }: { node: LayoutNode; text: string }) {
     <div className="fm-badge" data-role="badge" style={{ left: b.x, top: b.y, width: b.width, height: b.height }}>
       {text}
     </div>
+  );
+}
+
+/**
+ * A15: the small link icon in the block's corner. Rendered as a native `<button>` so `gestures.ts`'s hit-test
+ * classifies it as a `control` (the same rule buttons and inputs already get) and a plain click never starts a
+ * selection or drag gesture; its own `onClick` follows the link. Hovering shows the target as its title.
+ */
+function LinkBadge({ target }: { target: string }) {
+  const store = useStore();
+  return (
+    <button
+      type="button"
+      className="fm-link-badge"
+      data-testid="link-badge"
+      data-link-target={target}
+      title={target}
+      aria-label={`Open linked diagram: ${target}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        followLink(store, target);
+      }}
+    >
+      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" />
+        <path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+      </svg>
+    </button>
   );
 }

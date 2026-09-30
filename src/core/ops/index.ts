@@ -27,8 +27,8 @@ export {
 } from './lanes';
 export { setDirection, setTitle } from './diagram';
 export {
-  addRule, applySwatch, deleteOrphanEdgeEntry, deleteOrphanLaneEntry, deleteOrphanNodeEntry, deleteOrphanNoteEntry,
-  deleteOrphanPin, deleteRule, editMatchCondition, moveRule, removeFieldFromNodes, removeMatchCondition,
-  removeNodeField, replaceNodeEntry, replaceStyles, resetBlockColors, setBlockColors, setFieldOnNodes,
-  setMatchCondition, setNodeField, setRuleLegend, setStyleColor, setStyleProp,
+  addRule, applySwatch, clearNodeLink, deleteOrphanEdgeEntry, deleteOrphanLaneEntry, deleteOrphanNodeEntry,
+  deleteOrphanNoteEntry, deleteOrphanPin, deleteRule, editMatchCondition, moveRule, removeFieldFromNodes,
+  removeMatchCondition, removeNodeField, replaceNodeEntry, replaceStyles, resetBlockColors, setBlockColors,
+  setFieldOnNodes, setMatchCondition, setNodeField, setNodeLink, setRuleLegend, setStyleColor, setStyleProp,
 } from './config';

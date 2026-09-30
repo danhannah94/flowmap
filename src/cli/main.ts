@@ -2,10 +2,11 @@
 // ESM script with a shebang, run as `flowmap` (see package.json's `bin`) or directly with `node dist/cli.js`.
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { basename, dirname, join, resolve } from 'node:path';
 
+import { checkLinks, linkTargetsByNode } from '../core/config';
 import { loadDocument } from '../core/document';
 import { format as formatMmd, parse as parseMmd } from '../core/mmd';
 import { renderSvg } from '../core/svg';
@@ -104,6 +105,33 @@ async function loadDoc(paths: DiagramPaths) {
   return loadDocument(mmdText, configText, layoutText, basename(paths.mmd));
 }
 
+/**
+ * A15: every `.mmd` under `root` (recursively), as link targets (its path relative to `root`, forward slashes, no
+ * extension) — what a `link` in this diagram's config can point at. Skips `.flowmap-trash` and `exports` (never
+ * diagrams) and any other dotfile entry. For a single-file command (`validate` has no separate "served root" flag,
+ * unlike `serve <dir>`), the root is the `.mmd`'s own directory: the same directory `flowmap serve` would use if the
+ * diagram set living there were served.
+ */
+async function mmdTargetsUnder(root: string): Promise<Set<string>> {
+  const out = new Set<string>();
+  async function walk(dir: string, prefix: string): Promise<void> {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.name.startsWith('.') || e.name === 'exports') continue;
+      const rel = prefix ? `${prefix}/${e.name}` : e.name;
+      if (e.isDirectory()) await walk(join(dir, e.name), rel);
+      else if (e.isFile() && /\.mmd$/i.test(e.name)) out.add(rel.replace(/\.mmd$/i, ''));
+    }
+  }
+  await walk(root, '');
+  return out;
+}
+
 function formatProblem(p: Problem): string {
   return p.line !== null ? `${p.code}:${p.line}: ${p.message}` : `${p.code}: ${p.message}`;
 }
@@ -128,13 +156,19 @@ async function cmdValidate(argv: string[]): Promise<void> {
   const { positional, flags } = parseArgs(argv, ['json'], []);
   const paths = diagramPaths(requirePositional(positional, 'validate'));
   const doc = await loadDoc(paths);
+  // A15: a block's `link` checked against the diagrams that actually exist under the served root (§4). `doc.config`
+  // is null while the config has errors, in which case `checkLinks` reports nothing (as every other config-derived
+  // check already does, §7).
+  const targets = await mmdTargetsUnder(dirname(paths.mmd));
+  const linkWarnings = checkLinks(doc.config, doc.graph.nodes.map((n) => n.id), (t) => targets.has(t));
+  const warnings = [...doc.problems.warnings, ...linkWarnings];
 
   if (flags.json) {
-    process.stdout.write(`${JSON.stringify({ errors: doc.problems.errors, warnings: doc.problems.warnings }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ errors: doc.problems.errors, warnings }, null, 2)}\n`);
   } else {
     for (const e of doc.problems.errors) process.stdout.write(`error ${formatProblem(e)}\n`);
-    for (const w of doc.problems.warnings) process.stdout.write(`warning ${formatProblem(w)}\n`);
-    if (doc.problems.errors.length === 0 && doc.problems.warnings.length === 0) process.stdout.write('no problems found\n');
+    for (const w of warnings) process.stdout.write(`warning ${formatProblem(w)}\n`);
+    if (doc.problems.errors.length === 0 && warnings.length === 0) process.stdout.write('no problems found\n');
   }
   process.exitCode = doc.problems.errors.length > 0 ? 1 : 0;
 }
@@ -265,6 +299,9 @@ async function exportDiagram(
     legend: doc.legend,
     notes: doc.notes,
     theme,
+    // A15: linked blocks stay clickable in an exported SVG set; PNG rendering (below) just screenshots this SVG, so
+    // the `<a>` tags have no effect there (§7.1's "skip for PNG" holds without any separate handling).
+    links: linkTargetsByNode(doc.config, doc.graph.nodes.map((n) => n.id)),
   });
   const name = basename(paths.mmd).replace(/\.mmd$/i, '');
   const outPath = out ? resolve(out) : join(dirname(paths.mmd), 'exports', `${name}.${format}`);

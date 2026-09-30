@@ -5,3 +5,4 @@ import '../Inspector';
 import '../Styles';
 import '../Orphans';
 import './BlockSize'; // v1.1 UI34: the block's size in the inspector (after the inspector, which it extends)
+import './Links'; // A15: a block's link to another diagram (the "Links to" field and its context-menu item)

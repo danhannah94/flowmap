@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { linkOf } from '../../core/config';
 import { resolveStyle, type Theme } from '../../core/theme';
 import type { LayoutResult, ResolvedStyle } from '../../core/types';
 import { shallow, useStoreState } from '../store/hooks';
@@ -14,6 +15,16 @@ export function NodesLayer({ layout, styles, theme }: { layout: LayoutResult; st
   const sizes = useStoreState((s) => s.shown?.doc.sizes);
   const canResize = useStoreState((s) => s.selection.nodes.length === 1 && !!s.derived && !s.derived.readOnly && !s.derived.layoutBroken);
   const resizing = useResizePreview();
+  // A15: each node's link target, if it has one (the badge, and Cmd/Ctrl+click, gestures.ts).
+  const configNodes = useStoreState((s) => s.shown?.doc.config?.nodes);
+  const links = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const n of layout.nodes) {
+      const t = linkOf(configNodes?.[n.id]);
+      if (t) out[n.id] = t;
+    }
+    return out;
+  }, [layout, configNodes]);
   const moving = useMemo(() => new Set(drag?.ids ?? []), [drag?.ids]);
   const resolved = useMemo(() => {
     const out: Record<string, ReturnType<typeof resolveStyle>> = {};
@@ -40,6 +51,7 @@ export function NodesLayer({ layout, styles, theme }: { layout: LayoutResult; st
             editing={editingNode === n.id}
             sized={r || !!sizes?.[n.id]}
             resizable={canResize && selected.has(n.id) && editingNode !== n.id}
+            link={links[n.id] ?? null}
           />
         );
       })}
