@@ -127,6 +127,45 @@ const DISK_IO: PutIo = { write: writeAtomic, remove: deleteIfExists };
  */
 export const PUT_ORDER: readonly FileKey[] = ['config', 'layout', 'mmd'];
 
+/** The folder, directly inside the served directory, that "deleted" diagrams move into (never listed, §8.2). */
+export const TRASH_DIR_NAME = '.flowmap-trash';
+
+export interface DeleteResult {
+  ok: boolean;
+  /** The folder (relative to the served directory) the files were moved into, when `ok` is true. */
+  trashPath?: string;
+  error?: string;
+}
+
+/**
+ * "Deletes" a diagram by moving its files (the `.mmd`, and the `.flow.yaml`/`.layout.json` beside it, whichever
+ * exist) into `.flowmap-trash/<timestamp>-<name>/` inside the served directory, so a misclick is recoverable by
+ * hand. Never touches `exports/`. `ok: false` when the `.mmd` doesn't exist.
+ */
+export async function deleteDiagram(dir: string, mmdFile: string): Promise<DeleteResult> {
+  const names = diagramFileNames(mmdFile);
+  if ((await readOptional(join(dir, names.mmd))) === null) {
+    return { ok: false, error: `"${mmdFile}" does not exist` };
+  }
+
+  const base = mmdFile.replace(/\.mmd$/i, '');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const trashPath = join(TRASH_DIR_NAME, `${stamp}-${base}`);
+  const trashDir = join(dir, trashPath);
+  await mkdir(trashDir, { recursive: true });
+
+  // Companions first, the `.mmd` last (the same order and reasoning as `PUT_ORDER` above): a reader keyed off the
+  // `.mmd` never sees it disappear while a companion is still around under the old name.
+  for (const key of PUT_ORDER) {
+    try {
+      await rename(join(dir, names[key]), join(trashDir, names[key]));
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; // config/layout may not exist; the .mmd must
+    }
+  }
+  return { ok: true, trashPath };
+}
+
 /**
  * Applies a PUT. If the current on-disk versions don't match `base`, nothing is written and `conflict` is true
  * ("disk wins"). Otherwise writes only the files whose content actually changed and deletes those set to `null`,

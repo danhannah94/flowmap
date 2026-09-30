@@ -95,6 +95,17 @@ describe('flowmap server: SSE (design.md UI29)', () => {
     capture.stop();
   });
 
+  it('DELETE /api/diagram (moving the diagram to trash) produces a "changed" event with files.mmd: null', async () => {
+    const capture = captureSse(`${base}/api/events?file=purchase-request.mmd`);
+    await sleep(50); // let the SSE connection open (and its baseline versions get established) before the delete
+
+    const res = await fetch(`${base}/api/diagram?file=purchase-request.mmd`, { method: 'DELETE' });
+    expect(res.status).toBe(200);
+
+    await waitFor(() => capture.events.some((e) => JSON.parse(e.data).files.mmd === null), 1000);
+    capture.stop();
+  });
+
   it('sends a heartbeat comment at the configured interval', async () => {
     await handle.close();
     handle = await serve({ dir, port: 0, heartbeatMs: 50 });

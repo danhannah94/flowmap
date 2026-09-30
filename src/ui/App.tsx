@@ -1,6 +1,6 @@
 // UI1: the home page lists the diagrams; `/?file=<name>.mmd` opens one in the editor.
 import { useEffect, useMemo, useState } from 'react';
-import { createDiagram, listDiagrams } from './api';
+import { createDiagram, deleteDiagram, listDiagrams } from './api';
 import { Canvas } from './canvas/Canvas';
 import { Palette } from './chrome/Palette';
 import './chrome/evidence'; // evidence and styles (UI24–UI27): inspector, styles panel, orphan deletes
@@ -95,12 +95,28 @@ function Editor({ file }: { file: string }) {
 }
 
 function HomePage() {
+  const store = useStore();
   const [files, setFiles] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     document.title = 'flowmap';
     listDiagrams().then(setFiles, (e: Error) => setError(e.message));
   }, []);
+
+  const handleDelete = async (file: string) => {
+    const ok = await store.confirm({
+      message: `Delete ${file}?`,
+      detail: 'It moves to .flowmap-trash in this folder.',
+      yes: 'Delete',
+      no: 'Cancel',
+      danger: true,
+    });
+    if (!ok) return;
+    const r = await deleteDiagram(file);
+    if (r.ok) setFiles((cur) => (cur ? cur.filter((f) => f !== file) : cur));
+    else store.toast(`Couldn’t delete ${file}: ${r.error}`);
+  };
+
   return (
     <div className="fm-app">
       <header className="fm-topbar">
@@ -128,17 +144,45 @@ function HomePage() {
           {files && files.length === 0 ? <p className="fm-muted">No .mmd files in this folder yet. Start one with New diagram.</p> : null}
           <ul data-testid="diagram-list" className="fm-diagram-list">
             {(files ?? []).map((f) => (
-              <li key={f}>
+              <li key={f} className="fm-diagram-row">
                 <a data-file={f} href={`/?file=${encodeURIComponent(f)}`}>
                   <span className="fm-diagram-name">{f.replace(/\.mmd$/i, '')}</span>
                   <span className="fm-diagram-file">{f}</span>
                 </a>
+                <button
+                  type="button"
+                  className="fm-diagram-delete-btn"
+                  data-testid="diagram-delete"
+                  data-diagram-file={f}
+                  // Fixed, generic text (not the file name): the file's own list entry sits right next to it for
+                  // context, and a name built from arbitrary diagram names would be one accessibility feature away
+                  // from colliding with an unrelated `getByRole('button', { name })` query elsewhere in the app.
+                  title="Delete this diagram"
+                  aria-label="Delete this diagram"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    void handleDelete(f);
+                  }}
+                >
+                  <TrashIcon />
+                </button>
               </li>
             ))}
           </ul>
         </div>
       </main>
+      <ConfirmDialog />
+      <Notices />
     </div>
+  );
+}
+
+/** The same trash glyph the lane menu's delete item uses (`LaneMenu.tsx`), so both "delete" affordances match. */
+function TrashIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
+    </svg>
   );
 }
 

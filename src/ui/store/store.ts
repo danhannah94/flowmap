@@ -310,6 +310,19 @@ export class Store {
   private onExternal(snap: Snapshot): void {
     if (!this.disk || this.state.status !== 'ready') return;
     if (sameVersions(snap.versions, this.disk.versions)) return; // nothing new (or an echo of our own save)
+    // The `.mmd` itself is gone (deleted from the list, or by hand): there's nothing left to derive a document
+    // from, so this can't go through `replaceFromDisk` (which assumes the file is still there). Show the same
+    // "couldn't open" state `open()` shows for a file that never existed, instead of crashing on a null `.mmd`.
+    if (snap.files.mmd === null) {
+      this.unsubscribe?.();
+      this.unsubscribe = null;
+      this.generation++;
+      if (this.saveTimer) clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+      this.inFlight = false;
+      this.set({ status: 'failed', loadError: `"${this.state.file}" was deleted.` });
+      return;
+    }
     this.replaceFromDisk(snap, this.dirty);
   }
 

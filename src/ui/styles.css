@@ -1222,7 +1222,13 @@ a.fm-home:hover {
   gap: 8px;
 }
 
-.fm-diagram-list a {
+.fm-diagram-row {
+  position: relative;
+  display: flex;
+}
+
+.fm-diagram-row a {
+  flex: 1;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -1235,7 +1241,7 @@ a.fm-home:hover {
   transition: border-color 0.12s, transform 0.12s, box-shadow 0.12s;
 }
 
-.fm-diagram-list a:hover {
+.fm-diagram-row a:hover {
   border-color: var(--accent);
   box-shadow: var(--shadow-sm);
   transform: translateY(-1px);
@@ -1249,4 +1255,40 @@ a.fm-home:hover {
 .fm-diagram-file {
   color: var(--faint);
   font-size: 12px;
+}
+
+/* The per-row delete control: hidden until the row is hovered or it has keyboard focus, so the list stays quiet. */
+.fm-diagram-delete-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, background-color 0.12s ease, color 0.12s ease;
+}
+
+.fm-diagram-row:hover .fm-diagram-delete-btn,
+.fm-diagram-delete-btn:focus-visible {
+  opacity: 1;
+}
+
+.fm-diagram-delete-btn:hover {
+  background: var(--panel-raised);
+  border-color: var(--border-strong);
+  color: var(--danger);
+  box-shadow: var(--shadow-sm);
+}
+
+.fm-diagram-delete-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }

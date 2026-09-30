@@ -177,6 +177,42 @@ describe('flowmap server: JSON API', () => {
     expect(entries.filter((n) => n.includes('.tmp'))).toEqual([]);
   });
 
+  it('DELETE /api/diagram moves the diagram to .flowmap-trash, and it drops off the list', async () => {
+    const before = await fetch(`${base}/api/diagram?file=purchase-request.mmd`).then((r) => r.json()) as {
+      files: { mmd: string; config: string; layout: string };
+    };
+    const res = await fetch(`${base}/api/diagram?file=purchase-request.mmd`, { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: true; trash: string };
+    expect(body.ok).toBe(true);
+    expect(body.trash).toMatch(/^\.flowmap-trash[/\\]/);
+
+    const remaining = await readdir(dir);
+    expect(remaining).not.toContain('purchase-request.mmd');
+    expect(remaining).not.toContain('purchase-request.flow.yaml');
+    expect(remaining).not.toContain('purchase-request.layout.json');
+
+    expect(await readFile(join(dir, body.trash, 'purchase-request.mmd'), 'utf8')).toBe(before.files.mmd);
+
+    const listRes = await fetch(`${base}/api/diagrams`);
+    expect(((await listRes.json()) as { files: string[] }).files).toEqual([]);
+
+    const getRes = await fetch(`${base}/api/diagram?file=purchase-request.mmd`);
+    expect(getRes.status).toBe(404);
+  });
+
+  it('DELETE /api/diagram for a missing diagram is 404', async () => {
+    const res = await fetch(`${base}/api/diagram?file=nope.mmd`, { method: 'DELETE' });
+    expect(res.status).toBe(404);
+  });
+
+  it('DELETE /api/diagram rejects path traversal, absolute paths and non-.mmd names', async () => {
+    for (const bad of ['../evil.mmd', 'sub/dir.mmd', '/etc/passwd.mmd', '..\\evil.mmd', 'no-extension', '']) {
+      const res = await fetch(`${base}/api/diagram?file=${encodeURIComponent(bad)}`, { method: 'DELETE' });
+      expect(res.status, `expected 400 for file=${JSON.stringify(bad)}`).toBe(400);
+    }
+  });
+
   it('POST /api/export without an exportFn is 501', async () => {
     const res = await fetch(`${base}/api/export?file=purchase-request.mmd&format=svg`, { method: 'POST' });
     expect(res.status).toBe(501);

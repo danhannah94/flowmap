@@ -76,6 +76,21 @@ export async function createDiagram(file: string): Promise<{ ok: true } | { ok: 
   return { ok: false, error: out.message };
 }
 
+/**
+ * Deletes a diagram (moves its files into `.flowmap-trash` on the server, §8.2). Refused (404) if it doesn't exist,
+ * e.g. another tab already deleted it.
+ */
+export async function deleteDiagram(file: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/diagram?${q(file)}`, { method: 'DELETE' });
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+  if (!res.ok) return { ok: false, error: await failure(res) };
+  return { ok: true };
+}
+
 export async function requestExport(file: string, format: 'svg' | 'png', theme: 'light' | 'dark'): Promise<string> {
   const res = await fetch(`/api/export?${q(file)}&format=${format}&theme=${theme}`, { method: 'POST' });
   if (!res.ok) throw new Error(await failure(res));
