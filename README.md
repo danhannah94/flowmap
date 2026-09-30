@@ -49,7 +49,7 @@ A diagram is up to three files with the same base name, side by side. Only the `
 |---|---|---|
 | `<name>.mmd` | What the process is: lanes, steps, decisions, lines, labels. A strict subset of Mermaid flowchart syntax, so GitHub renders it too. | Both. The editor always writes canonical form (`flowmap fmt`), so diffs stay small. |
 | `<name>.flow.yaml` | How it looks and what we know: the title, lane order, per-step metadata (who said it, how sure we are, quotes, open questions) and style rules that turn that metadata into looks, with a legend. | Both. The editor changes only the lines it edits; comments and formatting elsewhere survive byte for byte. |
-| `<name>.layout.json` | Where things are: the positions you pinned by dragging, relative to their lane. | The editor (hand edits are allowed but rare). |
+| `<name>.layout.json` | Where things are: the positions you pinned by dragging, relative to their lane, and any lane sizes you set by dragging a lane's edge. | The editor (hand edits are allowed but rare). |
 
 Why three and not two: the layout file changes on every drag, so keeping it apart means the human-edited config never
 picks up noise from the editor, and neither author's edits clobber the other's.
