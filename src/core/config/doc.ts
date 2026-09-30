@@ -5,6 +5,7 @@ import { UNASSIGNED, type Problems } from '../types';
 import { isValidColor, sameColor } from './color';
 import { deepEqual, isPlainObject, isScalarValue, renderDocument, type Path } from './emit';
 import { isIdForm, isReservedId } from '../mmd/syntax';
+import { linkOf } from './links';
 import {
   BLOCK_STYLE_KEY, BORDER_STYLES, COLOR_PROPS, FONT_STYLES, LINK_KEY, NOTE_FONT_MAX, NOTE_FONT_MIN, NOTE_FONT_SIZE,
   type ColorProp, type FlowConfig, type StyleProp,
@@ -335,6 +336,31 @@ export class ConfigDoc {
       if (!isPlainObject(entry) || !Object.hasOwn(entry, LINK_KEY)) return src;
       return Object.keys(entry).length === 1 ? deleteIn(src, ['nodes', id]) : deleteIn(src, ['nodes', id, LINK_KEY]);
     });
+  }
+
+  /**
+   * A17 (§12): rewrite every node's `link` for which `remap` returns a replacement (§8.2 A16, after a diagram moves
+   * or a folder renames — the fs-level walk across every diagram under the served root lives in
+   * `src/server/links.ts`, which calls this once per `.flow.yaml`). `remap` returns null for a target it leaves
+   * alone; each match is written with the same surgical `setIn` every other edit here uses, so nothing but the
+   * changed `link:` values move (UI26). `count` is how many nodes changed; when it's 0 (nothing matched, or the
+   * config failed to parse — `this.config` null, left alone rather than risking a rewrite against a guess),
+   * `text` is `this.text` unchanged, byte for byte, so a caller can skip writing the file at all.
+   */
+  rewriteLinks(remap: (target: string) => string | null): { text: string | null; count: number } {
+    const cfg = this.config;
+    if (!cfg) return { text: this.text, count: 0 };
+    let out = this.text ?? NEW_FILE;
+    let count = 0;
+    for (const id of Object.keys(cfg.nodes)) {
+      const target = linkOf(cfg.nodes[id]);
+      if (target === null) continue;
+      const next = remap(target);
+      if (next === null || next === target) continue;
+      out = setIn(out, ['nodes', id, LINK_KEY], next);
+      count++;
+    }
+    return { text: count > 0 ? out : this.text, count };
   }
 
   // ---- style rules (UI25)

@@ -3,7 +3,7 @@
 // `style`) still participates in style matching.
 import {
   checkLinks, isWellFormedLinkTarget, linkHasTraversal, linkOf, linkTargetsByNode, linkTargetToMmdPath,
-  matchFields, normalizeLinkTarget, parseConfig, ruleMatches,
+  matchFields, movedLinkTarget, normalizeLinkTarget, parseConfig, renamedFolderLinkTarget, ruleMatches,
 } from './index';
 import type { FlowConfig } from './model';
 
@@ -128,5 +128,47 @@ describe('link stays a matchable field, unlike style', () => {
     const fields = matchFields(config, { id: 'a', lane: '_unassigned', label: 'A', kind: 'step' });
     const rule = { legend: null, match: [{ field: 'link', op: 'equals' as const, value: 'brehob/stage-2' }], style: {}, rawStyle: {} };
     expect(ruleMatches(rule, fields)).toBe(true);
+  });
+});
+
+// ---- A17 (§12): remapping a link target after a diagram moves or its folder is renamed ----------------------
+
+describe('movedLinkTarget', () => {
+  it('an exact match becomes the new id', () => {
+    expect(movedLinkTarget('brehob/stage-2', 'brehob/stage-2', 'brehob/hub/stage-2')).toBe('brehob/hub/stage-2');
+  });
+
+  it('a self-link (equal to the old id) is corrected the same way', () => {
+    expect(movedLinkTarget('stage-2', 'stage-2', 'brehob/stage-2')).toBe('brehob/stage-2');
+  });
+
+  it('anything else is untouched (null)', () => {
+    expect(movedLinkTarget('brehob/stage-3', 'brehob/stage-2', 'brehob/hub/stage-2')).toBeNull();
+    expect(movedLinkTarget('brehob/stage-2x', 'brehob/stage-2', 'brehob/hub/stage-2')).toBeNull();
+  });
+});
+
+describe('renamedFolderLinkTarget', () => {
+  it('a link inside the renamed folder keeps its tail', () => {
+    expect(renamedFolderLinkTarget('brehob/stage-2', 'brehob', 'brehob-bc')).toBe('brehob-bc/stage-2');
+  });
+
+  it('a nested link keeps its whole suffix', () => {
+    expect(renamedFolderLinkTarget('brehob/hub/stage-2', 'brehob', 'brehob-bc')).toBe('brehob-bc/hub/stage-2');
+  });
+
+  it('a nested-folder rename only touches links inside that subfolder', () => {
+    expect(renamedFolderLinkTarget('a/b/x', 'a/b', 'a/c')).toBe('a/c/x');
+    expect(renamedFolderLinkTarget('a/other', 'a/b', 'a/c')).toBeNull();
+  });
+
+  it('is prefix-safe: a same-prefixed sibling is not a match', () => {
+    expect(renamedFolderLinkTarget('brehob-other/x', 'brehob', 'brehob-bc')).toBeNull();
+    expect(renamedFolderLinkTarget('brehobx/x', 'brehob', 'brehob-bc')).toBeNull();
+    expect(renamedFolderLinkTarget('a/bc/x', 'a/b', 'a/c')).toBeNull();
+  });
+
+  it('a link outside the folder entirely is untouched', () => {
+    expect(renamedFolderLinkTarget('other/x', 'brehob', 'brehob-bc')).toBeNull();
   });
 });

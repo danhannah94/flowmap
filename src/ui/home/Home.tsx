@@ -4,10 +4,11 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   createDiagram, createFolder, deleteDiagram, deleteFolder, listFolder, moveDiagram, renameFolder,
-  type FolderListing,
+  type FolderListing, type LinkRewrite,
 } from '../api';
 import { ConfirmDialog, Notices } from '../chrome/Panels';
 import { Logo, ThemeToggle } from '../chrome/Toolbar';
+import { linkRewriteMessage } from '../links';
 import { useStore } from '../store/hooks';
 import { baseNameOf, crumbs, currentDir, folderOf, homeHref, joinDir } from './paths';
 
@@ -48,8 +49,11 @@ export function HomePage() {
   const handleMove = async (file: string, to: string) => {
     if (folderOf(file) === to) return;
     const r = await moveDiagram(file, to);
-    if (r.ok) setListing((cur) => (cur ? { ...cur, diagrams: cur.diagrams.filter((f) => f !== file) } : cur));
-    else store.toast(`Couldn’t move ${baseNameOf(file)}: ${r.error}`);
+    if (r.ok) {
+      setListing((cur) => (cur ? { ...cur, diagrams: cur.diagrams.filter((f) => f !== file) } : cur));
+      const links = linkRewriteMessage(r.rewrittenLinks);
+      if (links) store.toast(`Moved. ${links}`, 'info');
+    } else store.toast(`Couldn’t move ${baseNameOf(file)}: ${r.error}`);
   };
 
   const handleDeleteFolder = async (folder: string) => {
@@ -68,8 +72,11 @@ export function HomePage() {
 
   const handleRenameFolder = async (folder: string, name: string) => {
     const r = await renameFolder(folder, name);
-    if (r.ok) reload();
-    else store.toast(r.error);
+    if (r.ok) {
+      reload();
+      const links = linkRewriteMessage(r.rewrittenLinks);
+      if (links) store.toast(`Renamed. ${links}`, 'info');
+    } else store.toast(r.error);
     return r;
   };
 
@@ -137,8 +144,10 @@ export function HomePage() {
         <MoveToDialog
           file={moveTarget}
           onClose={() => setMoveTarget(null)}
-          onMoved={() => {
+          onMoved={(rewrittenLinks) => {
             setListing((cur) => (cur ? { ...cur, diagrams: cur.diagrams.filter((f) => f !== moveTarget) } : cur));
+            const links = linkRewriteMessage(rewrittenLinks);
+            if (links) store.toast(`Moved. ${links}`, 'info');
             setMoveTarget(null);
           }}
         />
@@ -587,7 +596,13 @@ function KindIcon({ mode }: { mode: NewMode }) {
 
 /** The "Move to…" menu item's dialog: a tiny folder browser (breadcrumbs + subfolders of wherever it's looking),
  *  with a "Move here" button that moves the diagram into the folder currently shown (design.md A16). */
-function MoveToDialog({ file, onClose, onMoved }: { file: string; onClose: () => void; onMoved: () => void }) {
+function MoveToDialog({
+  file, onClose, onMoved,
+}: {
+  file: string;
+  onClose: () => void;
+  onMoved: (rewrittenLinks?: LinkRewrite[]) => void;
+}) {
   const [dir, setDir] = useState(folderOf(file));
   const [listing, setListing] = useState<FolderListing | null>(null);
   const [busy, setBusy] = useState(false);
@@ -602,7 +617,7 @@ function MoveToDialog({ file, onClose, onMoved }: { file: string; onClose: () =>
     setBusy(true);
     const r = await moveDiagram(file, dir);
     setBusy(false);
-    if (r.ok) onMoved();
+    if (r.ok) onMoved(r.rewrittenLinks);
     else setError(r.error);
   };
 

@@ -322,9 +322,33 @@ describe('flowmap server: folders (design.md A16)', () => {
       body: JSON.stringify({ dir: 'brehob', name: 'brehob-2' }),
     });
     expect(res.status).toBe(200);
-    expect(((await res.json()) as { dir: string }).dir).toBe('brehob-2');
+    const body = (await res.json()) as { dir: string; rewrittenLinks: { file: string; count: number }[] };
+    expect(body.dir).toBe('brehob-2');
+    expect(body.rewrittenLinks).toEqual([]); // nothing links into "brehob": a no-op, reported as empty not absent
     const list = (await fetch(`${base}/api/folder?dir=`).then((r) => r.json())) as { folders: string[] };
     expect(list.folders).toEqual(['brehob-2']);
+  });
+
+  it('PUT /api/folder rewrites link: values elsewhere that pointed inside the renamed folder (A17)', async () => {
+    const { mkdir, writeFile } = await import('node:fs/promises');
+    await mkdir(join(dir, 'brehob'), { recursive: true });
+    await writeFile(join(dir, 'brehob', 'stage-2.mmd'), 'flowchart LR\n  a["A"]\n');
+    await writeFile(join(dir, 'brehob', 'stage-2.flow.yaml'), 'nodes:\n  a:\n    kind: step\n');
+    await writeFile(join(dir, 'other.mmd'), 'flowchart LR\n  a["A"]\n');
+    await writeFile(join(dir, 'other.flow.yaml'), 'nodes:\n  a:\n    link: brehob/stage-2   # keep me\n  b:\n    link: elsewhere\n');
+
+    const res = await fetch(`${base}/api/folder`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dir: 'brehob', name: 'brehob-bc' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: true; dir: string; rewrittenLinks: { file: string; count: number }[] };
+    expect(body.dir).toBe('brehob-bc');
+    expect(body.rewrittenLinks).toEqual([{ file: 'other.mmd', count: 1 }]);
+
+    const otherConfig = await readFile(join(dir, 'other.flow.yaml'), 'utf8');
+    expect(otherConfig).toBe('nodes:\n  a:\n    link: brehob-bc/stage-2   # keep me\n  b:\n    link: elsewhere\n');
   });
 
   it('DELETE /api/folder removes an empty folder, and refuses a non-empty one', async () => {
@@ -360,8 +384,9 @@ describe('flowmap server: folders (design.md A16)', () => {
       body: JSON.stringify({ file: 'purchase-request.mmd', to: 'brehob' }),
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { ok: true; file: string };
+    const body = (await res.json()) as { ok: true; file: string; rewrittenLinks: { file: string; count: number }[] };
     expect(body.file).toBe('brehob/purchase-request.mmd');
+    expect(body.rewrittenLinks).toEqual([]); // nothing links to it: a no-op, reported as empty not absent
 
     const gone = await fetch(`${base}/api/diagram?file=purchase-request.mmd`);
     expect(gone.status).toBe(404);
@@ -370,6 +395,29 @@ describe('flowmap server: folders (design.md A16)', () => {
 
     const list = (await fetch(`${base}/api/diagrams`).then((r) => r.json())) as { files: string[] };
     expect(list.files).toEqual(['brehob/purchase-request.mmd']);
+  });
+
+  it('POST /api/diagram/move rewrites link: values elsewhere that pointed at the old id (A17)', async () => {
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(join(dir, 'other.mmd'), 'flowchart LR\n  a["A"]\n');
+    await writeFile(join(dir, 'other.flow.yaml'), 'nodes:\n  a:\n    link: purchase-request   # keep me\n');
+
+    await fetch(`${base}/api/folder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dir: '', name: 'brehob' }),
+    });
+    const res = await fetch(`${base}/api/diagram/move`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file: 'purchase-request.mmd', to: 'brehob' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { rewrittenLinks: { file: string; count: number }[] };
+    expect(body.rewrittenLinks).toEqual([{ file: 'other.mmd', count: 1 }]);
+
+    const otherConfig = await readFile(join(dir, 'other.flow.yaml'), 'utf8');
+    expect(otherConfig).toBe('nodes:\n  a:\n    link: brehob/purchase-request   # keep me\n');
   });
 
   it('POST /api/diagram/move refuses a destination collision, and a missing diagram', async () => {

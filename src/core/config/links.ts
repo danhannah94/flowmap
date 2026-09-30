@@ -86,6 +86,29 @@ export function checkLinks(
 }
 
 /**
+ * A17 (§12): the new value for a link target after the diagram it names moves from `oldId` to `newId` (both
+ * root-relative paths, no `.mmd`, §4), or null when `target` isn't affected. An exact match only: a link is
+ * root-relative, so a diagram's own *outbound* links (naming some other, unmoved diagram) never change when it
+ * moves — this only matches an *incoming* link, another diagram's `link:` value that named the moved one — with
+ * one exception that falls out of the same rule rather than needing its own: a self-link (a diagram linking to
+ * itself, §4, allowed) equals `oldId` too, so it's swept up and corrected like any other match.
+ */
+export function movedLinkTarget(target: string, oldId: string, newId: string): string | null {
+  return target === oldId ? newId : null;
+}
+
+/**
+ * A17 (§12): the new value for a link target after folder `oldFolder` is renamed to `newFolder` (both root-relative
+ * folder paths, §8.2 A16), or null when `target` doesn't point inside it. Prefix-safe: only a target starting with
+ * `oldFolder` followed by `/` matches, so renaming `a` to `a2` doesn't touch a link into a same-prefixed sibling
+ * like `a-other/x` or `ab/x`; a nested link (`oldFolder/sub/diagram`) keeps its `/sub/diagram` tail after the rename.
+ */
+export function renamedFolderLinkTarget(target: string, oldFolder: string, newFolder: string): string | null {
+  const prefix = `${oldFolder}/`;
+  return target.startsWith(prefix) ? `${newFolder}/${target.slice(prefix.length)}` : null;
+}
+
+/**
  * Well-formed, non-traversing link targets by node id, for the SVG export (§7.1 A15): wraps a linked block in
  * `<a href="<target>.svg">`. A malformed or traversing target is left out (nothing to link to safely); a missing
  * target is still included (the exported set may gain that page later, or another export writes it alongside).

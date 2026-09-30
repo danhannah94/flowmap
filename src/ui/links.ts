@@ -2,6 +2,7 @@
 // (Cmd/Ctrl+click, and a plain click on the link badge) and the Inspector's "Open" control.
 import { checkLinks, linkHasTraversal, linkTargetToMmdPath, type FlowConfig } from '../core/config';
 import type { Problem } from '../core/types';
+import type { LinkRewrite } from './api';
 import type { Store } from './store/store';
 import { saveViewport } from './store/viewportCache';
 
@@ -48,4 +49,16 @@ export function linkProblems(
   if (!config || !knownDiagrams) return [];
   const targets = new Set(knownDiagrams.map((f) => f.replace(/\.mmd$/i, '')));
   return checkLinks(config, nodeIds, (t) => targets.has(t));
+}
+
+/**
+ * A17 (§12): the home screen's brief confirmation after a move or folder rename updates other diagrams' links
+ * (e.g. "Updated 3 links in 2 diagrams."), or null when nothing needed rewriting (the common case) so callers show
+ * no toast at all.
+ */
+export function linkRewriteMessage(rewrites: readonly LinkRewrite[] | undefined): string | null {
+  if (!rewrites || rewrites.length === 0) return null;
+  const links = rewrites.reduce((sum, r) => sum + r.count, 0);
+  const diagrams = rewrites.length;
+  return `Updated ${links} link${links === 1 ? '' : 's'} in ${diagrams} diagram${diagrams === 1 ? '' : 's'}.`;
 }

@@ -1,11 +1,15 @@
 // flowmap's local server (design.md §2, §7, §8.2, §9): serves the built UI, a small JSON API over the three
 // diagram files, a live-change push channel (SSE) and an export endpoint. Node built-ins only (`http`, `fs`,
-// `crypto`, `path`) — no npm dependencies. Binds to 127.0.0.1 only (loopback).
+// `crypto`, `path`) — no npm dependencies of its own. Binds to 127.0.0.1 only (loopback). One narrow exception
+// (amendment A17): a move or folder rename calls `./links.js`, which does read `.flow.yaml` structure (via
+// `ConfigDoc`, `src/core/config`) to rewrite `link:` values that pointed at the old path — everything else about a
+// diagram's files still passes through this module as opaque text.
 //
 // Entry point: `serve({ dir, port })`, called by the CLI's `serve` command (see `src/cli/main.ts`).
 import { type IncomingMessage, type ServerResponse, createServer } from 'node:http';
 import { join, resolve } from 'node:path';
 
+import { movedLinkTarget, renamedFolderLinkTarget } from '../core/config/links.js';
 import {
   type DiagramVersions,
   type FilesPatch,
@@ -23,6 +27,7 @@ import {
   renameFolder,
   resolveInRoot,
 } from './files.js';
+import { rewriteLinksAcrossDir } from './links.js';
 import { defaultUiDir, serveStatic } from './static.js';
 import { DiagramWatcher } from './watcher.js';
 
@@ -218,7 +223,9 @@ export async function serve(options: ServeOptions): Promise<ServeHandle> {
     sendJson(res, r.ok ? 200 : 409, r.ok ? { ok: true, dir: relPath } : r);
   }
 
-  /** `PUT /api/folder` `{dir, name}`: renames the folder at `dir` to `name`, keeping it in the same parent. */
+  /** `PUT /api/folder` `{dir, name}`: renames the folder at `dir` to `name`, keeping it in the same parent. A
+   *  successful rename rewrites every `link:` value elsewhere under the root that pointed inside it (amendment
+   *  A17), reported back as `rewrittenLinks`. */
   async function handleFolderRename(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const body = await readJsonObjectBody(req, res);
     if (!body) return;
@@ -234,7 +241,12 @@ export async function serve(options: ServeOptions): Promise<ServeHandle> {
       return;
     }
     const r = await renameFolder(dir, relDir, name);
-    sendJson(res, r.ok ? 200 : r.code === 'not-found' ? 404 : 409, r.ok ? { ok: true, dir: newPath } : r);
+    if (!r.ok) {
+      sendJson(res, r.code === 'not-found' ? 404 : 409, r);
+      return;
+    }
+    const { rewritten } = await rewriteLinksAcrossDir(dir, (target) => renamedFolderLinkTarget(target, relDir, newPath));
+    sendJson(res, 200, { ok: true, dir: newPath, rewrittenLinks: rewritten });
   }
 
   /** `DELETE /api/folder?dir=<relDir>`: refused (409) unless the folder is empty. */
@@ -249,7 +261,7 @@ export async function serve(options: ServeOptions): Promise<ServeHandle> {
 
   /** `POST /api/diagram/move` `{file, to}`: moves a diagram (and its companion files, §8.2 A16) into folder `to`.
    *  Exposed as its own endpoint (over `files.ts`'s `moveDiagram`) so a later change can rewrite `link:` values that
-   *  point at the diagram's old path — not implemented here (see the amendment). */
+   *  point at the diagram's old path — amendment A17, `rewriteLinksAcrossDir`, reported back as `rewrittenLinks`. */
   async function handleDiagramMove(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const body = await readJsonObjectBody(req, res);
     if (!body) return;
@@ -269,7 +281,14 @@ export async function serve(options: ServeOptions): Promise<ServeHandle> {
     } finally {
       watcher.endWrite(file);
     }
-    sendJson(res, result.ok ? 200 : result.code === 'not-found' ? 404 : 409, result);
+    if (!result.ok) {
+      sendJson(res, result.code === 'not-found' ? 404 : 409, result);
+      return;
+    }
+    const oldId = file.replace(/\.mmd$/i, '');
+    const newId = result.file!.replace(/\.mmd$/i, '');
+    const { rewritten } = await rewriteLinksAcrossDir(dir, (target) => movedLinkTarget(target, oldId, newId));
+    sendJson(res, 200, { ...result, rewrittenLinks: rewritten });
   }
 
   function handleEvents(req: IncomingMessage, res: ServerResponse, file: string): void {
