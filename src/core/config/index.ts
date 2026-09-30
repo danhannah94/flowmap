@@ -9,3 +9,7 @@ export { isValidColor, normalizeColor, sameColor, colorForTheme, type Theme } fr
 export {
   ConfigDoc, fieldValueFromForm, fieldValueToJs, type EditResult, type FieldValue, type MatchInput,
 } from './doc';
+export {
+  checkLinks, isWellFormedLinkTarget, linkHasTraversal, linkOf, linkTargetsByNode, linkTargetToMmdPath,
+  normalizeLinkTarget,
+} from './links';

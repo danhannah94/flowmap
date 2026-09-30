@@ -67,6 +67,14 @@ export const NOTE_FONT_MAX = 48;
 /** The metadata key that holds a block's own style (§4); reserved: never a field, never matched. */
 export const BLOCK_STYLE_KEY = 'style';
 
+/**
+ * A15: the metadata key that holds a block's link to another diagram (§4 "link"): a path to another diagram's
+ * `.mmd`, relative to the served root, without the extension, forward slashes only (e.g. `brehob/stage-2`).
+ * Reserved like `style`: the inspector shows it as the "Links to" field, not a field row, and the field form refuses
+ * it as a key. Unlike `style`, it stays an ordinary metadata value for matching: `{match: {link: present}}` works.
+ */
+export const LINK_KEY = 'link';
+
 export const STYLE_PROPS = [
   'fill', 'border_color', 'text_color', 'border_style', 'border_width', 'font_style', 'badge',
 ] as const;

@@ -146,6 +146,19 @@ duplicates the selection in place (40 px along and across, lines included) witho
 block, press Connect and click the target. Select a line and drag either end to reconnect it. Double-click a line to
 set or clear its label.
 
+**Linking to another diagram** (amendment A15). A block can link straight to another diagram — handy for "hand-off"
+steps in a set of stage diagrams ("Hand-off to 2 · Complete + save"). Select a block and use the inspector's "Links
+to" field (or its context menu's "Link to diagram…") to pick one of the diagrams in the folder, or type its path:
+another diagram's name, or `folder/name` for one in a subfolder, relative to the folder `flowmap serve` is serving,
+without the `.mmd` extension. A linked block shows a small badge in its corner; hover it to see the target, click it
+to follow the link, or hold Cmd (Ctrl elsewhere) and click anywhere on the block — a plain click still just selects
+it. Following a link uses the app's own navigation, so Back returns to the diagram you came from (its pan and zoom
+come back too, if you got there by following a link). `flowmap validate` and the warnings list flag a link whose
+target doesn't exist (`W-link-missing`) or that climbs out of the served folder with a `..` segment
+(`W-link-traversal`, which the editor also refuses to follow); linking a block to its own diagram is fine. SVG
+export wraps a linked block in `<a href="<target>.svg">` so an exported set of diagrams stays clickable (PNG export
+is a flat image, so this doesn't apply there).
+
 **Lanes.** Add a lane from the toolbar and name it. Double-click a lane's header to rename it. The header's menu
 (the `···` button that appears on hover) can also change the lane's id, move it up or down, or delete it. Drag a lane
 header to reorder the lanes; a line shows where it will land. Deleting a lane that still has blocks asks whether to

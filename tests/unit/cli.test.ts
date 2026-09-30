@@ -1,7 +1,7 @@
 // End-to-end tests for the real CLI (design.md §7): builds `dist/cli.js` once, then drives it as a subprocess the
 // way the grader does (`node dist/cli.js <command> …`), against the fixtures.
 import { spawn, spawnSync } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -200,6 +200,78 @@ describe('a broken config beside a canonical .mmd does not stop fmt, layout or e
     expect(status).toBe(0);
     expect(stdout.trim()).toBe(out);
     expect(stderr).toMatch(/E-config/);
+  });
+});
+
+// ---- A15: a block's link to another diagram ------------------------------------------------------------------------
+
+describe('validate: A15 link warnings', () => {
+  it('W-link-missing when the target does not exist', () => {
+    const dir = tmpDir('link-missing');
+    const mmd = join(dir, 'a.mmd');
+    writeFileSync(mmd, 'flowchart LR\n  a["A"]\n');
+    writeFileSync(join(dir, 'a.flow.yaml'), 'version: 1\nnodes:\n  a:\n    link: nope\n');
+    const { stdout, status } = run(['validate', mmd, '--json']);
+    expect(status).toBe(0); // a warning, not an error (§4)
+    const json = JSON.parse(stdout) as { errors: unknown[]; warnings: { code: string }[] };
+    expect(json.errors).toEqual([]);
+    expect(json.warnings).toContainEqual(expect.objectContaining({ code: 'W-link-missing' }));
+  });
+
+  it('W-link-traversal (not W-link-missing) for a .. segment, error-free', () => {
+    const dir = tmpDir('link-traversal');
+    const mmd = join(dir, 'a.mmd');
+    writeFileSync(mmd, 'flowchart LR\n  a["A"]\n');
+    writeFileSync(join(dir, 'a.flow.yaml'), 'version: 1\nnodes:\n  a:\n    link: ../outside\n');
+    const { stdout, status } = run(['validate', mmd, '--json']);
+    expect(status).toBe(0);
+    const json = JSON.parse(stdout) as { errors: unknown[]; warnings: { code: string }[] };
+    expect(json.errors).toEqual([]);
+    expect(json.warnings).toContainEqual(expect.objectContaining({ code: 'W-link-traversal' }));
+    expect(json.warnings.some((w) => w.code === 'W-link-missing')).toBe(false);
+  });
+
+  it('no warning when the target exists beside it', () => {
+    const dir = tmpDir('link-ok');
+    writeFileSync(join(dir, 'a.mmd'), 'flowchart LR\n  a["A"]\n');
+    writeFileSync(join(dir, 'a.flow.yaml'), 'version: 1\nnodes:\n  a:\n    link: b\n');
+    writeFileSync(join(dir, 'b.mmd'), 'flowchart LR\n  x["X"]\n');
+    const { stdout, status } = run(['validate', join(dir, 'a.mmd'), '--json']);
+    expect(status).toBe(0);
+    expect((JSON.parse(stdout) as { warnings: unknown[] }).warnings).toEqual([]);
+  });
+
+  it('finds a target nested in a subfolder of the served root (the .mmd\'s own directory)', () => {
+    const dir = tmpDir('link-subfolder');
+    writeFileSync(join(dir, 'a.mmd'), 'flowchart LR\n  a["A"]\n');
+    writeFileSync(join(dir, 'a.flow.yaml'), 'version: 1\nnodes:\n  a:\n    link: sub/b\n');
+    mkdirSync(join(dir, 'sub'));
+    writeFileSync(join(dir, 'sub', 'b.mmd'), 'flowchart LR\n  x["X"]\n');
+    const { stdout, status } = run(['validate', join(dir, 'a.mmd'), '--json']);
+    expect(status).toBe(0);
+    expect((JSON.parse(stdout) as { warnings: unknown[] }).warnings).toEqual([]);
+  });
+
+  it('linking to itself is fine (no warning)', () => {
+    const dir = tmpDir('link-self');
+    writeFileSync(join(dir, 'a.mmd'), 'flowchart LR\n  a["A"]\n');
+    writeFileSync(join(dir, 'a.flow.yaml'), 'version: 1\nnodes:\n  a:\n    link: a\n');
+    const { stdout, status } = run(['validate', join(dir, 'a.mmd'), '--json']);
+    expect(status).toBe(0);
+    expect((JSON.parse(stdout) as { warnings: unknown[] }).warnings).toEqual([]);
+  });
+});
+
+describe('export --format svg: A15 links', () => {
+  it('wraps a linked block in <a href="<target>.svg">', () => {
+    const dir = tmpDir('export-link');
+    writeFileSync(join(dir, 'a.mmd'), 'flowchart LR\n  a["A"]\n');
+    writeFileSync(join(dir, 'a.flow.yaml'), 'version: 1\nnodes:\n  a:\n    link: b\n');
+    const out = join(dir, 'a.svg');
+    const { status } = run(['export', join(dir, 'a.mmd'), '--format', 'svg', '--out', out]);
+    expect(status).toBe(0);
+    const svg = readFileSync(out, 'utf8');
+    expect(svg).toMatch(/<a href="b\.svg">\s*<g data-node-id="a"/);
   });
 });
 

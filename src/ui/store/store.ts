@@ -11,10 +11,11 @@
 //   kept; the selection keeps ids that still exist.
 import type { Files, OpResult } from '../../core/ops';
 import type { LayoutResult, ShapeKind } from '../../core/types';
-import { fetchDiagram, putDiagram, sameVersions, subscribeChanges, type Snapshot, type Versions } from '../api';
+import { fetchDiagram, listDiagrams, putDiagram, sameVersions, subscribeChanges, type Snapshot, type Versions } from '../api';
 import { derive, originMove, sameFiles, withHints, type Derived } from './derive';
 import { fitViewport, zoomAround, type Point, type Rect, type Viewport } from '../canvas/viewport';
 import { notesRowBottom, withAnnotations } from '../notes/geometry';
+import { takeViewport } from './viewportCache';
 
 export type ThemeName = 'light' | 'dark';
 export type SaveStatus = 'saved' | 'saving' | 'error';
@@ -93,6 +94,9 @@ export interface State {
   /** The `.mmd` file name being edited (`?file=`). */
   file: string;
   files: Files | null;
+  /** A15: the diagrams the server lists (§8.2, reused from the home page's API), for the Inspector's link picker and
+   *  the `W-link-missing`/`W-link-traversal` checks; null until fetched (checked afresh each time a diagram opens). */
+  diagramList: string[] | null;
   derived: Derived | null;
   /** What the canvas draws: the current derived document, or the last one that could be laid out (read-only). */
   shown: Derived | null;
@@ -151,6 +155,7 @@ function initialState(): State {
     loadError: null,
     file: '',
     files: null,
+    diagramList: null,
     derived: null,
     shown: null,
     selection: EMPTY_SELECTION,
@@ -235,15 +240,24 @@ export class Store {
     try {
       const snap = await fetchDiagram(file);
       this.disk = snap;
-      this.fitPending = true;
+      // A15: a diagram left through a followed link remembered its viewport (viewportCache.ts); Back restores it
+      // instead of fitting. Read-and-forget, so opening the same diagram again later fits normally.
+      const stored = takeViewport(file);
+      this.fitPending = !stored;
       this.setFiles(snap.files, { keepSelection: false });
-      this.set({ status: 'ready', undoStack: [], redoStack: [], save: 'saved' });
+      this.set({
+        status: 'ready', undoStack: [], redoStack: [], save: 'saved',
+        ...(stored ? { viewport: stored } : {}),
+      });
       this.unsubscribe = subscribeChanges(
         file,
         (s) => this.onExternal(s),
         () => void this.recheck(),
       );
       this.maybeFit();
+      // A15: refreshed on every open (including a followed link's navigation), best-effort — a stale list at worst
+      // shows one link warning a beat late, never a wrong "missing".
+      void listDiagrams().then((files) => this.set({ diagramList: files }), () => {});
     } catch (e) {
       this.set({ status: 'failed', loadError: (e as Error).message });
     }

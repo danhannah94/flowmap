@@ -20,6 +20,11 @@ export interface RenderSvgOptions {
   styles: Record<string, ResolvedStyle>;
   legend: LegendItem[];
   theme: ThemeName;
+  /** A15: well-formed, non-traversing link targets by node id (`linkTargetsByNode`, core/config), for the export
+   *  only (§7.1 "so exported sets stay clickable"). A linked node's `<g>` is wrapped in `<a href="<target>.svg">`.
+   *  Omitted (or a node missing here) draws that node exactly as before. PNG export takes no special handling: it
+   *  screenshots this SVG, and a static raster has no links either way. */
+  links?: Record<string, string>;
 }
 
 const MARGIN = 24;
@@ -125,7 +130,7 @@ function renderLane(lane: LayoutResult['lanes'][number], index: number, theme: T
   ].join('');
 }
 
-function renderNode(node: LayoutResult['nodes'][number], style: ResolvedStyle | undefined, theme: Theme): string {
+function renderNode(node: LayoutResult['nodes'][number], style: ResolvedStyle | undefined, theme: Theme, linkTarget?: string): string {
   const resolved = resolveStyle(style, theme);
   const geometry = shapeGeometry(node.kind, { x: node.x, y: node.y, width: node.width, height: node.height });
   const localArea = textArea(node.kind, node.width, node.height);
@@ -139,7 +144,10 @@ function renderNode(node: LayoutResult['nodes'][number], style: ResolvedStyle | 
   parts.push(renderLabelLines(lines, area, resolved));
   if (resolved.badge) parts.push(renderBadge(resolved.badge, node, theme));
   parts.push('</g>');
-  return parts.join('');
+  const group = parts.join('');
+  // A15 §7.1: wrap a linked block so exported sets stay clickable (the `<g>` itself is unchanged, so every existing
+  // structural check on it still matches).
+  return linkTarget ? `<a href="${escapeXml(`${linkTarget}.svg`)}">${group}</a>` : group;
 }
 
 function renderEdge(edge: LayoutResult['edges'][number], theme: Theme): string {
@@ -273,7 +281,7 @@ export function renderSvg(options: RenderSvgOptions): string {
   parts.push(`<g transform="translate(${num(ox)}, ${num(oy)})">`);
   const laneFree = isLaneFree(layout.lanes);
   layout.lanes.forEach((lane, index) => parts.push(renderLane(lane, index, theme, laneFree)));
-  for (const node of layout.nodes) parts.push(renderNode(node, styles[node.id], theme));
+  for (const node of layout.nodes) parts.push(renderNode(node, styles[node.id], theme, options.links?.[node.id]));
   for (const edge of layout.edges) parts.push(renderEdge(edge, theme));
   // Notes and the title take no part in the layout rules and may sit over anything: drawn last, on top.
   for (const note of notes) parts.push(renderNote(note, noteStyle.get(note.id), theme));

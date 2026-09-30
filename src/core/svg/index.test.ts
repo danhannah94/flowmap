@@ -326,3 +326,25 @@ describe('renderSvg: themes', () => {
     expect(fillOf(dark.root)).toBe('#4a3f12');
   });
 });
+
+// --- A15: linked blocks (design.md §7.1) -------------------------------------------------------
+
+describe('renderSvg: links (A15)', () => {
+  it('wraps a linked block in <a href="<target>.svg">, leaving its <g> untouched', () => {
+    const svg = renderSvg({ title: TITLE, graph, layout, styles, legend, theme: 'light', links: { n1: 'other-diagram' } });
+    const root = parseXml(svg);
+    const a = findOne(root, (n) => n.tag === 'a' && n.attrs.href === 'other-diagram.svg');
+    expect(a).toBeDefined();
+    const g = a!.children.find((c) => c.tag === 'g' && c.attrs['data-node-id'] === 'n1');
+    expect(g).toBeDefined();
+    // An unlinked node isn't wrapped.
+    const n2 = findOne(root, (n) => n.tag === 'g' && n.attrs['data-node-id'] === 'n2');
+    expect(n2).toBeDefined();
+    expect(findOne(root, (n) => n.tag === 'a')).toBe(a); // exactly one <a>, the one just checked
+  });
+
+  it('without `links`, nothing is wrapped', () => {
+    const { root } = renderFixture('light');
+    expect(findOne(root, (n) => n.tag === 'a')).toBeUndefined();
+  });
+});

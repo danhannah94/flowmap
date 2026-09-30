@@ -3,6 +3,8 @@
 // release. Features add gestures with `registerGesture` (for example `handle` for connect, UI15, and `edge-end` for
 // reconnect, UI16) without touching the canvas.
 import { addBlock, dropNodes, editNodeLabel, pinningBlocked } from '../actions';
+import { linkOf } from '../../core/config';
+import { followLink } from '../links';
 import { blockSnapSession } from '../snap/session';
 import type { Store } from '../store/store';
 import { containsRect, rectFromPoints, type Point } from './viewport';
@@ -85,6 +87,15 @@ const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(naviga
  */
 export function extendsSelection(e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }): boolean {
   return e.shiftKey || e.metaKey || (!IS_MAC && e.ctrlKey);
+}
+
+/**
+ * A15: Cmd+click (Mac) / Ctrl+click (elsewhere) on a linked block follows its link instead of selecting (design.md
+ * §4 "Following a link"). Same modifier as `extendsSelection` without Shift: on a block with no link this never
+ * fires, so Cmd/Ctrl+click keeps extending the selection as A11 says.
+ */
+function isLinkModifier(e: { metaKey: boolean; ctrlKey: boolean }): boolean {
+  return e.metaKey || (!IS_MAC && e.ctrlKey);
 }
 
 // ---- Pan: Space+drag anywhere, or the middle button (A11: a plain drag on the background draws a selection box) --
@@ -178,6 +189,12 @@ registerGesture('node', (hit, e, ctx) => {
     // Placing onto a block adds to that block's lane.
     const lane = store.layout?.nodes.find((n) => n.id === hit.id)?.lane;
     if (lane) addBlock(store, s.tool.shape, lane);
+    return null;
+  }
+  // A15: Cmd/Ctrl+click on a linked block follows the link; a plain click still selects (editing must not change).
+  const link = linkOf(s.derived?.doc.config?.nodes[hit.id]);
+  if (link && isLinkModifier(e)) {
+    followLink(store, link);
     return null;
   }
   const wasSelected = s.selection.nodes.includes(hit.id);
