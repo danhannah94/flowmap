@@ -17,11 +17,13 @@ function trashFoldersFor(base: string): string[] {
 test('the delete control is reachable by keyboard and asks before deleting', async ({ page }, info) => {
   const d = makeDiagram(info);
   await page.goto('/');
-  const del = page.getByTestId('diagram-list').locator(`[data-testid="diagram-delete"][data-diagram-file="${d.file}"]`);
-  await expect(del).toHaveCount(1);
+  const opener = page.getByTestId('diagram-list').locator(`[data-testid="diagram-menu"][data-row-target="${d.file}"]`);
+  await expect(opener).toHaveCount(1);
 
-  // Tab reaches it (a plain <button>, so it's in the tab order without extra work) and Enter activates it.
-  await del.focus();
+  // Tab reaches the opener (a plain <button>, so it's in the tab order without extra work) and Enter opens the menu.
+  await opener.focus();
+  await opener.press('Enter');
+  const del = page.locator(`[data-testid="diagram-delete"][data-diagram-file="${d.file}"]`);
   await del.press('Enter');
   const dialog = page.getByTestId('confirm');
   await expect(dialog).toBeVisible();
@@ -42,7 +44,8 @@ test('deleting a diagram moves its files to .flowmap-trash and the row disappear
   const list = page.getByTestId('diagram-list');
   await expect(list.locator(`[data-file="${d.file}"]`)).toBeVisible();
 
-  await list.locator(`[data-testid="diagram-delete"][data-diagram-file="${d.file}"]`).click();
+  await list.locator(`[data-testid="diagram-menu"][data-row-target="${d.file}"]`).click();
+  await page.locator(`[data-testid="diagram-delete"][data-diagram-file="${d.file}"]`).click();
   await page.getByTestId('confirm-yes').click();
 
   await expect(list.locator(`[data-file="${d.file}"]`)).toHaveCount(0);
@@ -70,7 +73,8 @@ test('a tab with the diagram open is told it was deleted, not crashed', async ({
 
   await page.goto('/');
   const list = page.getByTestId('diagram-list');
-  await list.locator(`[data-testid="diagram-delete"][data-diagram-file="${d.file}"]`).click();
+  await list.locator(`[data-testid="diagram-menu"][data-row-target="${d.file}"]`).click();
+  await page.locator(`[data-testid="diagram-delete"][data-diagram-file="${d.file}"]`).click();
   await page.getByTestId('confirm-yes').click();
   await expect(list.locator(`[data-file="${d.file}"]`)).toHaveCount(0);
 

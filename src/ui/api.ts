@@ -30,6 +30,8 @@ async function failure(res: Response): Promise<string> {
   return `${res.status} ${res.statusText}${body ? `: ${body.slice(0, 200)}` : ''}`;
 }
 
+/** Every diagram in the served directory, recursively, as root-relative `.mmd` paths (design.md §8.2 A16: e.g.
+ *  `"brehob/stage-2.mmd"`, same as a bare `"a.mmd"` for one with no folder). */
 export async function listDiagrams(): Promise<string[]> {
   const res = await fetch('/api/diagrams');
   if (!res.ok) throw new Error(await failure(res));
@@ -37,6 +39,91 @@ export async function listDiagrams(): Promise<string[]> {
   // Accept a bare list or {diagrams: [...]}, of names or {file|name} objects.
   const list = Array.isArray(js) ? js : ((js as { diagrams?: unknown[]; files?: unknown[] }).diagrams ?? (js as { files?: unknown[] }).files ?? []);
   return list.map((d) => (typeof d === 'string' ? d : String((d as { file?: string; name?: string }).file ?? (d as { name?: string }).name)));
+}
+
+export interface FolderListing {
+  dir: string;
+  /** Immediate subfolders of `dir`, as root-relative paths. */
+  folders: string[];
+  /** `.mmd` diagrams directly inside `dir` (not its subfolders), as root-relative paths. */
+  diagrams: string[];
+}
+
+/** One folder's immediate contents (design.md §8.2 A16: the home screen's current folder), so an empty subfolder
+ *  still shows up even though it holds no diagram. `dir` is `''` for the served root. */
+export async function listFolder(dir: string): Promise<FolderListing> {
+  const res = await fetch(`/api/folder?dir=${encodeURIComponent(dir)}`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(await failure(res));
+  return (await res.json()) as FolderListing;
+}
+
+export type FolderOutcome = { ok: true; dir: string } | { ok: false; error: string };
+
+async function folderResult(res: Response): Promise<FolderOutcome> {
+  if (res.ok) return { ok: true, dir: ((await res.json()) as { dir: string }).dir };
+  let error = await failure(res);
+  try {
+    const body = (await res.clone().json()) as { error?: string };
+    if (body.error) error = body.error;
+  } catch {
+    /* keep the status-line message */
+  }
+  return { ok: false, error };
+}
+
+/** Creates a folder (design.md §8.2 A16). `parent` is `''` for the served root. */
+export async function createFolder(parent: string, name: string): Promise<FolderOutcome> {
+  const res = await fetch('/api/folder', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dir: parent, name }),
+  });
+  return folderResult(res);
+}
+
+/** Renames a folder's last path segment, keeping it in its parent (design.md §8.2 A16). */
+export async function renameFolder(dir: string, name: string): Promise<FolderOutcome> {
+  const res = await fetch('/api/folder', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dir, name }),
+  });
+  return folderResult(res);
+}
+
+/** Deletes an empty folder (design.md §8.2 A16); refused (with a message) if it isn't empty. */
+export async function deleteFolder(dir: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await fetch(`/api/folder?dir=${encodeURIComponent(dir)}`, { method: 'DELETE' });
+  if (res.ok) return { ok: true };
+  let error = await failure(res);
+  try {
+    const body = (await res.clone().json()) as { error?: string };
+    if (body.error) error = body.error;
+  } catch {
+    /* keep the status-line message */
+  }
+  return { ok: false, error };
+}
+
+/**
+ * Moves a diagram (its `.mmd`, `.flow.yaml`, `.layout.json` and anything else sharing its base name, §8.2 A16) into
+ * folder `to` (`''` for the served root). Returns the diagram's new root-relative `.mmd` path.
+ */
+export async function moveDiagram(file: string, to: string): Promise<{ ok: true; file: string } | { ok: false; error: string }> {
+  const res = await fetch('/api/diagram/move', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file, to }),
+  });
+  if (res.ok) return { ok: true, file: ((await res.json()) as { file: string }).file };
+  let error = await failure(res);
+  try {
+    const body = (await res.clone().json()) as { error?: string };
+    if (body.error) error = body.error;
+  } catch {
+    /* keep the status-line message */
+  }
+  return { ok: false, error };
 }
 
 export async function fetchDiagram(file: string): Promise<Snapshot> {

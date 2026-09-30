@@ -27,7 +27,15 @@ export class DiagramWatcher {
   }
 
   start(): void {
-    this.fsWatcher = watch(this.dir, { persistent: true }, () => this.scheduleCheck());
+    // `recursive: true` (design.md §8.2 A16: diagrams live in subfolders now) works on macOS and Windows; Node
+    // throws ERR_FEATURE_UNAVAILABLE_ON_PLATFORM for it on Linux, where a change inside a subfolder just won't push
+    // live (UI29 degrades to "check on reconnect/reload" there; every other folder feature is unaffected).
+    try {
+      this.fsWatcher = watch(this.dir, { persistent: true, recursive: true }, () => this.scheduleCheck());
+    } catch (e) {
+      console.error('flowmap: recursive directory watch unavailable, watching the top level only:', e);
+      this.fsWatcher = watch(this.dir, { persistent: true }, () => this.scheduleCheck());
+    }
     this.fsWatcher.on('error', (err) => console.error('flowmap: directory watch error:', err));
   }
 

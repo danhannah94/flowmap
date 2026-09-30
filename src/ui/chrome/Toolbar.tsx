@@ -1,6 +1,7 @@
 // The top bar: back to the list, the diagram's name, the command toolbar (§8.3 test ids), save status, theme toggle.
 import { command, TOOLBAR, type Command } from '../commands';
 import { isEnabled } from '../commands/types';
+import { folderOf, homeHref } from '../home/paths';
 import { shallow, useStore, useStoreState } from '../store/hooks';
 import { icons } from './icons';
 import { SaveStatus } from './SaveStatus';
@@ -71,10 +72,12 @@ export function ThemeToggle() {
 export function TopBar() {
   const file = useStoreState((s) => s.file);
   const title = useStoreState((s) => s.derived?.doc.title ?? '');
+  // design.md A16: "back to list" returns to the diagram's own folder, not always the served root.
+  const backHref = homeHref(folderOf(file));
   return (
     <header className="fm-topbar">
       <div className="fm-topbar-left">
-        <a className="fm-home" href="/" title="All diagrams">
+        <a className="fm-home" href={backHref} title="All diagrams">
           <Logo />
         </a>
         <div className="fm-docname">
