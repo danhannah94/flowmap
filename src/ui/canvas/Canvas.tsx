@@ -1,6 +1,9 @@
 // The diagram canvas: one transformed "world" (layout coordinates, §7) holding the title, lanes, edges, nodes and
-// legend, plus pan (Space+drag or the middle button; A11: a plain drag on the background draws a selection box), zoom
-// (wheel, or pinch = Ctrl+wheel) and the pointer gestures (gestures.ts).
+// legend, plus pan (a trackpad's two-finger scroll, Space+drag or the middle button; A11: a plain drag on the
+// background draws a selection box), zoom (a trackpad pinch, a mouse's scroll wheel, or Cmd/Ctrl+wheel, around the
+// cursor; A14) and the pointer gestures (gestures.ts). A14: which way a wheel event goes is decided by
+// `classifyWheel` (wheel-intent.ts); Safari reports a trackpad pinch as gesturestart/gesturechange/gestureend instead
+// of Ctrl+wheel, handled separately below.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getTheme, type Theme } from '../../core/theme';
 import { useStore, useStoreState } from '../store/hooks';
@@ -10,11 +13,22 @@ import { gestureFor, hitTest, onDoubleClick, panGesture, type Gesture, type Gest
 import { InlineEditor } from './InlineEditor';
 import { LanesLayer } from './LanesLayer';
 import { NodesLayer } from './NodesLayer';
+import { getScrollPreference } from './scrollPreference';
 import { toWorld } from './viewport';
+import { classifyWheel, type StickyWheelState, type WheelSample } from './wheel-intent';
 import { NotesLayer } from '../notes';
 import { isTyping } from '../keyboard';
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
+/** Safari's non-standard pinch-gesture event (no `lib.dom.d.ts` type for it): `scale` is relative to the gesture's
+ *  start, 1 at `gesturestart`. Chromium and Firefox report the same gesture as Ctrl+wheel instead (handled by the
+ *  wheel listener below), so this only ever fires in Safari. */
+interface SafariGestureEvent extends Event {
+  scale: number;
+  clientX: number;
+  clientY: number;
+}
 
 export function Canvas() {
   const store = useStore();
@@ -49,20 +63,78 @@ export function Canvas() {
     return { store, local, world: (e) => toWorld(store.getState().viewport, local(e)) };
   }, [store]);
 
-  // Wheel zoom (non-passive so the page itself never scrolls or zooms).
+  // Trackpad pinch is active (Safari's gesturestart..gestureend, below): the wheel listener leaves zooming to it,
+  // since Safari can otherwise also deliver wheel events for the same physical gesture.
+  const gestureActive = useRef(false);
+  // The wheel classifier's sticky state (wheel-intent.ts): which way the current, still-continuing gesture goes.
+  const stickyWheel = useRef<StickyWheelState | null>(null);
+
+  // Wheel navigation (non-passive so the page itself never scrolls or zooms): pan or zoom, by `classifyWheel`.
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       if ((e.target as Element | null)?.closest?.('[data-canvas-control]')) return;
       e.preventDefault();
-      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
-      const dy = e.deltaY * unit;
-      const factor = Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0015));
-      store.zoomBy(factor, ctx.local(e));
+      if (gestureActive.current) return;
+      const sample: WheelSample = {
+        deltaX: e.deltaX,
+        deltaY: e.deltaY,
+        deltaMode: e.deltaMode,
+        ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey,
+        shiftKey: e.shiftKey,
+        wheelDeltaY: (e as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY,
+      };
+      const sticky = classifyWheel(sample, stickyWheel.current, e.timeStamp, getScrollPreference());
+      stickyWheel.current = sticky;
+      if (sticky.intent === 'zoom') {
+        const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+        const dy = e.deltaY * unit;
+        const factor = Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0015));
+        store.zoomBy(factor, ctx.local(e));
+      } else {
+        // Pan: a trackpad's two-finger scroll moves both axes; a mouse's Shift+wheel (no deltaX) pans horizontally.
+        const v = store.getState().viewport;
+        const dx = e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX;
+        const dy = e.shiftKey ? 0 : e.deltaY;
+        store.setViewport({ ...v, x: v.x - dx, y: v.y - dy });
+      }
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
+  }, [store, ctx]);
+
+  // Safari's trackpad pinch: gesturestart/gesturechange/gestureend with `scale` (Chromium/Firefox report the same
+  // gesture as Ctrl+wheel, above). Feature-detected, so this is a no-op everywhere else.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof window === 'undefined' || !('GestureEvent' in window)) return;
+    let last = 1;
+    const start = (e: Event) => {
+      e.preventDefault();
+      gestureActive.current = true;
+      last = 1;
+    };
+    const change = (e: Event) => {
+      e.preventDefault();
+      const ge = e as SafariGestureEvent;
+      const factor = ge.scale / last;
+      last = ge.scale;
+      store.zoomBy(factor, ctx.local(ge));
+    };
+    const end = (e: Event) => {
+      e.preventDefault();
+      gestureActive.current = false;
+    };
+    el.addEventListener('gesturestart', start);
+    el.addEventListener('gesturechange', change);
+    el.addEventListener('gestureend', end);
+    return () => {
+      el.removeEventListener('gesturestart', start);
+      el.removeEventListener('gesturechange', change);
+      el.removeEventListener('gestureend', end);
+    };
   }, [store, ctx]);
 
   // One gesture at a time; moves and the release are routed to it through pointer capture.

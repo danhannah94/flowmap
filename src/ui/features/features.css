@@ -589,6 +589,111 @@
   color: var(--faint);
 }
 
+/* ---- controls legend (A14): a small chip beside the `?` button ---------------------------------------------- */
+
+.fm-legend-btn {
+  position: fixed;
+  left: 54px; /* clear of the `?` button, same row */
+  bottom: 14px;
+  z-index: 15;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--panel-glass);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+
+.fm-legend-btn:hover,
+.fm-legend-btn.fm-active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.fm-legend {
+  position: fixed;
+  left: 100px; /* clear of the shape palette, same as the shortcut list */
+  bottom: 56px;
+  z-index: 35;
+  width: 270px;
+  max-width: calc(100vw - 28px);
+  max-height: calc(100vh - 140px);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  animation: fm-pop 0.14s ease-out;
+}
+
+.fm-legend-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 10px 8px 16px;
+  font-weight: 600;
+  font-size: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.fm-legend-body {
+  overflow: auto;
+  padding: 8px 16px 14px;
+}
+
+.fm-legend-group {
+  margin: 8px 0;
+}
+
+.fm-legend-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-bottom: 3px;
+}
+
+.fm-legend-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.fm-legend-list li {
+  padding: 2px 0;
+}
+
+.fm-legend-pref {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.fm-legend-pref select {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 3px 6px;
+}
+
 /* ---- the title editor: left-aligned with the title it replaces --------------------------------------------- */
 
 .fm-editor-wrap-title {

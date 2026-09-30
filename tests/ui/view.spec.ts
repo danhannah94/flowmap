@@ -131,6 +131,7 @@ test('config colours follow the theme ({light, dark})', async ({ browser }, info
 });
 
 // A11: a plain drag on the background draws a selection box (multiselect.spec.ts); Space+drag pans, from anywhere.
+// A14: a trackpad's two-finger scroll pans too (trackpad-nav.spec.ts has the classifier's edge cases).
 test('pan with Space+drag, zoom with the wheel, fit', async ({ page }, info) => {
   const d = makeDiagram(info);
   await open(page, d);
@@ -160,6 +161,14 @@ test('pan with Space+drag, zoom with the wheel, fit', async ({ page }, info) => 
   await page.mouse.wheel(0, 40);
   await page.keyboard.up('Control');
   await expect.poll(() => zoomOf(page, 'r01')).toBeLessThan(z1);
+  // A14: a trackpad's two-finger scroll (sideways motion in pixel mode) pans instead, leaving the scale alone.
+  const z2 = await zoomOf(page, 'r01');
+  const b2 = (await node(page, 'r01').boundingBox())!;
+  await page.mouse.wheel(20, -15);
+  const b3 = (await node(page, 'r01').boundingBox())!;
+  expect(Math.round(b3.x - b2.x)).toBe(-20);
+  expect(Math.round(b3.y - b2.y)).toBe(15);
+  expect(await zoomOf(page, 'r01')).toBeCloseTo(z2, 5);
   // Fit brings the whole diagram back into view.
   await page.getByTestId('fit').click();
   await expect.poll(() => zoomOf(page, 'r01')).toBeCloseTo(z0, 3);
