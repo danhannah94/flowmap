@@ -1,10 +1,11 @@
-import { readFile, readdir, watch, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, symlink, watch, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
-  applyPut, deleteDiagram, deleteIfExists, diagramFileNames, isValidMmdName, readDiagram, readOptional, TRASH_DIR_NAME,
-  writeAtomic, type PutIo,
+  applyPut, baseNameOf, createFolder, deleteDiagram, deleteFolder, deleteIfExists, diagramFileNames, folderOf,
+  isValidDirPath, isValidFolderName, isValidMmdName, listFolder, listMmdFiles, moveDiagram, PathTraversalError,
+  readDiagram, readOptional, renameFolder, resolveInRoot, TRASH_DIR_NAME, writeAtomic, type PutIo,
 } from './files.js';
 import { makeTempDiagramDir, removeTempDir } from './test-support.js';
 
@@ -13,12 +14,99 @@ describe('isValidMmdName', () => {
     expect(isValidMmdName('purchase-request.mmd')).toBe(true);
   });
 
-  it.each(['../evil.mmd', 'a/b.mmd', 'a\\b.mmd', '/etc/passwd.mmd', 'no-ext', '', null, undefined, '..mmd'])(
+  it('accepts a path in a subfolder (design.md A16: folders are real subdirectories)', () => {
+    expect(isValidMmdName('brehob/stage-2.mmd')).toBe(true);
+    expect(isValidMmdName('a/b/c.mmd')).toBe(true);
+  });
+
+  it.each(['../evil.mmd', '../evil/x.mmd', 'a/../evil.mmd', 'a\\b.mmd', '/etc/passwd.mmd', 'no-ext', '', null, undefined, '..mmd'])(
     'rejects %j',
     (bad) => {
       expect(isValidMmdName(bad as string | null)).toBe(false);
     },
   );
+
+  it.each(['.hidden/a.mmd', 'node_modules/a.mmd', 'exports/a.mmd', '.a.mmd'])('rejects reserved path %j', (bad) => {
+    expect(isValidMmdName(bad)).toBe(false);
+  });
+});
+
+describe('isValidDirPath', () => {
+  it('accepts the root and nested folders', () => {
+    expect(isValidDirPath('')).toBe(true);
+    expect(isValidDirPath('brehob')).toBe(true);
+    expect(isValidDirPath('brehob/legal')).toBe(true);
+  });
+
+  it.each(['..', '../x', '/etc', 'a/..', 'a\\b', '.git', 'node_modules', 'a/exports', '.flowmap-trash'])(
+    'rejects %j',
+    (bad) => {
+      expect(isValidDirPath(bad)).toBe(false);
+    },
+  );
+});
+
+describe('isValidFolderName', () => {
+  it('accepts a plain name', () => {
+    expect(isValidFolderName('brehob')).toBe(true);
+  });
+
+  it.each(['', 'a/b', 'a\\b', '.', '..', '.hidden', 'node_modules', 'exports'])('rejects %j', (bad) => {
+    expect(isValidFolderName(bad)).toBe(false);
+  });
+});
+
+describe('folderOf / baseNameOf', () => {
+  it('splits a root-relative path into its folder and its own name', () => {
+    expect(folderOf('brehob/stage-2.mmd')).toBe('brehob');
+    expect(baseNameOf('brehob/stage-2.mmd')).toBe('stage-2.mmd');
+    expect(folderOf('a.mmd')).toBe('');
+    expect(baseNameOf('a.mmd')).toBe('a.mmd');
+  });
+});
+
+describe('resolveInRoot: the path-traversal guard', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await makeTempDiagramDir();
+  });
+
+  afterEach(async () => {
+    await removeTempDir(dir);
+  });
+
+  it('resolves a plain nested path that does not exist yet (about to be created)', async () => {
+    const resolved = await resolveInRoot(dir, 'brehob/legal/new-diagram.mmd');
+    expect(resolved).toBe(join(dir, 'brehob', 'legal', 'new-diagram.mmd'));
+  });
+
+  it('resolves an existing file', async () => {
+    const resolved = await resolveInRoot(dir, 'purchase-request.mmd');
+    expect(resolved).toBe(join(dir, 'purchase-request.mmd'));
+  });
+
+  it('rejects a symlinked folder that escapes the served root', async () => {
+    const outside = await makeTempDiagramDir();
+    try {
+      await symlink(outside, join(dir, 'escape'), 'dir');
+      await expect(resolveInRoot(dir, 'escape/purchase-request.mmd')).rejects.toBeInstanceOf(PathTraversalError);
+      // Same for a path that doesn't exist yet under the symlink: the guard walks up to the symlinked ancestor.
+      await expect(resolveInRoot(dir, 'escape/not-there-yet.mmd')).rejects.toBeInstanceOf(PathTraversalError);
+    } finally {
+      await removeTempDir(outside);
+    }
+  });
+
+  it('rejects a symlinked file itself that escapes the served root', async () => {
+    const outside = await makeTempDiagramDir();
+    try {
+      await symlink(join(outside, 'purchase-request.mmd'), join(dir, 'escape.mmd'));
+      await expect(resolveInRoot(dir, 'escape.mmd')).rejects.toBeInstanceOf(PathTraversalError);
+    } finally {
+      await removeTempDir(outside);
+    }
+  });
 });
 
 describe('diagramFileNames', () => {
@@ -248,3 +336,205 @@ describe('applyPut: the config and layout file first, the .mmd last', () => {
     }
   });
 });
+
+describe('listMmdFiles: recursive listing (design.md A16)', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await makeTempDiagramDir();
+  });
+
+  afterEach(async () => {
+    await removeTempDir(dir);
+  });
+
+  it('finds diagrams nested in folders, sorted, alongside the root ones', async () => {
+    await mkdir(join(dir, 'brehob'), { recursive: true });
+    await writeFile(join(dir, 'brehob', 'stage-2.mmd'), 'flowchart LR\n  a["A"]\n');
+    await mkdir(join(dir, 'brehob', 'legal'), { recursive: true });
+    await writeFile(join(dir, 'brehob', 'legal', 'nda.mmd'), 'flowchart LR\n  a["A"]\n');
+
+    expect(await listMmdFiles(dir)).toEqual(['brehob/legal/nda.mmd', 'brehob/stage-2.mmd', 'purchase-request.mmd']);
+  });
+
+  it('ignores dot-folders, node_modules and exports', async () => {
+    for (const hidden of ['.flowmap-trash', '.git', 'node_modules', 'exports']) {
+      await mkdir(join(dir, hidden), { recursive: true });
+      await writeFile(join(dir, hidden, 'sneaky.mmd'), 'flowchart LR\n  a["A"]\n');
+    }
+    expect(await listMmdFiles(dir)).toEqual(['purchase-request.mmd']);
+  });
+
+  it('stops descending past the depth limit', async () => {
+    let rel = '';
+    for (let i = 0; i < 20; i++) {
+      rel = rel ? `${rel}/d${i}` : `d${i}`;
+      await mkdir(join(dir, rel), { recursive: true });
+    }
+    await writeFile(join(dir, rel, 'too-deep.mmd'), 'flowchart LR\n  a["A"]\n');
+    const files = await listMmdFiles(dir);
+    expect(files.some((f) => f.endsWith('too-deep.mmd'))).toBe(false);
+    expect(files).toContain('purchase-request.mmd');
+  });
+});
+
+describe('listFolder: one folder’s immediate contents', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await makeTempDiagramDir();
+  });
+
+  afterEach(async () => {
+    await removeTempDir(dir);
+  });
+
+  it('lists immediate subfolders and diagrams of the root, not deeper ones', async () => {
+    await mkdir(join(dir, 'brehob', 'legal'), { recursive: true });
+    await writeFile(join(dir, 'brehob', 'stage-2.mmd'), 'flowchart LR\n  a["A"]\n');
+    const listing = await listFolder(dir, '');
+    expect(listing.folders).toEqual(['brehob']);
+    expect(listing.diagrams).toEqual(['purchase-request.mmd']);
+  });
+
+  it('shows an empty subfolder (with no diagrams) too', async () => {
+    await mkdir(join(dir, 'empty-one'), { recursive: true });
+    const listing = await listFolder(dir, '');
+    expect(listing.folders).toContain('empty-one');
+  });
+
+  it('descends into a named folder for its own immediate contents', async () => {
+    await mkdir(join(dir, 'brehob', 'legal'), { recursive: true });
+    await writeFile(join(dir, 'brehob', 'stage-2.mmd'), 'flowchart LR\n  a["A"]\n');
+    const listing = await listFolder(dir, 'brehob');
+    expect(listing.folders).toEqual(['brehob/legal']);
+    expect(listing.diagrams).toEqual(['brehob/stage-2.mmd']);
+  });
+
+  it('excludes node_modules, exports and dot-folders from the subfolder list', async () => {
+    for (const hidden of ['.flowmap-trash', 'node_modules', 'exports']) await mkdir(join(dir, hidden));
+    const listing = await listFolder(dir, '');
+    expect(listing.folders).toEqual([]);
+  });
+});
+
+describe('folder CRUD (design.md A16)', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await makeTempDiagramDir();
+  });
+
+  afterEach(async () => {
+    await removeTempDir(dir);
+  });
+
+  it('createFolder makes a folder, refusing if something is already there', async () => {
+    expect((await createFolder(dir, 'brehob')).ok).toBe(true);
+    expect((await readdir(dir)).sort()).toContain('brehob');
+    const again = await createFolder(dir, 'brehob');
+    expect(again).toEqual({ ok: false, code: 'exists', error: expect.any(String) });
+  });
+
+  it('renameFolder keeps a folder in its parent and moves everything inside it', async () => {
+    await mkdir(join(dir, 'brehob'), { recursive: true });
+    await writeFile(join(dir, 'brehob', 'stage-2.mmd'), 'flowchart LR\n  a["A"]\n');
+    const r = await renameFolder(dir, 'brehob', 'brehob-2');
+    expect(r.ok).toBe(true);
+    expect(await readdir(dir)).toContain('brehob-2');
+    expect(await readdir(join(dir, 'brehob-2'))).toContain('stage-2.mmd');
+  });
+
+  it('renameFolder refuses a name that already exists, and a missing folder', async () => {
+    await mkdir(join(dir, 'a'), { recursive: true });
+    await mkdir(join(dir, 'b'), { recursive: true });
+    expect((await renameFolder(dir, 'a', 'b')).code).toBe('exists');
+    expect((await renameFolder(dir, 'nope', 'x')).code).toBe('not-found');
+  });
+
+  it('deleteFolder removes an empty folder', async () => {
+    await mkdir(join(dir, 'empty'), { recursive: true });
+    const r = await deleteFolder(dir, 'empty');
+    expect(r.ok).toBe(true);
+    expect(await readdir(dir)).not.toContain('empty');
+  });
+
+  it('deleteFolder refuses a folder holding a diagram or another folder', async () => {
+    await mkdir(join(dir, 'busy'), { recursive: true });
+    await writeFile(join(dir, 'busy', 'a.mmd'), 'flowchart LR\n  a["A"]\n');
+    const r = await deleteFolder(dir, 'busy');
+    expect(r).toEqual({ ok: false, code: 'not-empty', error: expect.any(String) });
+    expect(await readdir(dir)).toContain('busy');
+  });
+
+  it('deleteFolder tolerates (and removes) a stray .DS_Store', async () => {
+    await mkdir(join(dir, 'mac'), { recursive: true });
+    await writeFile(join(dir, 'mac', '.DS_Store'), 'x');
+    expect((await deleteFolder(dir, 'mac')).ok).toBe(true);
+  });
+
+  it('deleteFolder on a folder that does not exist is not-found', async () => {
+    expect((await deleteFolder(dir, 'nope')).code).toBe('not-found');
+  });
+});
+
+describe('moveDiagram: moving all of a diagram’s companion files (design.md A16)', () => {
+  let dir: string;
+  const MMD = 'purchase-request.mmd';
+
+  beforeEach(async () => {
+    dir = await makeTempDiagramDir();
+  });
+
+  afterEach(async () => {
+    await removeTempDir(dir);
+  });
+
+  it('moves the .mmd, .flow.yaml and .layout.json into the target folder', async () => {
+    const before = await readDiagram(dir, MMD);
+    const r = await moveDiagram(dir, MMD, 'brehob');
+    expect(r).toEqual({ ok: true, file: 'brehob/purchase-request.mmd' });
+    expect(await readdir(dir)).not.toContain(MMD);
+    const moved = await readDiagram(dir, 'brehob/purchase-request.mmd');
+    expect(moved.files).toEqual(before.files);
+  });
+
+  it('moves anything else beside it that shares its base name', async () => {
+    await writeFile(join(dir, 'purchase-request.extra.txt'), 'notes');
+    const r = await moveDiagram(dir, MMD, 'brehob');
+    expect(r.ok).toBe(true);
+    expect(await readdir(join(dir, 'brehob'))).toContain('purchase-request.extra.txt');
+  });
+
+  it('moves into the root folder ("") too', async () => {
+    await mkdir(join(dir, 'brehob'), { recursive: true });
+    await rename_(dir, MMD, 'brehob');
+    const r = await moveDiagram(dir, 'brehob/purchase-request.mmd', '');
+    expect(r).toEqual({ ok: true, file: 'purchase-request.mmd' });
+  });
+
+  it('refuses when the destination already has a file with the same name', async () => {
+    await mkdir(join(dir, 'brehob'), { recursive: true });
+    await writeFile(join(dir, 'brehob', 'purchase-request.mmd'), 'flowchart LR\n  a["A"]\n');
+    const r = await moveDiagram(dir, MMD, 'brehob');
+    expect(r).toEqual({ ok: false, code: 'exists', error: expect.any(String) });
+    // Nothing was moved: the source is untouched.
+    expect(await readOptional(join(dir, MMD))).not.toBeNull();
+  });
+
+  it('refuses to move a diagram that does not exist', async () => {
+    const r = await moveDiagram(dir, 'nope.mmd', 'brehob');
+    expect(r).toEqual({ ok: false, code: 'not-found', error: expect.any(String) });
+  });
+
+  it('refuses a move to the folder the diagram is already in', async () => {
+    const r = await moveDiagram(dir, MMD, '');
+    expect(r.ok).toBe(false);
+  });
+});
+
+/** A tiny helper the "moves into the root folder" test above uses to get a diagram into a subfolder first. */
+async function rename_(dir: string, mmdFile: string, toDir: string): Promise<void> {
+  const r = await moveDiagram(dir, mmdFile, toDir);
+  if (!r.ok) throw new Error(r.error);
+}

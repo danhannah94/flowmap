@@ -1,7 +1,7 @@
 // Helpers for the UI tests. Like the acceptance suite, the tests drive the UI only through the §8.3 DOM attributes
 // and check the files on disk.
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, type Locator, type Page, type TestInfo } from '@playwright/test';
 import type { LayoutResult } from '../../src/core/types';
@@ -61,6 +61,23 @@ let seq = 0;
 export function makeDiagram(info: TestInfo, files: Files = PR): Diagram {
   const slug = info.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
   const d = new Diagram(`t-${slug}-${info.workerIndex}-${++seq}`);
+  d.write(files);
+  if (files.config === null) d.write({ config: null });
+  if (files.layout === null) d.write({ layout: null });
+  return d;
+}
+
+/** A folder name unique to this test (design.md A16 tests): parallel workers never collide in the shared E2E_DIR. */
+export function uniqueFolderName(info: TestInfo): string {
+  const slug = info.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+  return `f-${slug}-${info.workerIndex}-${++seq}`;
+}
+
+/** A diagram of its own for one test, written into `folder` (created if needed) inside the served directory. */
+export function makeDiagramIn(info: TestInfo, folder: string, files: Files = PR): Diagram {
+  mkdirSync(join(E2E_DIR, folder), { recursive: true });
+  const slug = info.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+  const d = new Diagram(`${folder}/t-${slug}-${info.workerIndex}-${++seq}`);
   d.write(files);
   if (files.config === null) d.write({ config: null });
   if (files.layout === null) d.write({ layout: null });

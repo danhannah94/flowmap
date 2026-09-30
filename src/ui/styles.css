@@ -1344,3 +1344,144 @@ a.fm-home:hover {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* ---- home page: folders (design.md §8.2 amendment A16) -------------------------------------------------- */
+
+.fm-breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+
+.fm-crumb-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.fm-crumb-sep {
+  color: var(--faint);
+  margin: 0 2px;
+}
+
+.fm-crumb {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 7px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  text-decoration: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+a.fm-crumb:hover {
+  color: var(--text);
+  background: var(--panel-raised);
+}
+
+.fm-crumb-current {
+  color: var(--text);
+  font-weight: 600;
+  cursor: default;
+}
+
+/* A diagram being dragged over a folder or breadcrumb it can be dropped on. */
+.fm-drop-target {
+  background: var(--accent-soft) !important;
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}
+
+.fm-home-head-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.fm-folder-list {
+  margin-bottom: 14px;
+}
+
+.fm-folder-row a {
+  cursor: pointer;
+}
+
+.fm-folder-row .fm-diagram-name svg {
+  color: var(--accent);
+}
+
+.fm-new-folder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fm-new-folder .fm-new-diagram-input {
+  width: 200px;
+}
+
+.fm-folder-rename {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  padding: 8px 10px;
+}
+
+.fm-folder-rename .fm-new-diagram-input {
+  flex: 1;
+}
+
+/* The row menu (diagram "Move to…"/"Delete", folder "Rename"/"Delete"): the same fixed-position popover chrome as
+   the canvas's lane menu (features.css), anchored under its opener instead of tracking the canvas. */
+.fm-row-popover {
+  padding: 5px;
+}
+
+.fm-row-menu-btn.fm-open {
+  opacity: 1;
+  background: var(--panel-raised);
+  border-color: var(--border-strong);
+  color: var(--accent);
+}
+
+.fm-move-dialog {
+  width: 420px;
+}
+
+.fm-move-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  margin: 12px 0;
+  font-size: 13px;
+}
+
+.fm-move-crumbs button.fm-crumb {
+  border: 1px solid transparent;
+}
+
+.fm-move-folder-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  max-height: 220px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fm-move-folder-btn {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 6px;
+}

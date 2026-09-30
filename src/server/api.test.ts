@@ -147,10 +147,13 @@ describe('flowmap server: JSON API', () => {
   });
 
   it('rejects path traversal, absolute paths and non-.mmd names in "file"', async () => {
-    for (const bad of ['../evil.mmd', 'sub/dir.mmd', '/etc/passwd.mmd', '..\\evil.mmd', 'no-extension', '']) {
+    for (const bad of ['../evil.mmd', '/etc/passwd.mmd', '..\\evil.mmd', 'no-extension', '', 'node_modules/a.mmd', '.hidden/a.mmd']) {
       const res = await fetch(`${base}/api/diagram?file=${encodeURIComponent(bad)}`);
       expect(res.status, `expected 400 for file=${JSON.stringify(bad)}`).toBe(400);
     }
+    // A path in a subfolder is now valid shape (design.md A16); it's just a 404 since the folder doesn't exist.
+    const subRes = await fetch(`${base}/api/diagram?file=${encodeURIComponent('sub/dir.mmd')}`);
+    expect(subRes.status).toBe(404);
     const putRes = await fetch(`${base}/api/diagram?file=${encodeURIComponent('../evil.mmd')}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -207,7 +210,7 @@ describe('flowmap server: JSON API', () => {
   });
 
   it('DELETE /api/diagram rejects path traversal, absolute paths and non-.mmd names', async () => {
-    for (const bad of ['../evil.mmd', 'sub/dir.mmd', '/etc/passwd.mmd', '..\\evil.mmd', 'no-extension', '']) {
+    for (const bad of ['../evil.mmd', '/etc/passwd.mmd', '..\\evil.mmd', 'no-extension', '']) {
       const res = await fetch(`${base}/api/diagram?file=${encodeURIComponent(bad)}`, { method: 'DELETE' });
       expect(res.status, `expected 400 for file=${JSON.stringify(bad)}`).toBe(400);
     }
@@ -223,6 +226,168 @@ describe('flowmap server: JSON API', () => {
     expect(res.status).toBe(200);
     const text = await res.text();
     expect(text).toContain('flowmap');
+  });
+});
+
+describe('flowmap server: folders (design.md A16)', () => {
+  let dir: string;
+  let handle: ServeHandle;
+  let base: string;
+
+  beforeEach(async () => {
+    dir = await makeTempDiagramDir();
+    handle = await serve({ dir, port: 0 });
+    base = `http://127.0.0.1:${handle.port}`;
+  });
+
+  afterEach(async () => {
+    await handle.close();
+    await removeTempDir(dir);
+  });
+
+  it('GET /api/diagrams lists diagrams recursively, folder paths included', async () => {
+    const { mkdir, writeFile } = await import('node:fs/promises');
+    await mkdir(join(dir, 'brehob'), { recursive: true });
+    await writeFile(join(dir, 'brehob', 'stage-2.mmd'), 'flowchart LR\n  a["A"]\n');
+    const res = await fetch(`${base}/api/diagrams`);
+    const body = (await res.json()) as { files: string[] };
+    expect(body.files).toEqual(['brehob/stage-2.mmd', 'purchase-request.mmd']);
+  });
+
+  it('GET /api/folder lists the root’s immediate subfolders and diagrams', async () => {
+    const { mkdir, writeFile } = await import('node:fs/promises');
+    await mkdir(join(dir, 'brehob', 'legal'), { recursive: true });
+    await writeFile(join(dir, 'brehob', 'stage-2.mmd'), 'flowchart LR\n  a["A"]\n');
+    const res = await fetch(`${base}/api/folder?dir=`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { dir: string; folders: string[]; diagrams: string[] };
+    expect(body.folders).toEqual(['brehob']);
+    expect(body.diagrams).toEqual(['purchase-request.mmd']);
+  });
+
+  it('GET /api/folder descends into a named folder', async () => {
+    const { mkdir, writeFile } = await import('node:fs/promises');
+    await mkdir(join(dir, 'brehob', 'legal'), { recursive: true });
+    await writeFile(join(dir, 'brehob', 'stage-2.mmd'), 'flowchart LR\n  a["A"]\n');
+    const res = await fetch(`${base}/api/folder?dir=brehob`);
+    const body = (await res.json()) as { folders: string[]; diagrams: string[] };
+    expect(body.folders).toEqual(['brehob/legal']);
+    expect(body.diagrams).toEqual(['brehob/stage-2.mmd']);
+  });
+
+  it('GET /api/folder rejects an invalid or escaping "dir"', async () => {
+    for (const bad of ['..', '/etc', 'node_modules', '.git']) {
+      const res = await fetch(`${base}/api/folder?dir=${encodeURIComponent(bad)}`);
+      expect(res.status, `expected 400 for dir=${JSON.stringify(bad)}`).toBe(400);
+    }
+  });
+
+  it('POST /api/folder creates a folder, and refuses a duplicate', async () => {
+    const res = await fetch(`${base}/api/folder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dir: '', name: 'brehob' }),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { dir: string }).dir).toBe('brehob');
+    const list = (await fetch(`${base}/api/folder?dir=`).then((r) => r.json())) as { folders: string[] };
+    expect(list.folders).toContain('brehob');
+
+    const again = await fetch(`${base}/api/folder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dir: '', name: 'brehob' }),
+    });
+    expect(again.status).toBe(409);
+  });
+
+  it('POST /api/folder rejects a bad name', async () => {
+    const res = await fetch(`${base}/api/folder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dir: '', name: '../evil' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('PUT /api/folder renames a folder in place', async () => {
+    await fetch(`${base}/api/folder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dir: '', name: 'brehob' }),
+    });
+    const res = await fetch(`${base}/api/folder`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dir: 'brehob', name: 'brehob-2' }),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { dir: string }).dir).toBe('brehob-2');
+    const list = (await fetch(`${base}/api/folder?dir=`).then((r) => r.json())) as { folders: string[] };
+    expect(list.folders).toEqual(['brehob-2']);
+  });
+
+  it('DELETE /api/folder removes an empty folder, and refuses a non-empty one', async () => {
+    await fetch(`${base}/api/folder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dir: '', name: 'empty' }),
+    });
+    const res = await fetch(`${base}/api/folder?dir=empty`, { method: 'DELETE' });
+    expect(res.status).toBe(200);
+
+    const { mkdir, writeFile } = await import('node:fs/promises');
+    await mkdir(join(dir, 'busy'), { recursive: true });
+    await writeFile(join(dir, 'busy', 'a.mmd'), 'flowchart LR\n  a["A"]\n');
+    const busyRes = await fetch(`${base}/api/folder?dir=busy`, { method: 'DELETE' });
+    expect(busyRes.status).toBe(409);
+  });
+
+  it('DELETE /api/folder on a missing folder is 404, and the root itself is refused', async () => {
+    expect((await fetch(`${base}/api/folder?dir=nope`, { method: 'DELETE' })).status).toBe(404);
+    expect((await fetch(`${base}/api/folder?dir=`, { method: 'DELETE' })).status).toBe(400);
+  });
+
+  it('POST /api/diagram/move moves a diagram (all its files) into a folder', async () => {
+    await fetch(`${base}/api/folder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dir: '', name: 'brehob' }),
+    });
+    const res = await fetch(`${base}/api/diagram/move`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file: 'purchase-request.mmd', to: 'brehob' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: true; file: string };
+    expect(body.file).toBe('brehob/purchase-request.mmd');
+
+    const gone = await fetch(`${base}/api/diagram?file=purchase-request.mmd`);
+    expect(gone.status).toBe(404);
+    const moved = await fetch(`${base}/api/diagram?file=brehob/purchase-request.mmd`);
+    expect(moved.status).toBe(200);
+
+    const list = (await fetch(`${base}/api/diagrams`).then((r) => r.json())) as { files: string[] };
+    expect(list.files).toEqual(['brehob/purchase-request.mmd']);
+  });
+
+  it('POST /api/diagram/move refuses a destination collision, and a missing diagram', async () => {
+    const missing = await fetch(`${base}/api/diagram/move`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file: 'nope.mmd', to: 'brehob' }),
+    });
+    expect(missing.status).toBe(404);
+  });
+
+  it('POST /api/diagram/move rejects an invalid "to" or "file"', async () => {
+    const res = await fetch(`${base}/api/diagram/move`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file: 'purchase-request.mmd', to: '../evil' }),
+    });
+    expect(res.status).toBe(400);
   });
 });
 

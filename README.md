@@ -17,12 +17,13 @@ You need Node 22 or newer and pnpm.
 
 ```sh
 pnpm install && pnpm build
-pnpm exec flowmap serve <dir>            # the editor for every .mmd in <dir>, on http://127.0.0.1:4870
+pnpm exec flowmap serve <dir>            # the editor for every .mmd under <dir>, recursively, on http://127.0.0.1:4870
 pnpm exec flowmap serve <dir> --port 5000
 ```
 
-Open the address it prints, pick a diagram (or start one with New diagram: a Flowchart, or Swimlanes with a lane
-per role), and edit. `/?file=<name>.mmd` opens one directly.
+Open the address it prints, pick a diagram (or a folder to browse into, or start one with New diagram: a Flowchart,
+or Swimlanes with a lane per role), and edit. `/?file=<path>.mmd` opens one directly (`<path>` may include folders,
+e.g. `brehob/stage-2.mmd`); `/?dir=<path>` opens the list browsing that folder.
 
 The other commands (each takes the path to a `.mmd`; its config and layout files are found beside it):
 
@@ -40,6 +41,28 @@ PNG export renders in headless Chromium through Playwright. If it says the brows
 Development: `pnpm test` runs the unit tests (Vitest), `pnpm typecheck` checks types, `pnpm test:ui` builds and runs
 the browser tests (Playwright), and `pnpm dev:ui` serves the UI with hot reload, proxying `/api` to a running
 `flowmap serve` (set `FLOWMAP_API` if it isn't on the default port).
+
+## Folders
+
+Diagrams can live in folders: real subdirectories of the served directory, so they work with git, the command line
+and any editor. A diagram's id is its path relative to the served directory, without the `.mmd` extension
+(`brehob/stage-2`); a flat directory of diagrams keeps working exactly as before.
+
+The home page shows the current folder's subfolders first, then its diagrams, with a breadcrumb (Root › brehob › …)
+that's remembered in the address (`?dir=brehob`), so the browser's Back button retraces your steps. **New folder**
+creates one in the folder you're looking at; a folder's own menu (the `···` button, like a diagram's) can rename it
+or delete it, but only while it's empty — a folder with anything in it refuses, with a message saying so. New
+diagrams (New diagram) are created in the folder you're in.
+
+To move a diagram into a folder, drag its row onto the folder (or onto a breadcrumb segment, to move it up), or use
+**Move to…** in its own menu, which opens a small dialog to browse to the destination and confirm. Moving a diagram
+takes its `.mmd`, `.flow.yaml` and `.layout.json` (whichever exist) with it, plus anything else beside it sharing its
+base name; it doesn't rewrite `link:` references to it from other diagrams (a separate feature) that point at its old
+path.
+
+Opening a diagram inside a folder, then going back to the list (the flowmap logo, top left), returns you to that
+diagram's own folder, not always the root — and the editor's file name shows the full path, so you always know where
+you are.
 
 ## The three files
 

@@ -10,9 +10,18 @@ import {
   type DiagramVersions,
   type FilesPatch,
   applyPut,
+  createFolder,
   deleteDiagram,
+  deleteFolder,
+  isValidDirPath,
+  isValidFolderName,
   isValidMmdName,
+  listFolder,
   listMmdFiles,
+  moveDiagram,
+  PathTraversalError,
+  renameFolder,
+  resolveInRoot,
 } from './files.js';
 import { defaultUiDir, serveStatic } from './static.js';
 import { DiagramWatcher } from './watcher.js';
@@ -92,6 +101,19 @@ export async function serve(options: ServeOptions): Promise<ServeHandle> {
 
   const heartbeatTimers = new Set<NodeJS.Timeout>();
 
+  /** Defense in depth beyond the string-level checks (`isValidMmdName`/`isValidDirPath`/`isValidFolderName`): the
+   *  symlink-aware guard (design.md §8.2 A16, "reject … symlinks escaping the root"). Every route below calls this
+   *  on each user-supplied path before touching the filesystem. */
+  async function inRoot(relPath: string): Promise<boolean> {
+    try {
+      await resolveInRoot(dir, relPath);
+      return true;
+    } catch (e) {
+      if (e instanceof PathTraversalError) return false;
+      throw e;
+    }
+  }
+
   async function handleDiagramGet(res: ServerResponse, file: string): Promise<void> {
     const snapshot = await watcher.ensureTracked(file);
     if (snapshot.files.mmd === null) {
@@ -155,6 +177,101 @@ export async function serve(options: ServeOptions): Promise<ServeHandle> {
     sendJson(res, 200, { ok: true, trash: result.trashPath });
   }
 
+  /** Parses a JSON object body, or returns `undefined` (and has already sent a 400) if it isn't one. */
+  async function readJsonObjectBody(req: IncomingMessage, res: ServerResponse): Promise<Record<string, unknown> | undefined> {
+    let body: unknown;
+    try {
+      body = JSON.parse(await readBody(req));
+    } catch {
+      sendJson(res, 400, { error: 'invalid JSON body' });
+      return undefined;
+    }
+    if (typeof body !== 'object' || body === null) {
+      sendJson(res, 400, { error: 'body must be an object' });
+      return undefined;
+    }
+    return body as Record<string, unknown>;
+  }
+
+  /** `GET /api/folder?dir=<relDir>` (design.md §8.2 A16): the home screen's current folder — its immediate
+   *  subfolders and diagrams, so an empty subfolder still shows up. */
+  async function handleFolderGet(res: ServerResponse, relDir: string): Promise<void> {
+    const listing = await listFolder(dir, relDir);
+    sendJson(res, 200, { dir: relDir, ...listing });
+  }
+
+  /** `POST /api/folder` `{dir, name}`: creates `dir/name` (`dir` may be `''`, the served root). */
+  async function handleFolderCreate(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const body = await readJsonObjectBody(req, res);
+    if (!body) return;
+    const { dir: parent, name } = body as { dir?: unknown; name?: unknown };
+    if (typeof parent !== 'string' || !isValidDirPath(parent) || typeof name !== 'string' || !isValidFolderName(name)) {
+      sendJson(res, 400, { error: 'body must be { dir: <folder path>, name: <folder name> }' });
+      return;
+    }
+    const relPath = parent ? `${parent}/${name}` : name;
+    if (!(await inRoot(relPath))) {
+      sendJson(res, 400, { error: 'invalid path' });
+      return;
+    }
+    const r = await createFolder(dir, relPath);
+    sendJson(res, r.ok ? 200 : 409, r.ok ? { ok: true, dir: relPath } : r);
+  }
+
+  /** `PUT /api/folder` `{dir, name}`: renames the folder at `dir` to `name`, keeping it in the same parent. */
+  async function handleFolderRename(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const body = await readJsonObjectBody(req, res);
+    if (!body) return;
+    const { dir: relDir, name } = body as { dir?: unknown; name?: unknown };
+    if (typeof relDir !== 'string' || !isValidDirPath(relDir) || relDir === '' || typeof name !== 'string' || !isValidFolderName(name)) {
+      sendJson(res, 400, { error: 'body must be { dir: <existing folder path>, name: <new folder name> }' });
+      return;
+    }
+    const parent = relDir.includes('/') ? relDir.slice(0, relDir.lastIndexOf('/')) : '';
+    const newPath = parent ? `${parent}/${name}` : name;
+    if (!(await inRoot(relDir)) || !(await inRoot(newPath))) {
+      sendJson(res, 400, { error: 'invalid path' });
+      return;
+    }
+    const r = await renameFolder(dir, relDir, name);
+    sendJson(res, r.ok ? 200 : r.code === 'not-found' ? 404 : 409, r.ok ? { ok: true, dir: newPath } : r);
+  }
+
+  /** `DELETE /api/folder?dir=<relDir>`: refused (409) unless the folder is empty. */
+  async function handleFolderDelete(res: ServerResponse, relDir: string): Promise<void> {
+    if (relDir === '') {
+      sendJson(res, 400, { error: 'the served folder itself can’t be deleted' });
+      return;
+    }
+    const r = await deleteFolder(dir, relDir);
+    sendJson(res, r.ok ? 200 : r.code === 'not-found' ? 404 : 409, r);
+  }
+
+  /** `POST /api/diagram/move` `{file, to}`: moves a diagram (and its companion files, §8.2 A16) into folder `to`.
+   *  Exposed as its own endpoint (over `files.ts`'s `moveDiagram`) so a later change can rewrite `link:` values that
+   *  point at the diagram's old path — not implemented here (see the amendment). */
+  async function handleDiagramMove(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const body = await readJsonObjectBody(req, res);
+    if (!body) return;
+    const { file, to } = body as { file?: unknown; to?: unknown };
+    if (typeof file !== 'string' || !isValidMmdName(file) || typeof to !== 'string' || !isValidDirPath(to)) {
+      sendJson(res, 400, { error: 'body must be { file: <diagram.mmd>, to: <folder path> }' });
+      return;
+    }
+    if (!(await inRoot(file)) || !(await inRoot(to))) {
+      sendJson(res, 400, { error: 'invalid path' });
+      return;
+    }
+    watcher.beginWrite(file);
+    let result: Awaited<ReturnType<typeof moveDiagram>>;
+    try {
+      result = await moveDiagram(dir, file, to);
+    } finally {
+      watcher.endWrite(file);
+    }
+    sendJson(res, result.ok ? 200 : result.code === 'not-found' ? 404 : 409, result);
+  }
+
   function handleEvents(req: IncomingMessage, res: ServerResponse, file: string): void {
     void (async () => {
       await watcher.ensureTracked(file);
@@ -216,9 +333,32 @@ export async function serve(options: ServeOptions): Promise<ServeHandle> {
       return;
     }
 
+    if (pathname === '/api/folder' && req.method === 'GET') {
+      const relDir = url.searchParams.get('dir') ?? '';
+      if (!isValidDirPath(relDir) || !(await inRoot(relDir))) {
+        sendJson(res, 400, { error: 'invalid "dir" parameter' });
+        return;
+      }
+      return handleFolderGet(res, relDir);
+    }
+
+    if (pathname === '/api/folder' && req.method === 'POST') return handleFolderCreate(req, res);
+    if (pathname === '/api/folder' && req.method === 'PUT') return handleFolderRename(req, res);
+
+    if (pathname === '/api/folder' && req.method === 'DELETE') {
+      const relDir = url.searchParams.get('dir') ?? '';
+      if (!isValidDirPath(relDir) || !(await inRoot(relDir))) {
+        sendJson(res, 400, { error: 'invalid "dir" parameter' });
+        return;
+      }
+      return handleFolderDelete(res, relDir);
+    }
+
+    if (pathname === '/api/diagram/move' && req.method === 'POST') return handleDiagramMove(req, res);
+
     if (pathname === '/api/diagram' && (req.method === 'GET' || req.method === 'PUT' || req.method === 'DELETE')) {
       const file = url.searchParams.get('file');
-      if (!isValidMmdName(file)) {
+      if (!isValidMmdName(file) || !(await inRoot(file))) {
         sendJson(res, 400, { error: 'invalid "file" parameter' });
         return;
       }
@@ -229,7 +369,7 @@ export async function serve(options: ServeOptions): Promise<ServeHandle> {
 
     if (pathname === '/api/events' && req.method === 'GET') {
       const file = url.searchParams.get('file');
-      if (!isValidMmdName(file)) {
+      if (!isValidMmdName(file) || !(await inRoot(file))) {
         sendJson(res, 400, { error: 'invalid "file" parameter' });
         return;
       }
@@ -239,7 +379,7 @@ export async function serve(options: ServeOptions): Promise<ServeHandle> {
 
     if (pathname === '/api/export' && req.method === 'POST') {
       const file = url.searchParams.get('file');
-      if (!isValidMmdName(file)) {
+      if (!isValidMmdName(file) || !(await inRoot(file))) {
         sendJson(res, 400, { error: 'invalid "file" parameter' });
         return;
       }
