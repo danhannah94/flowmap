@@ -644,3 +644,101 @@
     transform: translate(-50%, 6px);
   }
 }
+
+/* ---- A8 lane resize: a handle on each lane's far edge across the flow, and the new edge while dragging ------- */
+
+.fm-lane-resize {
+  --hit: clamp(6px, calc(10px / var(--zoom, 1)), 30px);
+  position: absolute;
+  touch-action: none;
+}
+
+.fm-lane-resize.fm-LR {
+  height: var(--hit);
+  transform: translateY(-50%);
+  cursor: ns-resize;
+}
+
+.fm-lane-resize.fm-TB {
+  width: var(--hit);
+  transform: translateX(-50%);
+  cursor: ew-resize;
+}
+
+/* A thin accent line on the edge while hovering, so the handle can be found. */
+.fm-lane-resize::after {
+  content: '';
+  position: absolute;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.1s;
+  pointer-events: none;
+}
+
+.fm-lane-resize.fm-LR::after {
+  left: 0;
+  right: 0;
+  top: calc(50% - clamp(1px, calc(1.5px / var(--zoom, 1)), 4px));
+  height: clamp(2px, calc(3px / var(--zoom, 1)), 8px);
+}
+
+.fm-lane-resize.fm-TB::after {
+  top: 0;
+  bottom: 0;
+  left: calc(50% - clamp(1px, calc(1.5px / var(--zoom, 1)), 4px));
+  width: clamp(2px, calc(3px / var(--zoom, 1)), 8px);
+}
+
+.fm-lane-resize:hover::after {
+  opacity: 0.7;
+}
+
+.fm-lane-resize-preview {
+  position: absolute;
+  box-sizing: border-box;
+  background: var(--accent-soft);
+  pointer-events: none;
+}
+
+.fm-lane-resize-preview.fm-LR {
+  border-bottom: clamp(1.5px, calc(2px / var(--zoom, 1)), 6px) dashed var(--accent);
+}
+
+.fm-lane-resize-preview.fm-TB {
+  border-right: clamp(1.5px, calc(2px / var(--zoom, 1)), 6px) dashed var(--accent);
+}
+
+.fm-lane-resize-readout {
+  position: absolute;
+  padding: calc(2px / var(--zoom, 1)) calc(7px / var(--zoom, 1));
+  border-radius: calc(5px / var(--zoom, 1));
+  background: var(--accent-strong);
+  color: #fff;
+  font: 600 calc(11px / var(--zoom, 1)) / 1.35 Inter, sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.fm-lane-resize-preview.fm-LR .fm-lane-resize-readout {
+  left: 48px;
+  bottom: calc(6px / var(--zoom, 1));
+}
+
+.fm-lane-resize-preview.fm-TB .fm-lane-resize-readout {
+  top: 48px;
+  right: calc(6px / var(--zoom, 1));
+}
+
+html[data-fm-lane-resizing='LR'] * {
+  cursor: ns-resize !important;
+}
+
+html[data-fm-lane-resizing='TB'] * {
+  cursor: ew-resize !important;
+}
+
+.fm-canvas[data-readonly='true'] .fm-lane-resize,
+.fm-canvas[data-placing='true'] .fm-lane-resize,
+.fm-canvas[data-dragging='true'] .fm-lane-resize {
+  display: none;
+}

@@ -1,5 +1,6 @@
 // Lanes: full-width bands (§6 L1) in display order, each with its header in the LANE_HEADER strip at the start of
-// the flow (left for LR, top for TB). The header is the lane's handle for later features (rename, menu, reorder).
+// the flow (left for LR, top for TB). The header is the lane's handle for later features (rename, menu, reorder);
+// lane features can also draw over the bands (A8: the resize handle on each lane's far edge).
 // A diagram without subgraphs (amendment A4) is a plain flowchart: its one lane, Unassigned, is drawn bare (no band,
 // no header, and it lets clicks through to the canvas), keeping only its `data-lane-id` (§8.3).
 import { memo } from 'react';
@@ -51,6 +52,16 @@ export type LaneHeaderExtras = (lane: LayoutLane) => React.ReactNode;
 let laneHeaderExtras: LaneHeaderExtras | null = null;
 export function setLaneHeaderExtras(fn: LaneHeaderExtras | null): void {
   laneHeaderExtras = fn;
+}
+
+/**
+ * Hook point for lane features: content drawn after every lane band, above the bands and below lines and blocks (A8:
+ * the lane resize handles). Not drawn in a diagram without subgraphs (A4: it has no bands).
+ */
+export type LaneLayerExtras = (layout: LayoutResult) => React.ReactNode;
+let laneLayerExtras: LaneLayerExtras | null = null;
+export function setLaneLayerExtras(fn: LaneLayerExtras | null): void {
+  laneLayerExtras = fn;
 }
 
 /**
@@ -113,6 +124,7 @@ export function LanesLayer({ layout, theme }: { layout: LayoutResult; theme: The
           <span className="fm-lane-preview-label">Unassigned</span>
         </div>
       ) : null}
+      {laneLayerExtras?.(layout)}
     </div>
   );
 }

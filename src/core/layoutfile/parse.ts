@@ -7,7 +7,9 @@
 // - `checkRanges` needs the display lane order: `across` (of pins and bend points) may be negative only in the first
 //   displayed lane. `checkLayoutRefs` needs the ids: warnings for entries of unknown nodes, edges and notes.
 // `effectivePlacements` then says what applies: stale pins and point sets with a missing lane are ignored.
-import type { LayoutEdgeEntry, LayoutFile, LayoutNodeEntry, Pin, Problem, Problems, Side, Size, XY } from '../types';
+import type {
+  LayoutEdgeEntry, LayoutFile, LayoutLaneEntry, LayoutNodeEntry, Pin, Problem, Problems, Side, Size, XY,
+} from '../types';
 import { pinOf, sizeOf, SIDES } from '../types';
 
 export interface LayoutParse {
@@ -16,15 +18,18 @@ export interface LayoutParse {
   problems: Problems;
 }
 
-const TOP_KEYS = new Set(['version', 'nodes', 'edges', 'notes', 'title', 'hints']);
+const TOP_KEYS = new Set(['version', 'nodes', 'lanes', 'edges', 'notes', 'title', 'hints']);
 const PIN_KEYS = ['lane', 'along', 'across'] as const;
 const SIZE_KEYS = ['width', 'height'] as const;
 const NODE_KEYS = new Set<string>([...PIN_KEYS, ...SIZE_KEYS]);
 const EDGE_KEYS = new Set(['source_side', 'target_side', 'points', 'label_at']);
 const XY_KEYS = new Set(['x', 'y']);
+const LANE_KEYS = new Set(['size']);
 
 /** The smallest stored width or height (§5). */
 export const MIN_SIZE = 40;
+/** The smallest stored lane size (A8): every lane is at least 100 px across anyway (§6 L1). */
+export const MIN_LANE_SIZE = 100;
 
 const err = (message: string): Problem => ({ code: 'E-layout', line: null, message });
 const warn = (code: string, message: string): Problem => ({ code, line: null, message });
@@ -42,6 +47,8 @@ export function put<T>(obj: Record<string, T>, key: string, value: NoInfer<T>): 
 export const isCoord = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
 /** A stored width or height: an integer of at least 40. */
 export const isSizeValue = (v: unknown): v is number => isCoord(v) && v >= MIN_SIZE;
+/** A stored lane size (A8): an integer of at least 100. */
+export const isLaneSizeValue = (v: unknown): v is number => isCoord(v) && v >= MIN_LANE_SIZE;
 export const isSide = (v: unknown): v is Side => typeof v === 'string' && (SIDES as readonly string[]).includes(v);
 /** `label_at`: a number from 0 to 1 with at most two decimals. */
 export const isLabelAt = (v: unknown): v is number =>
@@ -130,6 +137,16 @@ function readXY(v: unknown): { xy?: XY; bad: string[] } {
   return bad.length ? { bad } : { xy: { x: n0(v.x as number), y: n0(v.y as number) }, bad };
 }
 
+function readLaneEntry(v: unknown): { entry?: LayoutLaneEntry; bad: string[] } {
+  if (!isObject(v)) return { bad: ['must be an object {size}'] };
+  if (Object.keys(v).length === 0) return { bad: ['is empty'] };
+  const bad: string[] = [];
+  const extra = unknownKeys(v, LANE_KEYS);
+  if (extra.length) bad.push(`unknown key${extra.length > 1 ? 's' : ''} ${keyList(extra)}`);
+  if (!isLaneSizeValue(v.size)) bad.push(`"size" must be an integer of at least ${MIN_LANE_SIZE}`);
+  return bad.length ? { bad } : { entry: { size: v.size as number }, bad };
+}
+
 /**
  * Read an id-keyed map section, reporting every bad entry. `label` names an entry in messages (v1.0's wording is kept
  * for pins, so a v1.0 file's `validate` output is unchanged).
@@ -160,7 +177,9 @@ const hasPinKey = (v: unknown) => !isObject(v) || PIN_KEYS.some((k) => k in v);
 /**
  * Parse a layout file (§5). `E-layout` (line null) for invalid JSON, a key outside §5's list (plus `hints`, which may
  * hold anything and passes through untouched), an empty entry, or a value of the wrong type or range. Every bad
- * entry is reported. An empty `edges` or `notes` map is accepted and dropped (the writer never writes one).
+ * entry is reported. An empty `lanes`, `edges` or `notes` map is accepted and dropped (the writer never writes one).
+ * (A8) `lanes` maps a lane id to `{size}`; an entry for a lane that doesn't exist is not a problem here (the UI's next
+ * write drops it).
  */
 export function parseLayoutFile(text: string | null): LayoutParse {
   const problems: Problems = { errors: [], warnings: [] };
@@ -185,6 +204,10 @@ export function parseLayoutFile(text: string | null): LayoutParse {
     const r = readNodeEntry(v);
     return { value: r.entry, bad: r.bad };
   }, (id, v) => (hasPinKey(v) ? `Pin "${id}"` : `Node entry "${id}"`));
+  const lanes = readSection(js, 'lanes', 'lane sizes by lane id', problems, (v) => {
+    const r = readLaneEntry(v);
+    return { value: r.entry, bad: r.bad };
+  }, (id) => `Lane entry "${id}"`);
   const edges = readSection(js, 'edges', 'line entries by edge id', problems, (v) => {
     const r = readEdgeEntry(v);
     return { value: r.entry, bad: r.bad };
@@ -201,6 +224,7 @@ export function parseLayoutFile(text: string | null): LayoutParse {
   }
   if (problems.errors.length) return { file: null, problems };
   const file: LayoutFile = { version: 1, nodes: nodes ?? {} };
+  if (lanes && Object.keys(lanes).length) file.lanes = lanes;
   if (edges && Object.keys(edges).length) file.edges = edges;
   if (notes && Object.keys(notes).length) file.notes = notes;
   if (title) file.title = title;

@@ -1,9 +1,11 @@
-// Lane operations (design.md §8.2 UI18–UI21).
+// Lane operations (design.md §8.2 UI18–UI21), promoting Unassigned to a real lane (A7) and lane sizes (A8).
 import { laneOrder } from '../config';
-import { dropPointsInLanes, removePins, renameLane as renameLaneInLayout } from '../layoutfile';
-import { isReservedId, type Lane } from '../mmd';
+import {
+  dropPointsInLanes, removeLaneEntries, removePins, renameLane as renameLaneInLayout, roundPx, setLaneSize,
+} from '../layoutfile';
+import { isReservedId, undeclaredNodes, type Lane, type NodeDecl } from '../mmd';
 import { UNASSIGNED } from '../types';
-import { checkBlockLabel, refuse, run, type Ctx, type Files, type OpResult } from './context';
+import { checkBlockLabel, loadLayout, refuse, run, type Ctx, type Files, type OpResult } from './context';
 import { deleteBlocksAndEdges } from './nodes';
 
 /**
@@ -23,6 +25,14 @@ function laneOf(ctx: Ctx, id: string): Lane {
   return lane;
 }
 
+/** UI18: the id for a new lane with this label: its slug, with `-2`, `-3`… added until it isn't taken. */
+function freshLaneId(ctx: Ctx, label: string): string {
+  const base = laneSlug(label);
+  let id = base;
+  for (let k = 2; ctx.isTaken(id); k++) id = `${base}-${k}`;
+  return id;
+}
+
 // ---- UI18 Add lane
 
 /**
@@ -33,9 +43,7 @@ function laneOf(ctx: Ctx, id: string): Lane {
 export function addLane(files: Files, label: string): OpResult<{ id: string }> {
   return run(files, (ctx) => {
     checkBlockLabel(label, 'A lane label');
-    const base = laneSlug(label);
-    let id = base;
-    for (let k = 2; ctx.isTaken(id); k++) id = `${base}-${k}`;
+    const id = freshLaneId(ctx, label);
     ctx.d.lanes.push({ id, label, comments: [], nodes: [], endComments: [] });
     if (ctx.config?.lanes) {
       ctx.editConfig('always', (doc) => doc.deleteLaneEntry(id));
@@ -60,8 +68,8 @@ export function setLaneLabel(files: Files, id: string, label: string): OpResult 
 
 /**
  * UI19: rename a lane's id everywhere: the subgraph, the config `lanes` entry (in place; a stale entry for the new id
- * is removed, R5.13), style rules matching `lane` with the old value, and the `lane` of every pin and (v1.1) bend
- * point.
+ * is removed, R5.13), style rules matching `lane` with the old value, the `lane` of every pin and (v1.1) bend
+ * point, and (A8) the key of its size entry. It is the same lane: if it was displayed first, it still is.
  */
 export function renameLane(files: Files, oldId: string, newId: string): OpResult {
   return run(files, (ctx) => {
@@ -69,9 +77,75 @@ export function renameLane(files: Files, oldId: string, newId: string): OpResult
     if (newId === oldId) return {};
     ctx.checkNewId(newId, 'lane');
     lane.id = newId;
+    ctx.noteLaneRename(oldId, newId);
     ctx.editConfig([oldId, newId], (doc) => doc.deleteLaneEntry(newId));
     ctx.editConfig([oldId], (doc) => doc.renameLane(oldId, newId));
     ctx.editLayout([oldId], (file) => renameLaneInLayout(file, oldId, newId));
+    return {};
+  });
+}
+
+// ---- A7 Rename Unassigned: it becomes a real lane
+
+/**
+ * A7: rename the Unassigned lane, which promotes it to a real lane: a subgraph with this label and the id UI18 would
+ * give it, appended after the last subgraph, holding every unlaned block in file declaration order, with its attached
+ * comments (a node that exists only in edges is declared there, as R6.5 does when it moves). It shows where Unassigned
+ * did, last: it is appended to the config `lanes` list if the config has one that lists every lane (as UI18 does);
+ * a list that leaves some lanes out is left alone, since appending would show the new lane before those. Everything
+ * stays where it is on screen: every pin and bend point in `_unassigned` (applied or not), the lane's size (A8) and
+ * every style rule matching `lane: _unassigned` take the new id. The Unassigned lane then no longer shows. Refused
+ * when no block is unlaned (the lane isn't showing).
+ */
+export function promoteUnassigned(files: Files, label: string): OpResult<{ id: string }> {
+  return run(files, (ctx) => {
+    checkBlockLabel(label, 'A lane label');
+    const undeclared = undeclaredNodes(ctx.d);
+    if (ctx.d.unlaned.length === 0 && undeclared.length === 0) refuse('No block is in Unassigned, so there is no lane to rename');
+    const id = freshLaneId(ctx, label);
+    const listed = ctx.config?.lanes?.map((l) => l.id);
+    const complete = !listed || ctx.d.lanes.every((l) => listed.includes(l.id));
+    const declared: NodeDecl[] = undeclared.map((n) => ({ id: n.id, shape: 'step', label: n.id, className: null, comments: [] }));
+    ctx.d.lanes.push({ id, label, comments: [], nodes: [...ctx.d.unlaned, ...declared], endComments: [] });
+    ctx.d.unlaned = [];
+    ctx.noteLaneRename(UNASSIGNED, id);
+    ctx.editConfig([id], (doc) => doc.deleteLaneEntry(id));
+    ctx.editConfig([UNASSIGNED], (doc) => doc.renameLaneMatches(UNASSIGNED, id));
+    if (complete) ctx.editConfig(ctx.config?.lanes ? 'always' : ['lanes'], (doc) => doc.appendLane(id));
+    ctx.editLayout([UNASSIGNED], (file) => renameLaneInLayout(file, UNASSIGNED, id));
+    return { id };
+  });
+}
+
+// ---- A8 Lane size
+
+/**
+ * A8: set a lane's size across the flow, by dragging its far edge (the bottom of its band for `LR`, the right for
+ * `TB`). `size` is the band's thickness as drawn (layout px; rounded to a whole pixel as UI10 rounds). The lane can't
+ * be thinner than its content needs (`LayoutOutput.laneNeeds`): at or below that, the stored size is removed and the
+ * lane fits its content again. The layout file stores it from the lane's zero line, so the first lane's growth U (§6
+ * Frame) is left out. Reports the size stored (null: none).
+ */
+export function resizeLane(files: Files, laneId: string, size: number): OpResult<{ size: number | null }> {
+  return run(files, (ctx) => {
+    ctx.requireLayout();
+    if (typeof size !== 'number' || !Number.isFinite(size)) refuse('A lane size must be a finite number');
+    const out = loadLayout(ctx.input);
+    const i = out ? out.result.lanes.findIndex((l) => l.id === laneId) : -1;
+    if (!out || i < 0) return refuse(`There is no lane "${laneId}" showing`);
+    const need = out.laneNeeds[laneId]!;
+    const want = roundPx(size);
+    const stored = want <= need ? null : want - (i === 0 ? out.translation.across : 0);
+    ctx.editLayout('always', (file) => setLaneSize(file, laneId, stored));
+    return { size: stored };
+  });
+}
+
+/** A8 "Reset size": remove a lane's stored size, so it fits its content again. */
+export function resetLaneSize(files: Files, laneId: string): OpResult {
+  return run(files, (ctx) => {
+    ctx.requireLane(laneId, { unassigned: true });
+    ctx.editLayout([laneId], (file) => setLaneSize(file, laneId, null));
     return {};
   });
 }
@@ -125,6 +199,7 @@ export type DeleteLaneMode =
  * comments, to `target` (a lane or `_unassigned`) in order, dropping its pin; `delete` deletes the blocks as UI14
  * does (their edges, comments and layout entries; never their config metadata). In every mode (v1.1 §8.2) the
  * `points` of every (live) line with a bend point in the lane are removed; orphaned entries' points are left for R12.
+ * (A8) The lane's size entry goes too.
  */
 export function deleteLane(files: Files, id: string, how: DeleteLaneMode): OpResult {
   return run(files, (ctx) => {
@@ -148,7 +223,7 @@ export function deleteLane(files: Files, id: string, how: DeleteLaneMode): OpRes
     // Live lines only: an orphaned entry's bend points in the lane are leftovers (R14.3, R15), which the first-lane
     // re-expression in `commit` gives U (or removes if still negative); in a later lane they are simply stale.
     const live = ctx.edgeIds();
-    ctx.editLayout([id], (file) => dropPointsInLanes(file, id, live));
+    ctx.editLayout([id], (file) => removeLaneEntries(dropPointsInLanes(file, id, live), [id]));
     return {};
   });
 }

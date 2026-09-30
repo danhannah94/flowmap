@@ -1,8 +1,10 @@
-// Lane actions (design.md §8.2 UI18–UI21): each turns a person's intent into one core operation through
-// `store.apply` (one undo step). Transient UI state (the open lane menu, the delete dialog) lives in signals here.
+// Lane actions (design.md §8.2 UI18–UI21, A7 renaming Unassigned, A8 lane sizes): each turns a person's intent into
+// one core operation through `store.apply` (one undo step). Transient UI state (the open lane menu, the delete
+// dialog) lives in signals here.
 import { LANE_HEADER } from '../../core/layout';
 import {
-  addLane, deleteLane, moveLane, renameLane, reorderLanes, setLaneLabel, type Files, type OpResult,
+  addLane, deleteLane, moveLane, promoteUnassigned, renameLane, reorderLanes, resetLaneSize, setLaneLabel,
+  type Files, type OpResult,
 } from '../../core/ops';
 import { UNASSIGNED } from '../../core/types';
 import type { LayoutLane } from '../canvas/geometry';
@@ -85,13 +87,12 @@ export function promptAddLane(store: Store): void {
   });
 }
 
-/** UI19: edit a lane's label in place (double-click its header). */
+/**
+ * UI19: edit a lane's label in place (double-click its header). A7: renaming Unassigned makes it a real lane with that
+ * label, holding every unlaned block (`promoteUnassigned`); the Unassigned lane then goes away.
+ */
 export function editLaneLabel(store: Store, id: string): boolean {
   if (store.readOnlyReason()) return false;
-  if (id === UNASSIGNED) {
-    store.toast('Unassigned isn’t a lane in the file, so it can’t be renamed', 'info');
-    return true;
-  }
   const lane = laneById(store, id);
   const layout = store.layout;
   if (!lane || !layout) return false;
@@ -105,7 +106,13 @@ export function editLaneLabel(store: Store, id: string): boolean {
     align: 'start',
     commit: (text) => {
       if (text === lane.label) return;
-      store.apply(setLaneLabel, id, text);
+      if (id !== UNASSIGNED) {
+        store.apply(setLaneLabel, id, text);
+        return;
+      }
+      const wasSelected = store.getState().selection.lane === UNASSIGNED;
+      const r = store.apply(promoteUnassigned, text);
+      if (r.ok && wasSelected) store.select({ lane: r.id });
     },
   });
   return true;
@@ -135,6 +142,19 @@ export function editLaneId(store: Store, id: string): void {
       if (wasSelected) store.select({ lane: next });
     },
   });
+}
+
+/** A8: the lane's stored size (layout file `lanes`), or null when it fits its content. */
+export function storedLaneSize(store: Store, id: string): number | null {
+  const lanes = store.getState().derived?.doc.layoutFile?.lanes;
+  return lanes && Object.hasOwn(lanes, id) ? lanes[id]!.size : null;
+}
+
+/** A8 "Reset size" (lane menu, or a double-click on the lane's resize handle): the lane fits its content again. */
+export function resetLaneSizeOf(store: Store, id: string): void {
+  laneMenu.set(null);
+  if (storedLaneSize(store, id) === null) return;
+  store.apply(resetLaneSize, id);
 }
 
 /** UI20: Move up / Move down (left / right for TB). The first lane up, or the last down, changes nothing. */

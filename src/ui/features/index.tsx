@@ -1,10 +1,10 @@
-// Lanes, diagram, export and keyboard features (UI18–UI23, UI32, UI33), wired into the foundation through its
-// extension points only: the lane-header extras hook (the lane menu), the gesture and double-click registries (header
-// drag reorder, header double-click), and the overlay slot (menu popover, delete dialog, drop indicator, export
-// result, shortcut list). Imported once, for its side effects, by commands/lanes.ts.
+// Lanes, diagram, export and keyboard features (UI18–UI23, UI32, UI33, A7, A8), wired into the foundation through
+// its extension points only: the lane-header extras hook (the lane menu), the lane-layer extras hook (A8 resize
+// handles), the gesture and double-click registries (header drag reorder, header double-click), and the overlay slot
+// (menu popover, delete dialog, drop indicator, export result, shortcut list). Imported once, for its side effects, by commands/lanes.ts.
 import { useEffect } from 'react';
 import { registerDoubleClick } from '../canvas/gestures';
-import { setLaneHeaderExtras } from '../canvas/LanesLayer';
+import { setLaneHeaderExtras, setLaneLayerExtras } from '../canvas/LanesLayer';
 import { overlays } from '../chrome/Panels';
 import { useStore } from '../store/hooks';
 import { editTitle } from './diagramActions';
@@ -13,6 +13,7 @@ import { ExportResult } from './ExportResult';
 import { editLaneLabel } from './laneActions';
 import { LaneDeleteDialog } from './LaneDeleteDialog';
 import { LaneMenuButton, LaneMenuPopover } from './LaneMenu';
+import { LaneResizeLayer } from './laneResize';
 import { LaneDragOverlay, registerLaneReorder } from './laneReorder';
 import { ShortcutList } from './ShortcutList';
 import './features.css';
@@ -23,6 +24,7 @@ export function installFeatures(): void {
   if (installed) return;
   installed = true;
   setLaneHeaderExtras((lane) => <LaneMenuButton lane={lane} />);
+  setLaneLayerExtras((layout) => <LaneResizeLayer layout={layout} />);
   registerLaneReorder();
   registerDoubleClick('lane', (store, hit) => (hit.kind === 'lane' && hit.header ? editLaneLabel(store, hit.id) : false));
   overlays.push({ id: 'lanes-diagram', Component: FeatureHost });

@@ -18,8 +18,8 @@ export {
   type NoteStyle,
 } from './notes';
 export {
-  addLane, deleteLane, displayLaneOrder, laneSlug, moveLane, renameLane, reorderLanes, setLaneLabel,
-  type DeleteLaneMode,
+  addLane, deleteLane, displayLaneOrder, laneSlug, moveLane, promoteUnassigned, renameLane, reorderLanes,
+  resetLaneSize, resizeLane, setLaneLabel, type DeleteLaneMode,
 } from './lanes';
 export { setDirection, setTitle } from './diagram';
 export {

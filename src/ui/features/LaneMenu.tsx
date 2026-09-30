@@ -1,21 +1,23 @@
 // The lane menu (UI19–UI21, §8.3): an opener inside each lane header (`data-testid="lane-menu"`, via
-// `setLaneHeaderExtras`) and a popover with rename, id, move up/down and delete. The popover is rendered by the
-// feature host outside the canvas, so it is never scaled or clipped by the canvas.
+// `setLaneHeaderExtras`) and a popover with rename, id, move up/down, (A8) reset size and delete. Unassigned's menu
+// has only rename (A7: it becomes a real lane) and reset size. The popover is rendered by the feature host outside
+// the canvas, so it is never scaled or clipped by the canvas.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { UNASSIGNED } from '../../core/types';
 import { editable } from '../commands/types';
 import type { LayoutLane } from '../canvas/geometry';
 import { useStore, useStoreState } from '../store/hooks';
 import {
-  blocksIn, editLaneId, editLaneLabel, laneMenu, moveLaneBy, movableLanes, requestDeleteLane,
+  blocksIn, editLaneId, editLaneLabel, laneMenu, moveLaneBy, movableLanes, requestDeleteLane, resetLaneSizeOf,
+  storedLaneSize,
 } from './laneActions';
 import { useSignal } from './signal';
 
-/** The opener inside a lane header. Unassigned has none: it can't be renamed, moved or deleted. */
+/** The opener inside a lane header (Unassigned's too: it can be renamed, A7, though not moved or deleted). */
 export function LaneMenuButton({ lane }: { lane: LayoutLane }) {
   const menu = useSignal(laneMenu);
   const canEdit = useStoreState(editable);
-  if (lane.id === UNASSIGNED || !canEdit) return null;
+  if (!canEdit) return null;
   const open = menu?.lane === lane.id;
   return (
     <button
@@ -50,6 +52,8 @@ export function LaneMenuPopover() {
   const lane = useStoreState((s) => (menu ? s.shown?.layout?.lanes.find((l) => l.id === menu.lane) ?? null : null));
   const viewport = useStoreState((s) => s.viewport);
   const direction = useStoreState((s) => s.shown?.layout?.direction ?? 'LR');
+  // Re-render when the lane's stored size (A8) comes or goes, so "Reset size" shows only when there is one.
+  useStoreState((s) => (menu ? s.derived?.doc.layoutFile?.lanes?.[menu.lane]?.size ?? null : null));
   const ref = useRef<HTMLDivElement>(null);
   const openedAt = useRef(viewport);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
@@ -106,6 +110,8 @@ export function LaneMenuPopover() {
   const last = index === order.length - 1;
   const tb = direction === 'TB';
   const count = blocksIn(store, lane.id).length;
+  const unassigned = lane.id === UNASSIGNED;
+  const sized = storedLaneSize(store, lane.id) !== null;
 
   const close = (refocus: boolean) => {
     laneMenu.set(null);
@@ -146,23 +152,40 @@ export function LaneMenuPopover() {
         </span>
       </div>
       <MenuItem testid="lane-rename-label" hint="Double-click" onClick={() => editLaneLabel(store, lane.id)} icon={ICON.pencil}>
-        Rename
+        {unassigned ? 'Rename (makes it a lane)' : 'Rename'}
       </MenuItem>
-      <MenuItem testid="lane-rename-id" onClick={() => editLaneId(store, lane.id)} icon={ICON.hash}>
-        Change id…
-      </MenuItem>
+      {unassigned ? null : (
+        <MenuItem testid="lane-rename-id" onClick={() => editLaneId(store, lane.id)} icon={ICON.hash}>
+          Change id…
+        </MenuItem>
+      )}
+      {sized ? (
+        <MenuItem testid="lane-reset-size" hint="Double-click edge" onClick={() => resetLaneSizeOf(store, lane.id)} icon={ICON.fit}>
+          Reset size
+        </MenuItem>
+      ) : null}
+      {unassigned ? null : <LaneOrderItems id={lane.id} first={first} last={last} tb={tb} count={count} />}
+    </div>
+  );
+}
+
+/** Move up / Move down and Delete (real lanes only: Unassigned always shows last and goes when it empties). */
+function LaneOrderItems({ id, first, last, tb, count }: { id: string; first: boolean; last: boolean; tb: boolean; count: number }) {
+  const store = useStore();
+  return (
+    <>
       <div className="fm-menu-sep" role="separator" />
-      <MenuItem testid="lane-up" muted={first} onClick={() => moveLaneBy(store, lane.id, 'up')} icon={tb ? ICON.left : ICON.up}>
+      <MenuItem testid="lane-up" muted={first} onClick={() => moveLaneBy(store, id, 'up')} icon={tb ? ICON.left : ICON.up}>
         {tb ? 'Move left' : 'Move up'}
       </MenuItem>
-      <MenuItem testid="lane-down" muted={last} onClick={() => moveLaneBy(store, lane.id, 'down')} icon={tb ? ICON.right : ICON.down}>
+      <MenuItem testid="lane-down" muted={last} onClick={() => moveLaneBy(store, id, 'down')} icon={tb ? ICON.right : ICON.down}>
         {tb ? 'Move right' : 'Move down'}
       </MenuItem>
       <div className="fm-menu-sep" role="separator" />
-      <MenuItem testid="lane-delete" danger onClick={() => requestDeleteLane(store, lane.id)} icon={ICON.trash}>
+      <MenuItem testid="lane-delete" danger onClick={() => requestDeleteLane(store, id)} icon={ICON.trash}>
         {count === 0 ? 'Delete lane' : 'Delete lane…'}
       </MenuItem>
-    </div>
+    </>
   );
 }
 
@@ -207,4 +230,5 @@ const ICON = {
   left: svg('M19 12H5M11 6l-6 6 6 6'),
   right: svg('M5 12h14M13 6l6 6-6 6'),
   trash: svg('M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3'),
+  fit: svg('M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'),
 };

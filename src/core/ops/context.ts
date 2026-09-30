@@ -15,11 +15,12 @@
 // operation changes the edge list, and `commit` re-expresses bend points in `_unassigned` when an operation makes the
 // Unassigned lane disappear, and (rulings R12, R14, R15) re-expresses the old first lane's pins and bend points, and
 // the stored note and title positions, when an operation changes which lane is displayed first. A config whose note ids clash with node or lane ids has errors (§4, UI31).
+// A8: `commit` also drops the layout file's lane-size entries for lanes that don't show after the operation.
 
 import { checkNoteClashes, ConfigDoc, laneOrder, parseConfig, type EditResult, type FlowConfig } from '../config';
 import {
-  checkPinRanges, effectivePlacements, firstLaneOf, movePointsToLane, parseLayoutFile, reexpressOldFirstLane,
-  rekeyEdgesByPosition, serializeLayoutFile,
+  checkPinRanges, effectivePlacements, firstLaneOf, keepLaneEntries, movePointsToLane, parseLayoutFile,
+  reexpressOldFirstLane, rekeyEdgesByPosition, serializeLayoutFile,
 } from '../layoutfile';
 import { pinTranslation, type LayoutOutput, type Translation } from '../layout';
 import { loadDocument } from '../document';
@@ -79,6 +80,11 @@ export class Ctx {
   private readonly edgeIdsIn: readonly string[];
   private rekeyed = false;
   private frameIn: Translation | null = null;
+  /**
+   * Lanes whose id this operation changed (UI19 rename; A7, Unassigned promoted to a real lane): old id → new id. The
+   * lane is still the same lane, so if it was displayed first it still is (R12 doesn't apply).
+   */
+  private readonly laneRenames = new Map<string, string>();
 
   constructor(readonly input: Files) {
     const { diagram, problems } = parse(input.mmd);
@@ -257,6 +263,11 @@ export class Ctx {
     this.editLayout(changed, (file) => rekeyEdgesByPosition(file, this.edgeIdsIn, newIds));
   }
 
+  /** Record that lane `oldId` is now `newId` (the same lane under another id). */
+  noteLaneRename(oldId: string, newId: string): void {
+    this.laneRenames.set(oldId, newId);
+  }
+
   // ---- ids
 
   /**
@@ -335,14 +346,16 @@ export class Ctx {
    * negative (it applies to nothing) is removed.
    */
   private keepOldFirstLane(): void {
-    const before = this.graphIn().lanes[0]?.id;
-    if (before === undefined) return;
+    const first = this.graphIn().lanes[0]?.id;
+    if (first === undefined) return;
+    // A first lane that was only renamed is still the first lane (its pins already carry the new id).
+    const before = this.laneRenames.get(first) ?? first;
     const now = firstLaneOf(laneOrder(parseConfig(this.configText).config, this.d.lanes.map((l) => l.id)));
     if (now === before) return;
     if (this.layoutBroken) {
       // Can't read U. Only a file with a negative number can have U > 0; refuse if it could hold one in that lane.
       const text = this.input.layout;
-      if (text !== null && /-\s*\d/.test(text) && mentions(text, before)) {
+      if (text !== null && /-\s*\d/.test(text) && mentions(text, first)) {
         refuse('The layout file has errors; fix it before making this change (it would move the first lane\'s pins)');
       }
       return;
@@ -350,9 +363,22 @@ export class Ctx {
     this.layout = reexpressOldFirstLane(this.layout, before, this.frame().across, this.original.direction);
   }
 
+  /**
+   * A8: lane-size entries are kept only for lanes that show after the operation (every subgraph, and `_unassigned`
+   * while some block has no lane); any other entry (a deleted lane's, or one left behind by a text edit) is dropped.
+   */
+  private keepLaneSizes(): void {
+    if (this.layoutBroken || !this.layout?.lanes) return;
+    const shown = this.d.lanes.map((l) => l.id);
+    const unlaned = this.d.unlaned.length > 0 || undeclaredNodes(this.d).length > 0;
+    if (unlaned) shown.push(UNASSIGNED);
+    this.layout = keepLaneEntries(this.layout, shown);
+  }
+
   commit(): Files {
     this.keepOldFirstLane();
     this.keepUnassignedPoints();
+    this.keepLaneSizes();
     let layout = this.input.layout;
     if (!this.layoutBroken && !sameJson(this.layout, this.layoutIn)) {
       layout = this.layout === null ? null : serializeLayoutFile(this.layout);
@@ -362,7 +388,7 @@ export class Ctx {
 }
 
 /** The layout of the files as loaded (null when the `.mmd` has errors), for re-expressing positions. */
-function loadLayout(files: Files): LayoutOutput | null {
+export function loadLayout(files: Files): LayoutOutput | null {
   return loadDocument(files.mmd, files.config, files.layout, 'diagram.mmd').layout;
 }
 
