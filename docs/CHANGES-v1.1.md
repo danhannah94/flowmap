@@ -1,6 +1,6 @@
 # flowmap v1.1: what changed since v1.0
 
-v1.1 is the contract both builds now target (Build B builds v1.1 from the start). Every change is in `design.md`,
+v1.1 is the current contract. Every change is in `design.md`,
 marked "(v1.1)" or listed in §12. This page is the map.
 
 ## Amendments folded in (already binding before v1.1)

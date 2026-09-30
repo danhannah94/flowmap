@@ -7,7 +7,7 @@
 A local flowchart tool for process maps that two authors share: a person working in a visual editor and an AI working
 in text. Both edit the same files. This document is the contract for building it: what the files look like, what the
 command line does, what the UI does, and how each requirement is checked. Where this document says MUST, an acceptance
-test will check it. Where it gives the builder a choice, it says so.
+test will check it. Where it leaves the implementation a choice, it says so.
 
 ## 1. Why this exists
 
@@ -251,7 +251,7 @@ nodes:                     # metadata per node id; any keys; all are shown in th
 - Config entries for ids that are not in the `.mmd` are warning `W-config-unknown-node`; lanes listed that don't
   exist are `W-config-unknown-lane`. Deleting a block in the UI never deletes its config entry (it holds evidence);
   the orphaned entry warns until someone deletes it (UI27).
-- **How the UI writes the config** (so both builds write the same thing):
+- **How the UI writes the config** (so every implementation writes the same thing):
   - If the file doesn't exist, the first operation that writes it creates it with `version: 1` followed by only the
     keys that operation sets. A top-level key that doesn't exist yet is appended at the end of the file.
   - Values typed into text inputs (field values, list items, map values, match values, legend, badge, title) are
@@ -322,7 +322,7 @@ before the start of the flow axis or before the first lane, and the file stores 
 other lane `across` is at least 0: a block or bend point that would start before its lane's zero line is stored at 0
 (it sits on the lane's start edge). Sizes are at least 40. An entry with no keys is never written: an operation that empties an entry
 removes it, and an empty `edges` or `notes` map is left out. When nothing is placed the file is
-`{"version": 1, "nodes": {}}`. The file may also hold a `hints` object in any shape the builder chooses (for example,
+`{"version": 1, "nodes": {}}`. The file may also hold a `hints` object in any shape the implementation chooses (for example,
 last positions of unpinned nodes, to keep the layout stable between edits); the tests never read or write it, and it
 is still an input to the layout function (L10). The UI rewrites this file; hand edits are allowed.
 
@@ -334,7 +334,7 @@ none of the file's placements.
 ## 6. Layout rules
 
 One layout function, used by both the CLI and the UI (a node's position in the UI at zoom 1 equals `flowmap layout`
-output to the pixel). The algorithm is the builder's choice (ELK's layered layout with lane partitions is a
+output to the pixel). The algorithm is the implementation's choice (ELK's layered layout with lane partitions is a
 starting point). ELK has no hard fixed-position constraint and its router doesn't route around nodes it didn't place,
 so expect to write your own step that places unpinned nodes around pinned ones, and your own orthogonal edge router.
 All coordinates and sizes are integers, and "box" means a node's bounding rectangle (also for diamonds and
@@ -398,7 +398,7 @@ stadiums). The result MUST satisfy:
 
 ## 7. Command line
 
-The repository root has a `package.json` whose `bin` is `flowmap`. After `pnpm install && pnpm build`, the grader runs
+The repository root has a `package.json` whose `bin` is `flowmap`. After `pnpm install && pnpm build`, the acceptance tests run
 `pnpm exec flowmap <command>`. Paths are to the `.mmd` file; the config and layout files are found beside it by base
 name.
 
@@ -447,7 +447,7 @@ hidden. `width` and `height` of the diagram cover the lanes; notes and the title
 
 ### 7.1 The SVG export (what the tests read)
 
-The tests parse the SVG as XML. Layout and drawing are otherwise the builder's choice.
+The tests parse the SVG as XML. Layout and drawing are otherwise the implementation's choice.
 
 - The title is a `<text data-role="title">`, left out when the title is hidden (v1.1). The picture includes the
   title and every note wherever they are placed.
@@ -778,7 +778,7 @@ then; that is the text author's job, and `W-layout-unknown-edge` shows any entry
 ### 8.3 Test contract (DOM attributes the acceptance tests use)
 
 The acceptance tests drive the UI with Playwright through these attributes only. Styling, layout of the panels and
-structure are otherwise the builder's choice. Every control below must be reachable by a click (menus may need
+structure are otherwise the implementation's choice. Every control below must be reachable by a click (menus may need
 opening first, through the listed opener).
 
 | Element | Attributes |
@@ -819,7 +819,7 @@ opening first, through the listed opener).
 
 - **TypeScript** throughout, **pnpm**, Node 22. **React** with **@xyflow/react** (React Flow) for the canvas,
   **elkjs** for layout, **yaml** for the config, **Vite** for the UI build, **Vitest** for unit tests, **Playwright**
-  for UI tests. Other libraries are the builder's choice; say why in the README.
+  for UI tests. Other libraries are the implementation's choice; say why in the README.
 - **Suggested structure**: `src/core` (parse, canonical format, validate, config, styles, layout, SVG rendering; pure
   functions with no DOM or file system), `src/cli`, `src/server` (static UI, file read/write, file watching, a small
   JSON API plus a push channel such as server-sent events or a WebSocket), `src/ui`. The rule that matters: **the CLI
@@ -827,11 +827,11 @@ opening first, through the listed opener).
 - Config writes must keep untouched parts of the file byte-identical (UI26). (Amendment A1: the `yaml` package's
   `toString()` does not do this; edit the text minimally instead.)
 - Works offline after install. No telemetry, no cloud calls. The server binds to 127.0.0.1 only.
-- `pnpm test` runs the builder's own tests. A README says how to install, run, and use it.
+- `pnpm test` runs the project's own tests. A README says how to install, run, and use it.
 
 ## 10. Acceptance criteria
 
-🤖 = checked by the independent acceptance suite (CLI and DOM contracts only; it never reads the source).
+🤖 = checkable from outside, through the CLI and DOM contracts alone (without reading the source).
 🧑 = checked by a person.
 
 **Part 1: core and CLI**
@@ -940,10 +940,10 @@ in flight.
 
 | Date | Change | Why |
 |---|---|---|
-| 2026-09-24 | **A1.** Section 9's note that the `yaml` Document API keeps untouched lines byte-identical is withdrawn. UI26 is unchanged. | `toString()` re-pads flow maps and collapses spacing (found independently by Build A and the acceptance suite); ruling R2. |
+| 2026-09-24 | **A1.** Section 9's note that the `yaml` Document API keeps untouched lines byte-identical is withdrawn. UI26 is unchanged. | `toString()` re-pads flow maps and collapses spacing (found independently by the implementation and the acceptance tests); ruling R2. |
 | 2026-09-24 | **A2.** The build must make `pnpm exec flowmap` work from its root (section 7). | pnpm 9 doesn't expose a package's own `bin`; ruling R1. |
 | 2026-09-24 | **A3.** UI18: an empty slug gives the id `lane`. | `lane-` broke the id rules; ruling R3. |
 | 2026-09-24 | **A4. Diagrams without lanes (Dan).** (a) A `.mmd` with no subgraphs is a plain flowchart. Its layout is unchanged in the JSON (every node is in `_unassigned`), but the UI and the SVG export draw no lane band or lane header for it. The `_unassigned` lane element keeps its `data-lane-id` in the DOM, without a `data-lane-header`, and no space is reserved for a lane label. (b) UI6: in a diagram with no lanes, clicking a palette shape adds the block right away (unlaned, not pinned); dragging a shape from the palette onto the canvas adds it pinned where it was dropped. (c) UI11: in a diagram with lanes, a block dropped with its centre outside every lane moves to Unassigned, keeping a pin at the drop position. (v1.1 narrows this: a centre before the first lane joins the first lane; see UI43.) (d) UI1: the home page's new-diagram action offers "Flowchart" (no lanes) or "Swimlanes"; that choice is a UI convenience and writes nothing beyond a valid `.mmd`. | Dan wants generic flowcharts too, not only swimlane maps. |
 | 2026-09-24 | **A5.** A `.mmd` with no subgraphs gives no `W-no-lane` warnings (§3.2). | In a plain flowchart every block would warn, which is noise; the warning still points at real problems in diagrams with lanes. |
-| 2026-09-24 | **v1.1 (Dan).** Shaping by hand: UI34–UI43, the extended layout file (§5: sizes, edge sides, bend points, `label_at`, note and title positions, negative values and the frame), block `style`, `notes` and `show_title` in the config (§4), L4/L7/L8 extended and L11/L12 added (§6), the layout JSON and SVG additions (§7, §7.1), the DOM rows marked (v1.1) in §8.3, and U11–U16, P21–P30, H7–H8 (§10). R5.9's strictness now applies to the §5 key list. See `CHANGES-v1.1.md`. | Dan's feedback after using Build A: resize, colours, bent lines, sides, snap, context menus, notes, a movable title. |
-| 2026-09-24 | **A6.** UI34: every resize pins the block (not only top and left handles). | Build A found that resizing an automatically placed block from its right or bottom edge let the layout re-centre it on release, a visible jump by about half the size change. |
+| 2026-09-24 | **v1.1 (Dan).** Shaping by hand: UI34–UI43, the extended layout file (§5: sizes, edge sides, bend points, `label_at`, note and title positions, negative values and the frame), block `style`, `notes` and `show_title` in the config (§4), L4/L7/L8 extended and L11/L12 added (§6), the layout JSON and SVG additions (§7, §7.1), the DOM rows marked (v1.1) in §8.3, and U11–U16, P21–P30, H7–H8 (§10). R5.9's strictness now applies to the §5 key list. See `CHANGES-v1.1.md`. | Feedback from real use: resize, colours, bent lines, sides, snap, context menus, notes, a movable title. |
+| 2026-09-24 | **A6.** UI34: every resize pins the block (not only top and left handles). | Implementation found that resizing an automatically placed block from its right or bottom edge let the layout re-centre it on release, a visible jump by about half the size change. |

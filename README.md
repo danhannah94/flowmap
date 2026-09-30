@@ -184,3 +184,7 @@ Shortcuts never fire while you are typing in an editor or a field.
   the push channel.
 - `src/ui`: the editor. Every edit calls a core operation through the store (`store.apply`), which makes it one undo
   step and saves it.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

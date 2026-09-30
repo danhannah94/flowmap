@@ -1,25 +1,24 @@
 # flowmap rulings
 
-Answers to questions the contract (`design.md`) didn't settle. Both builds get every ruling; see `ab-protocol.md`
-rule 3. Newest at the bottom.
+Answers to questions the contract (`design.md`) didn't settle. Newest at the bottom.
 
-| # | Date | Asked by | Question | Ruling | Given to the other build |
-|---|---|---|---|---|---|
-| R1 | 2026-09-24 | acceptance suite | §7 says the grader runs `pnpm exec flowmap`, but pnpm 9 doesn't put a package's own `bin` on the PATH. | The build must make `pnpm exec flowmap <args>` work from its root after `pnpm install && pnpm build`, for example with a dev dependency `"flowmap": "link:."`. | Build B: in its starting context |
-| R2 | 2026-09-24 | A + acceptance suite | §9 says the `yaml` Document API keeps untouched config lines byte-identical. It doesn't: `toString()` re-pads flow maps (`{a: b}` → `{ a: b }`) and collapses spacing. | §9's advice is wrong; UI26 stands (untouched parts byte-identical, including unusual spacing). Edit the text minimally, or an equivalent that preserves bytes. Amendment 1 in `design.md` §12. | Build B: in its starting context |
-| R3 | 2026-09-24 | acceptance suite | UI18: a lane label with no `a-z0-9` characters ("!!!") gives an empty slug, and `lane-` breaks the id rules. | If the slug is empty, the id is `lane` (then `lane-2`, `lane-3`… while taken). The `lane-` prefix still applies to a slug that starts with a digit or is reserved. | Build B: in its starting context |
-| R4 | 2026-09-24 | A | Parser edge cases the contract leaves open (list below). | Adopted as listed below. | Build B: in its starting context |
-| R5 | 2026-09-24 | A | Config and layout-file edge cases the contract leaves open (list below). | Adopted as listed below. | Build B: in its starting context |
-| R6 | 2026-09-24 | A | Edit-operation edge cases the contract leaves open (list below). | Adopted as listed below. | Build B: in its starting context |
-| R7 | 2026-09-24 | A | §9 lists React Flow for the canvas. It positions nodes itself and fights exact layout coordinates. May a build draw its own canvas? | Yes. §9's library list is a recommendation; the DOM contract (§8.3) and the layout rules are binding. Say why in the README, as §9 asks. | Build B: in its starting context |
-| R8 | 2026-09-24 | Dan (CEO) | Can a person make a generic flowchart without lanes? | Yes: amendment A4 in `design.md` §12. | Build B: in its starting context |
-| R9 | 2026-09-24 | A | UI43 says what happens to a block whose centre is before the start of the flow axis. What about after its end (right of everything in `LR`)? | The same: it stays in the lane its centre is across from, with its `along` stored as dropped. Only the across axis decides between lanes, the first lane and Unassigned. | Build B: in its starting context |
-| R10 | 2026-09-24 | acceptance suite | v1.1 edge cases the contract leaves open (list below). | Adopted as listed below. | Build B: in its starting context |
-| R11 | 2026-09-24 | A | v1.1 edge cases from Build A's core wave (list below). | Adopted as listed below. | Build B: in its starting context |
-| R12 | 2026-09-24 | A | Reordering lanes, adding a lane to a lane-free diagram, or deleting the first lane can leave a negative `across` in a lane that is no longer first, which §5 forbids. | Any operation that changes which lane is displayed first first re-expresses the old first lane's pins and bend points with its growth U added to every `across`, so all values are at least 0 and nothing moves on screen, in the same write. | Build B: in its starting context |
-| R13 | 2026-09-24 | A | Resizing an automatically placed block from its right or bottom edge makes it jump on release. | Amendment A6: every resize pins the block (UI34). | Build B: in its starting context |
-| R14 | 2026-09-24 | acceptance suite | Six points left open by R11 and R12 (list below). | Adopted as listed below. | Build B: in its starting context |
-| R15 | 2026-09-24 | acceptance suite | (1) Do stored note and title positions get U when the first lane is deleted? (2) What if a stale pin or ignored bend point is below −U? | (1) Yes: deleting the first lane changes which lane is first, so R14.1 applies. (2) A stale pin or ignored bend point that would still be negative after adding U is removed (it applies to nothing anyway), so the file stays valid. | Build B: in its starting context |
+| # | Date | Raised by | Question | Ruling |
+|---|---|---|---|---|
+| R1 | 2026-09-24 | acceptance tests | §7 says the tests run `pnpm exec flowmap`, but pnpm 9 doesn't put a package's own `bin` on the PATH. | The build must make `pnpm exec flowmap <args>` work from its root after `pnpm install && pnpm build`, for example with a dev dependency `"flowmap": "link:."`. |
+| R2 | 2026-09-24 | implementation + tests | §9 says the `yaml` Document API keeps untouched config lines byte-identical. It doesn't: `toString()` re-pads flow maps (`{a: b}` → `{ a: b }`) and collapses spacing. | §9's advice is wrong; UI26 stands (untouched parts byte-identical, including unusual spacing). Edit the text minimally, or an equivalent that preserves bytes. Amendment 1 in `design.md` §12. |
+| R3 | 2026-09-24 | acceptance tests | UI18: a lane label with no `a-z0-9` characters ("!!!") gives an empty slug, and `lane-` breaks the id rules. | If the slug is empty, the id is `lane` (then `lane-2`, `lane-3`… while taken). The `lane-` prefix still applies to a slug that starts with a digit or is reserved. |
+| R4 | 2026-09-24 | implementation | Parser edge cases the contract leaves open (list below). | Adopted as listed below. |
+| R5 | 2026-09-24 | implementation | Config and layout-file edge cases the contract leaves open (list below). | Adopted as listed below. |
+| R6 | 2026-09-24 | implementation | Edit-operation edge cases the contract leaves open (list below). | Adopted as listed below. |
+| R7 | 2026-09-24 | implementation | §9 lists React Flow for the canvas. It positions nodes itself and fights exact layout coordinates. May a build draw its own canvas? | Yes. §9's library list is a recommendation; the DOM contract (§8.3) and the layout rules are binding. Say why in the README, as §9 asks. |
+| R8 | 2026-09-24 | Dan | Can a person make a generic flowchart without lanes? | Yes: amendment A4 in `design.md` §12. |
+| R9 | 2026-09-24 | implementation | UI43 says what happens to a block whose centre is before the start of the flow axis. What about after its end (right of everything in `LR`)? | The same: it stays in the lane its centre is across from, with its `along` stored as dropped. Only the across axis decides between lanes, the first lane and Unassigned. |
+| R10 | 2026-09-24 | acceptance tests | v1.1 edge cases the contract leaves open (list below). | Adopted as listed below. |
+| R11 | 2026-09-24 | implementation | v1.1 edge cases from the core implementation (list below). | Adopted as listed below. |
+| R12 | 2026-09-24 | implementation | Reordering lanes, adding a lane to a lane-free diagram, or deleting the first lane can leave a negative `across` in a lane that is no longer first, which §5 forbids. | Any operation that changes which lane is displayed first first re-expresses the old first lane's pins and bend points with its growth U added to every `across`, so all values are at least 0 and nothing moves on screen, in the same write. |
+| R13 | 2026-09-24 | implementation | Resizing an automatically placed block from its right or bottom edge makes it jump on release. | Amendment A6: every resize pins the block (UI34). |
+| R14 | 2026-09-24 | acceptance tests | Six points left open by R11 and R12 (list below). | Adopted as listed below. |
+| R15 | 2026-09-24 | acceptance tests | (1) Do stored note and title positions get U when the first lane is deleted? (2) What if a stale pin or ignored bend point is below −U? | (1) Yes: deleting the first lane changes which lane is first, so R14.1 applies. (2) A stale pin or ignored bend point that would still be negative after adding U is removed (it applies to nothing anyway), so the file stays valid. |
 
 ## R4: parser edge cases
 
@@ -88,7 +87,7 @@ rule 3. Newest at the bottom.
    deletes (UI27).
 9. Move up on the first lane, or down on the last, changes nothing.
 
-## R10: v1.1 edge cases (from the acceptance suite's open questions)
+## R10: v1.1 edge cases (from the acceptance tests' open questions)
 
 1. **Several blocks, colours:** with several blocks selected, the inspector shows the `block-colors` controls as well
    as the field form (UI35 wins over §8.3's "only the field form"), and they apply to every selected block.
@@ -98,7 +97,7 @@ rule 3. Newest at the bottom.
 5. An empty `edges` or `notes` map in a hand-written layout file is accepted (the UI never writes one).
 6. `W-layout-unknown-note` is not reported while the config has `E-config`, in `flowmap validate` as well as in the UI.
 
-## R11: v1.1 edge cases from Build A's core wave
+## R11: v1.1 edge cases from the core implementation
 
 1. `points: []` in the layout file is `E-layout` (a manual line needs a bend point; the UI removes `points` instead).
 2. A note's `text` must be a string (a number is `E-config`). An unknown key inside a note is `W-config-key`.
