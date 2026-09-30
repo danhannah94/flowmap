@@ -729,16 +729,89 @@
   right: calc(6px / var(--zoom, 1));
 }
 
-html[data-fm-lane-resizing='LR'] * {
+html[data-fm-lane-resizing='ns'] * {
   cursor: ns-resize !important;
 }
 
-html[data-fm-lane-resizing='TB'] * {
+html[data-fm-lane-resizing='ew'] * {
   cursor: ew-resize !important;
 }
 
-.fm-canvas[data-readonly='true'] .fm-lane-resize,
-.fm-canvas[data-placing='true'] .fm-lane-resize,
-.fm-canvas[data-dragging='true'] .fm-lane-resize {
+.fm-canvas[data-readonly='true'] :is(.fm-lane-resize, .fm-lane-length-resize),
+.fm-canvas[data-placing='true'] :is(.fm-lane-resize, .fm-lane-length-resize),
+.fm-canvas[data-dragging='true'] :is(.fm-lane-resize, .fm-lane-length-resize) {
   display: none;
+}
+
+/* ---- A13 lane length: one handle on the lanes' far end along the flow, across every lane ---------------------- */
+
+.fm-lane-length-resize {
+  --hit: clamp(6px, calc(10px / var(--zoom, 1)), 30px);
+  position: absolute;
+  touch-action: none;
+}
+
+.fm-lane-length-resize.fm-LR {
+  width: var(--hit);
+  transform: translateX(-50%);
+  cursor: ew-resize;
+}
+
+.fm-lane-length-resize.fm-TB {
+  height: var(--hit);
+  transform: translateY(-50%);
+  cursor: ns-resize;
+}
+
+.fm-lane-length-resize::after {
+  content: '';
+  position: absolute;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.1s;
+  pointer-events: none;
+}
+
+.fm-lane-length-resize.fm-LR::after {
+  top: 0;
+  bottom: 0;
+  left: calc(50% - clamp(1px, calc(1.5px / var(--zoom, 1)), 4px));
+  width: clamp(2px, calc(3px / var(--zoom, 1)), 8px);
+}
+
+.fm-lane-length-resize.fm-TB::after {
+  left: 0;
+  right: 0;
+  top: calc(50% - clamp(1px, calc(1.5px / var(--zoom, 1)), 4px));
+  height: clamp(2px, calc(3px / var(--zoom, 1)), 8px);
+}
+
+.fm-lane-length-resize:hover::after {
+  opacity: 0.7;
+}
+
+/* The new extent of every lane: a light wash with the far end dashed, and the length by that end. */
+.fm-lane-length-preview {
+  position: absolute;
+  box-sizing: border-box;
+  background: color-mix(in srgb, var(--accent-soft) 55%, transparent);
+  pointer-events: none;
+}
+
+.fm-lane-length-preview.fm-LR {
+  border-right: clamp(1.5px, calc(2px / var(--zoom, 1)), 6px) dashed var(--accent);
+}
+
+.fm-lane-length-preview.fm-TB {
+  border-bottom: clamp(1.5px, calc(2px / var(--zoom, 1)), 6px) dashed var(--accent);
+}
+
+.fm-lane-length-preview.fm-LR .fm-lane-resize-readout {
+  top: calc(8px / var(--zoom, 1));
+  right: calc(6px / var(--zoom, 1));
+}
+
+.fm-lane-length-preview.fm-TB .fm-lane-resize-readout {
+  left: 48px;
+  bottom: calc(6px / var(--zoom, 1));
 }

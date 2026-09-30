@@ -7,7 +7,9 @@
 // - Values are checked: a bad value is a programming error and throws (the file must always parse back).
 import type { LayoutEdgeEntry, LayoutFile, LayoutLaneEntry, LayoutNodeEntry, Pin, Side, Size, XY } from '../types';
 import { pinOf, sizeOf } from '../types';
-import { isCoord, isLabelAt, isLaneSizeValue, isSide, isSizeValue, MIN_LANE_SIZE, MIN_SIZE, put } from './parse';
+import {
+  isCoord, isLabelAt, isLaneLengthValue, isLaneSizeValue, isSide, isSizeValue, MIN_LANE_LENGTH, MIN_LANE_SIZE, MIN_SIZE, put,
+} from './parse';
 
 type Entries<T> = Record<string, T>;
 
@@ -15,10 +17,14 @@ function emptyFile(): LayoutFile {
   return { version: 1, nodes: {} };
 }
 
-/** Build a file in canonical shape: key order version, nodes, lanes, edges, notes, title, hints; empty maps left out. */
+/**
+ * Build a file in canonical shape: key order version, nodes, lanes, lane_length, edges, notes, title, hints; empty maps
+ * left out.
+ */
 function build(parts: {
   nodes: Entries<LayoutNodeEntry>;
   lanes?: Entries<LayoutLaneEntry>;
+  lane_length?: number;
   edges?: Entries<LayoutEdgeEntry>;
   notes?: Entries<XY>;
   title?: XY;
@@ -26,6 +32,7 @@ function build(parts: {
 }): LayoutFile {
   const out: LayoutFile = { version: 1, nodes: parts.nodes };
   if (parts.lanes && Object.keys(parts.lanes).length) out.lanes = parts.lanes;
+  if (parts.lane_length !== undefined) out.lane_length = parts.lane_length;
   if (parts.edges && Object.keys(parts.edges).length) out.edges = parts.edges;
   if (parts.notes && Object.keys(parts.notes).length) out.notes = parts.notes;
   if (parts.title) out.title = parts.title;
@@ -34,7 +41,7 @@ function build(parts: {
 }
 
 const partsOf = (f: LayoutFile) => ({
-  nodes: f.nodes, lanes: f.lanes, edges: f.edges, notes: f.notes, title: f.title, hints: f.hints,
+  nodes: f.nodes, lanes: f.lanes, lane_length: f.lane_length, edges: f.edges, notes: f.notes, title: f.title, hints: f.hints,
 });
 
 /** Map every entry of a section; `undefined` from `fn` drops the entry; a returned key renames it (in place). */
@@ -170,6 +177,21 @@ export function removeLaneEntries(file: LayoutFile | null, laneIds: Iterable<str
   if (!file || !file.lanes) return file;
   const drop = new Set(laneIds);
   return build({ ...partsOf(file), lanes: mapEntries(file.lanes, (id, v) => ({ value: drop.has(id) ? undefined : v })) });
+}
+
+// ---- the lanes' length along the flow (A13) --------------------------------------------------------------------
+
+/**
+ * A13: set the lanes' shared length along the flow (measured from the flow axis's zero line, §6 Frame), or with null
+ * remove it (Reset length). Creates the file only when setting.
+ */
+export function setLaneLength(file: LayoutFile | null, length: number | null): LayoutFile | null {
+  if (length !== null && !isLaneLengthValue(length)) {
+    throw new Error(`invalid lane length ${JSON.stringify(length)}: an integer of at least ${MIN_LANE_LENGTH}`);
+  }
+  if (!file && length === null) return null;
+  const base = file ?? emptyFile();
+  return build({ ...partsOf(base), lane_length: length === null ? undefined : length + 0 });
 }
 
 // ---- edge entries ---------------------------------------------------------------------------------------------
@@ -429,8 +451,8 @@ export function reexpressOldFirstLane(
 }
 
 /**
- * UI12 "Re-layout all": remove every pin and every line's `points`; keep sizes (of blocks and, A8, lanes), sides,
- * `label_at`, notes, the title position and `hints`. No file stays no file.
+ * UI12 "Re-layout all": remove every pin and every line's `points`; keep sizes (of blocks and, A8, lanes), the lane
+ * length (A13), sides, `label_at`, notes, the title position and `hints`. No file stays no file.
  */
 export function clearPinsAndPoints(file: LayoutFile | null): LayoutFile | null {
   if (!file) return null;
@@ -472,7 +494,8 @@ export function setTitlePosition(file: LayoutFile | null, pos: XY | null): Layou
 const ROTATE: Record<Side, Side> = { right: 'bottom', bottom: 'right', left: 'top', top: 'left' };
 
 /**
- * UI23: flipping the direction keeps pins, sizes (A8: lane sizes too), bend points and `label_at`; sides rotate with the diagram
+ * UI23: flipping the direction keeps pins, sizes (A8: lane sizes too), (A13) the lane length, bend points and
+ * `label_at` (all measured along or across the flow, so they carry over as they are); sides rotate with the diagram
  * (right ↔ bottom, left ↔ top) and note and title positions swap x and y. No file stays no file.
  */
 export function flipDirection(file: LayoutFile | null): LayoutFile | null {
