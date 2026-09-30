@@ -201,7 +201,7 @@ describe('Order (§8.2): several blocks are handled in file declaration order', 
   test('unlaned first, then lanes in file order, then never-declared nodes', () => {
     const r = ok(ops.duplicateNodes(RICH, ['r01', 'loose'], LAYOUT));
     expect(r.from).toEqual(['loose', 'r01']);
-    expect(r.ids).toEqual(['n3', 'n4']);
+    expect(r.ids).toEqual(['loose-2', 'r01-2']);
     const pins = ok(ops.pinNodes(RICH, [{ id: 'ghost', along: 1, across: 20 }, { id: 'f01', along: 1, across: 20 }, { id: 'intake', along: 1, across: 20 }]));
     expect(Object.keys(JSON.parse(pins.files.layout!).nodes)).toEqual(['r01', 'stray', 'n2', 'f02', 'intake', 'f01', 'ghost']);
   });

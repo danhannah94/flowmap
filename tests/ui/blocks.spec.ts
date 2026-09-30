@@ -283,7 +283,9 @@ test('re-layout all asks first, then clears every pin and keeps hints (P10)', as
 
 // ---- UI13 duplicate ------------------------------------------------------------------------------------------------
 
-test('duplicate (button): a copy with its metadata, pinned 24/24 from the original, becomes the selection (P11)', async ({ page }, info) => {
+// A12 amends UI13: the copy's id derives from the original's (r01 -> r01-2), it is pinned 40/40 away (the paste step),
+// and lines between duplicated blocks are copied too (copypaste.spec.ts).
+test('duplicate (button): a copy with its metadata, pinned 40/40 from the original, becomes the selection (P11)', async ({ page }, info) => {
   const d = makeDiagram(info);
   await open(page, d);
   const cli = d.cliLayout();
@@ -293,19 +295,19 @@ test('duplicate (button): a copy with its metadata, pinned 24/24 from the origin
   await page.getByTestId('duplicate').click();
   const files = await onDisk(page, d, (f) => f.mmd !== PR.mmd && f.config !== PR.config && f.layout !== PR.layout);
   // The copy is the last declaration of its lane.
-  expect(files.mmd).toBe(canon(edit(PR.mmd, ['    closed(["Request closed"])\n', '    closed(["Request closed"])\n    n1["Fill the purchase request form"]\n'])));
+  expect(files.mmd).toBe(canon(edit(PR.mmd, ['    closed(["Request closed"])\n', '    closed(["Request closed"])\n    r01-2["Fill the purchase request form"]\n'])));
   // Its metadata is copied under the new id, appended at the end of `nodes`; every original line is kept.
   const want = yamlJs(PR.config) as { nodes: Record<string, unknown> };
-  want.nodes.n1 = structuredClone(want.nodes.r01);
+  want.nodes['r01-2'] = structuredClone(want.nodes.r01);
   expect(yamlJs(files.config)).toEqual(want);
   expectLinesKept(files.config!, PR.config!.split('\n'));
-  expect(Object.keys((yamlJs(files.config) as { nodes: object }).nodes).at(-1)).toBe('n1');
-  // Pinned 24 px along and 24 px across from the original.
-  expect(pins(files.layout).n1).toEqual({ lane: 'requester', along: r01.x + 24, across: r01.y - laneY + 24 });
+  expect(Object.keys((yamlJs(files.config) as { nodes: object }).nodes).at(-1)).toBe('r01-2');
+  // Pinned 40 px along and 40 px across from the original.
+  expect(pins(files.layout)['r01-2']).toEqual({ lane: 'requester', along: r01.x + 40, across: r01.y - laneY + 40 });
   // The copy is the selection.
-  await expect(node(page, 'n1')).toHaveAttribute('data-selected', 'true');
+  await expect(node(page, 'r01-2')).toHaveAttribute('data-selected', 'true');
   await expect(page.locator('[data-node-id][data-selected="true"]')).toHaveCount(1);
-  await expect(node(page, 'n1')).toHaveAttribute('data-kind', 'step');
+  await expect(node(page, 'r01-2')).toHaveAttribute('data-kind', 'step');
   await expectUndoRedo(page, d, PR, files);
   await expectMatchesCli(page, d);
 });
@@ -313,22 +315,22 @@ test('duplicate (button): a copy with its metadata, pinned 24/24 from the origin
 test('duplicate (Cmd/Ctrl+D) several blocks: new ids and declarations in file order', async ({ page }, info) => {
   const d = makeDiagram(info);
   await open(page, d);
-  // Selected in reverse file order; handled in declaration order (§8.2 Order): r02 -> n1, p05 -> n2.
+  // Selected in reverse file order; handled in declaration order (§8.2 Order): r02 first, then p05.
   await node(page, 'p05').click();
   await node(page, 'r02').click({ modifiers: ['Shift'] });
   await page.keyboard.press('ControlOrMeta+d');
-  const files = await onDisk(page, d, (f) => f.mmd.includes('n2') && !!f.config?.includes('  n2:') && !!pins(f.layout).n2);
+  const files = await onDisk(page, d, (f) => f.mmd.includes('p05-2') && !!f.config?.includes('  p05-2:') && !!pins(f.layout)['p05-2']);
   expect(files.mmd).toBe(canon(edit(PR.mmd,
-    ['    closed(["Request closed"])\n', '    closed(["Request closed"])\n    n1["Receive the delivery and sign for it"]\n'],
-    ['    p07["Create the PO in the ERP"]\n', '    p07["Create the PO in the ERP"]\n    n2["Get three quotes"]\n'])));
+    ['    closed(["Request closed"])\n', '    closed(["Request closed"])\n    r02-2["Receive the delivery and sign for it"]\n'],
+    ['    p07["Create the PO in the ERP"]\n', '    p07["Create the PO in the ERP"]\n    p05-2["Get three quotes"]\n'])));
   const nodes = (yamlJs(files.config) as { nodes: Record<string, unknown> }).nodes;
-  expect(Object.keys(nodes).slice(-2)).toEqual(['n1', 'n2']);
-  expect(nodes.n1).toEqual(nodes.r02);
-  expect(nodes.n2).toEqual(nodes.p05);
-  expect(Object.keys(pins(files.layout))).toEqual(['closed', 'n1', 'n2']);
+  expect(Object.keys(nodes).slice(-2)).toEqual(['r02-2', 'p05-2']);
+  expect(nodes['r02-2']).toEqual(nodes.r02);
+  expect(nodes['p05-2']).toEqual(nodes.p05);
+  expect(Object.keys(pins(files.layout))).toEqual(['closed', 'r02-2', 'p05-2']);
   await expect(page.locator('[data-node-id][data-selected="true"]')).toHaveCount(2);
-  await expect(node(page, 'n1')).toHaveAttribute('data-selected', 'true');
-  await expect(node(page, 'n2')).toHaveAttribute('data-selected', 'true');
+  await expect(node(page, 'r02-2')).toHaveAttribute('data-selected', 'true');
+  await expect(node(page, 'p05-2')).toHaveAttribute('data-selected', 'true');
   await expectUndoRedo(page, d, PR, files);
 });
 

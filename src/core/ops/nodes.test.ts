@@ -392,20 +392,20 @@ describe('P10 pin, nudge, unpin, re-layout all (UI10, UI12)', () => {
   });
 });
 
-describe('P11 duplicate (UI13)', () => {
+describe('P11 duplicate (UI13, as amended by A12)', () => {
   const layout = fakeLayout([
     { id: 'r01', lane: 'requester', x: 300, y: 140 }, { id: 'loose', lane: '_unassigned', x: 50, y: 700 },
     { id: 'f02', lane: 'finance', x: 700, y: 430 }, { id: 'stray', lane: '_unassigned', x: 90, y: 790 },
     { id: 'ghost', lane: '_unassigned', x: 200, y: 700 },
   ], { requester: 100, manager: 250, finance: 400, empty: 550, _unassigned: 680 });
 
-  test('a block with metadata: new id, same shape, label, class and lane, metadata copied, pinned +24/+24', () => {
+  test('a block with metadata: id derived from the original, same shape, label, class and lane, metadata copied, pinned +40/+40', () => {
     const r = duplicateNodes(RICH, ['r01'], layout);
-    expect(ok(r).ids).toEqual(['n3']);
+    expect(ok(r).ids).toEqual(['r01-2']);
     expectParity(r, RICH, {
-      mmd: edit(RICH_MMD, ['  r01["Fill the form"];\n', '  r01["Fill the form"];\n  n3["Fill the form"]\n']),
-      config: edit(RICH.config!, ['    note: gone from the diagram\n', '    note: gone from the diagram\n  n3:\n    system: excel\n    confidence: confirmed\n']),
-      layout: editJson(RICH.layout, (js) => { js.nodes.n3 = pin('requester', 324, 64); }),
+      mmd: edit(RICH_MMD, ['  r01["Fill the form"];\n', '  r01["Fill the form"];\n  r01-2["Fill the form"]\n']),
+      config: edit(RICH.config!, ['    note: gone from the diagram\n', '    note: gone from the diagram\n  r01-2:\n    system: excel\n    confidence: confirmed\n']),
+      layout: editJson(RICH.layout, (js) => { js.nodes['r01-2'] = pin('requester', 340, 80); }),
     });
   });
 
@@ -413,8 +413,8 @@ describe('P11 duplicate (UI13)', () => {
     const lay = fakeLayout([{ id: 'p05', lane: 'purchasing', x: 900, y: 420 }], { purchasing: 380 });
     const r = duplicateNodes(PR, ['p05'], lay);
     expectParity(r, PR, {
-      mmd: edit(PR.mmd, ['    p07["Create the PO in the ERP"]\n', '    p07["Create the PO in the ERP"]\n    n1["Get three quotes"]\n']),
-      config: `${PR.config}  n1:
+      mmd: edit(PR.mmd, ['    p07["Create the PO in the ERP"]\n', '    p07["Create the PO in the ERP"]\n    p05-2["Get three quotes"]\n']),
+      config: `${PR.config}  p05-2:
     kind: wait
     confidence: single-source
     source: [pat-09-04]
@@ -423,41 +423,43 @@ describe('P11 duplicate (UI13)', () => {
       main plant: three quotes over $1,000
       warehouse: one quote is fine under $5,000
 `,
-      layout: editJson(PR.layout, (js) => { js.nodes.n1 = pin('purchasing', 924, 64); }),
+      layout: editJson(PR.layout, (js) => { js.nodes['p05-2'] = pin('purchasing', 940, 80); }),
     });
   });
 
-  test('several blocks: ids, declarations, config entries and pins in file declaration order; class kept', () => {
+  test('several blocks: ids, declarations, config entries and pins in file declaration order; class kept; lines between them copied', () => {
     const r = duplicateNodes(RICH, ['f02', 'stray', 'r01', 'loose'], layout);
-    expect(ok(r).ids).toEqual(['n3', 'n4', 'n5', 'n6']);
+    expect(ok(r).ids).toEqual(['loose-2', 'stray-2', 'r01-2', 'f02-2']);
     expect(ok(r).from).toEqual(['loose', 'stray', 'r01', 'f02']);
     const after = expectParity(r, RICH, {
       mmd: edit(RICH_MMD,
-        ['stray{"Stray question?"}:::hot\n', 'stray{"Stray question?"}:::hot\nn3["Loose end"]\nn4{"Stray question?"}:::hot\n'],
-        ['  r01["Fill the form"];\n', '  r01["Fill the form"];\n  n5["Fill the form"]\n'],
-        ['  f02[/"Invoice #35;quot; copy"/]\n', '  f02[/"Invoice #35;quot; copy"/]\n  n6[/"Invoice #35;quot; copy"/]\n']),
-      config: edit(RICH.config!, ['    note: gone from the diagram\n', '    note: gone from the diagram\n  n5:\n    system: excel\n    confidence: confirmed\n']),
+        ['stray{"Stray question?"}:::hot\n', 'stray{"Stray question?"}:::hot\nloose-2["Loose end"]\nstray-2{"Stray question?"}:::hot\n'],
+        ['  r01["Fill the form"];\n', '  r01["Fill the form"];\n  r01-2["Fill the form"]\n'],
+        ['  f02[/"Invoice #35;quot; copy"/]\n', '  f02[/"Invoice #35;quot; copy"/]\n  f02-2[/"Invoice #35;quot; copy"/]\n'],
+        // loose --> stray is the only line with both ends duplicated; its copy goes at the end of the edge section.
+        ['loose --> stray\n', 'loose --> stray\nloose-2 --> stray-2\n']),
+      config: edit(RICH.config!, ['    note: gone from the diagram\n', '    note: gone from the diagram\n  r01-2:\n    system: excel\n    confidence: confirmed\n']),
       layout: editJson(RICH.layout, (js) => {
-        js.nodes.n3 = pin('_unassigned', 74, 44);
-        js.nodes.n4 = pin('_unassigned', 114, 134);
-        js.nodes.n5 = pin('requester', 324, 64);
-        js.nodes.n6 = pin('finance', 724, 54);
+        js.nodes['loose-2'] = pin('_unassigned', 90, 60);
+        js.nodes['stray-2'] = pin('_unassigned', 130, 150);
+        js.nodes['r01-2'] = pin('requester', 340, 80);
+        js.nodes['f02-2'] = pin('finance', 740, 70);
       }),
     });
-    expect(Object.keys(JSON.parse(after.layout!).nodes)).toEqual(['r01', 'stray', 'n2', 'f02', 'n3', 'n4', 'n5', 'n6']);
+    expect(Object.keys(JSON.parse(after.layout!).nodes)).toEqual(['r01', 'stray', 'n2', 'f02', 'loose-2', 'stray-2', 'r01-2', 'f02-2']);
   });
 
   test('a never-declared node is copied as a declared step in Unassigned', () => {
     expectParity(duplicateNodes(RICH, ['ghost'], layout), RICH, {
-      mmd: edit(RICH_MMD, ['stray{"Stray question?"}:::hot\n', 'stray{"Stray question?"}:::hot\nn3["ghost"]\n']),
-      layout: editJson(RICH.layout, (js) => { js.nodes.n3 = pin('_unassigned', 224, 44); }),
+      mmd: edit(RICH_MMD, ['stray{"Stray question?"}:::hot\n', 'stray{"Stray question?"}:::hot\nghost-2["ghost"]\n']),
+      layout: editJson(RICH.layout, (js) => { js.nodes['ghost-2'] = pin('_unassigned', 240, 60); }),
     });
   });
 
   test('top-to-bottom: along is y, across is x from the lane\'s left edge', () => {
     const tb = fakeLayout([{ id: 'r01', lane: 'requester', x: 130, y: 500 }], { requester: 100 }, 'TB');
     expect(positionInLane(tb, 'r01')).toEqual({ along: 500, across: 30 });
-    expect(JSON.parse(ok(duplicateNodes(RICH, ['r01'], tb)).files.layout!).nodes.n3).toEqual(pin('requester', 524, 54));
+    expect(JSON.parse(ok(duplicateNodes(RICH, ['r01'], tb)).files.layout!).nodes['r01-2']).toEqual(pin('requester', 540, 70));
   });
 
   test('refusals: unknown block, no position', () => {

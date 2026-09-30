@@ -21,6 +21,11 @@ export interface Command {
   help?: string;
   /** Enabled right now? (Default: when the diagram is editable.) Disabled toolbar buttons render `disabled`. */
   enabled?: (s: State, store: Store) => boolean;
+  /**
+   * When the command is disabled, leave the browser's own action alone instead of swallowing it (copy and paste: text
+   * selected in a panel still copies). By default a disabled Cmd/Ctrl shortcut still blocks the browser's default.
+   */
+  native?: boolean;
   /** Toggle state for buttons such as styles or connect (`aria-pressed`). */
   active?: (s: State) => boolean;
   run: (store: Store, e?: KeyboardEvent) => void;

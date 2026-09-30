@@ -1,11 +1,10 @@
-// Block and line commands (design.md §8.2 UI7, UI9, UI12–UI15, UI17; toolbar test ids §8.3; keys UI33).
+// Block and line commands (design.md §8.2 UI7, UI9, UI12, UI14, UI15, UI17; toolbar test ids §8.3; keys UI33).
+// Duplicate (UI13) is with copy and paste in ./clipboard.ts (A12).
 // Each command turns an intent into one core operation through `store.apply` (one undo step). The canvas side of
 // lines (drag to connect, reconnect, the edge label editor, the preview) lives in canvas/connect.tsx.
 import { createElement } from 'react';
 import { parseLayoutFile } from '../../core/layoutfile';
-import {
-  changeShape, clearAllPins, deleteItems, duplicateNodes, renameNode, unpinNodes,
-} from '../../core/ops';
+import { changeShape, clearAllPins, deleteItems, renameNode, unpinNodes } from '../../core/ops';
 import type { ShapeKind } from '../../core/types';
 import { armConnect, connectArmed, disarmConnect, editEdgeLabel } from '../canvas/connect';
 import type { Rect } from '../canvas/viewport';
@@ -100,16 +99,6 @@ async function relayoutAll(store: Store): Promise<void> {
   if (ok) store.apply(clearAllPins);
 }
 
-// ---- UI13 Duplicate
-
-function duplicateSelection(store: Store): void {
-  const layout = store.layout;
-  const ids = store.getState().selection.nodes;
-  if (!layout || ids.length === 0) return;
-  const r = store.apply(duplicateNodes, ids, layout);
-  if (r.ok) store.select({ nodes: r.ids });
-}
-
 // ---- UI14 Delete (and UI41: a selected note)
 
 /** A note is what's selected (a note's selection leaves no block or line selected, UI10). The title isn't deleted. */
@@ -137,8 +126,6 @@ overlays.push({
 
 // ---- Commands
 
-const hasNodes = (s: State) => s.selection.nodes.length > 0;
-
 export const blockCommands: Command[] = [
   {
     id: 'connect',
@@ -152,15 +139,6 @@ export const blockCommands: Command[] = [
       if (connectArmed(store.getState())) disarmConnect(store);
       else armConnect(store);
     },
-  },
-  {
-    id: 'duplicate',
-    title: 'Duplicate',
-    icon: icons.duplicate,
-    keys: ['mod+d'],
-    help: 'Duplicate the selected blocks',
-    enabled: (s) => editable(s) && hasNodes(s) && !!s.shown?.layout,
-    run: duplicateSelection,
   },
   {
     id: 'delete',

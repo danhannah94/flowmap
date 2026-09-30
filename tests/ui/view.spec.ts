@@ -130,18 +130,23 @@ test('config colours follow the theme ({light, dark})', async ({ browser }, info
   await ctx.close();
 });
 
-test('pan by dragging the background, zoom with the wheel, fit', async ({ page }, info) => {
+// A11: a plain drag on the background draws a selection box (multiselect.spec.ts); Space+drag pans, from anywhere.
+test('pan with Space+drag, zoom with the wheel, fit', async ({ page }, info) => {
   const d = makeDiagram(info);
   await open(page, d);
   const z0 = await zoomOf(page, 'r01');
   const b0 = (await node(page, 'r01').boundingBox())!;
-  // Pan: drag an empty spot of the canvas.
+  // Pan: hold Space and drag an empty spot of the canvas.
   const canvas = (await page.getByTestId('canvas').boundingBox())!;
   const from = { x: canvas.x + canvas.width - 150, y: canvas.y + 40 };
   await page.mouse.move(from.x, from.y);
+  await page.keyboard.down(' ');
+  await expect(page.getByTestId('canvas')).toHaveAttribute('data-space-pan', 'true');
   await page.mouse.down();
   await page.mouse.move(from.x - 60, from.y + 30, { steps: 5 });
   await page.mouse.up();
+  await page.keyboard.up(' ');
+  await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-space-pan', 'true');
   const b1 = (await node(page, 'r01').boundingBox())!;
   expect(Math.round(b1.x - b0.x)).toBe(-60);
   expect(Math.round(b1.y - b0.y)).toBe(30);

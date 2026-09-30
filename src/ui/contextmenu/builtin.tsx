@@ -1,9 +1,10 @@
 // The built-in context-menu handlers (UI40): the items whose operations and commands already exist. The slots (names,
 // labels, "shows when") are in items.tsx; registry.ts explains how the two halves fit.
-import { deleteItems, duplicateNodes, unpinNodes } from '../../core/ops';
+import { deleteItems, unpinNodes } from '../../core/ops';
 import { SHAPE_KINDS } from '../../core/types';
 import { addBlockAtCorner, editNodeLabel, pinningBlocked } from '../actions';
 import { editEdgeLabel } from '../canvas/connect';
+import { duplicateBlocks } from '../clipboard';
 import { changeBlockShape, editNodeId } from '../commands/blocks';
 import { editTitle } from '../features/diagramActions';
 import { editLaneId, editLaneLabel, moveLaneBy, requestDeleteLane } from '../features/laneActions';
@@ -16,14 +17,7 @@ import { isPinned } from './state';
 registerMenuHandler('block', 'edit-label', { run: ({ store, target }) => editNodeLabel(store, target.clicked) });
 registerMenuHandler('block', 'rename-id', { run: ({ store, target }) => editNodeId(store, target.clicked) });
 registerMenuHandler('block', 'shape', { Control: BlockShapeControl });
-registerMenuHandler('block', 'duplicate', {
-  run: ({ store, target }) => {
-    const layout = store.layout;
-    if (!layout) return;
-    const r = store.apply(duplicateNodes, target.ids, layout);
-    if (r.ok) store.select({ nodes: r.ids });
-  },
-});
+registerMenuHandler('block', 'duplicate', { run: ({ store, target }) => duplicateBlocks(store, target.ids) });
 registerMenuHandler('block', 'unpin', {
   run: ({ store, target }) => {
     const s = store.getState();

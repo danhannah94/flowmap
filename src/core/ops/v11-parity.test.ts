@@ -433,18 +433,21 @@ describe('keeping the layout file in step: the other bullets (§8.2)', () => {
     });
   });
 
-  test('duplicating a block copies its stored size', () => {
+  test('duplicating a block copies its stored size (and, A12, the lines between the copies)', () => {
     const files = withLayout((js) => { js.nodes.b.width = 180; js.nodes.b.height = 70; js.nodes.c.width = 140; js.nodes.c.height = 60; });
     const out = layoutOf(files);
     const box = (id: string) => out.result.nodes.find((n) => n.id === id)!;
     expectParity(duplicateNodes(files, ['c', 'b', 'd'], out), files, {
-      mmd: edit(SHAPE_MMD, ['    b["Beta"]\n', '    b["Beta"]\n    n1["Beta"]\n'], ['    d{"Delta?"}\n', '    d{"Delta?"}\n    n2["Gamma"]\n    n3{"Delta?"}\n']),
-      config: `${SHAPE_CONFIG}  n1:\n    owner: sam\n`,
+      mmd: edit(SHAPE_MMD,
+        ['    b["Beta"]\n', '    b["Beta"]\n    b-2["Beta"]\n'],
+        ['    d{"Delta?"}\n', '    d{"Delta?"}\n    c-2["Gamma"]\n    d-2{"Delta?"}\n'],
+        ['  a -->|yes| d\n', '  a -->|yes| d\n  b-2 --> d-2\n  c-2 --> d-2\n']),
+      config: `${SHAPE_CONFIG}  b-2:\n    owner: sam\n`,
       layout: editJson(files.layout, (js) => {
-        js.nodes.n1 = { lane: 'top', along: box('b').x + 24, across: box('b').y + 24, width: 180, height: 70 };
+        js.nodes['b-2'] = { lane: 'top', along: box('b').x + 40, across: box('b').y + 40, width: 180, height: 70 };
         const bottom = out.result.lanes.find((l) => l.id === 'bottom')!.y;
-        js.nodes.n2 = { lane: 'bottom', along: box('c').x + 24, across: box('c').y - bottom + 24, width: 140, height: 60 };
-        js.nodes.n3 = { lane: 'bottom', along: box('d').x + 24, across: box('d').y - bottom + 24 };
+        js.nodes['c-2'] = { lane: 'bottom', along: box('c').x + 40, across: box('c').y - bottom + 40, width: 140, height: 60 };
+        js.nodes['d-2'] = { lane: 'bottom', along: box('d').x + 40, across: box('d').y - bottom + 40 };
       }),
     });
   });
@@ -571,9 +574,9 @@ describe('the frame the ops use is the layout\'s (§6)', () => {
     const files = withLayout((js) => { js.edges = { 'c->d': { points: [{ lane: 'bottom', along: -80, across: 60 }] } }; });
     const out = layoutOf(files);
     expect(out.translation.along).toBe(80);
-    const want = editJson(files.layout, (js) => { js.nodes.n1 = { lane: 'top', along: 424, across: 54 }; });
-    const mmd = edit(SHAPE_MMD, ['    b["Beta"]\n', '    b["Beta"]\n    n1["Beta"]\n']);
-    const config = `${SHAPE_CONFIG}  n1:\n    owner: sam\n`;
+    const want = editJson(files.layout, (js) => { js.nodes['b-2'] = { lane: 'top', along: 440, across: 70 }; });
+    const mmd = edit(SHAPE_MMD, ['    b["Beta"]\n', '    b["Beta"]\n    b-2["Beta"]\n']);
+    const config = `${SHAPE_CONFIG}  b-2:\n    owner: sam\n`;
     expectParity(duplicateNodes(files, ['b'], out), files, { mmd, config, layout: want });
     expectParity(duplicateNodes(files, ['b'], out.result), files, { mmd, config, layout: want });
   });

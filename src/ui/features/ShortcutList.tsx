@@ -3,7 +3,8 @@
 // shows up here by itself; mouse gestures are listed below it. The list is not modal: shortcuts keep working while it
 // is open, so a person can try them. `?` again, Escape or × closes it. (v1.1 rows: editing and moving a selected note
 // or the title come from the note commands; double-click, right-click menus, Alt to skip snapping, resize, line
-// shaping and connection points are listed under Mouse.)
+// shaping and connection points are listed under Mouse. A11/A12: copy, cut and paste come from the clipboard commands;
+// a background drag draws a selection box, and Space+drag or the middle button pans.)
 import { useEffect } from 'react';
 import { COMMANDS, type Command } from '../commands';
 import { isTyping } from '../keyboard';
@@ -69,18 +70,20 @@ function keyboardRows(commands: readonly Command[]): Row[] {
 }
 
 const ALT = isMac ? '⌥' : 'Alt';
+const MOD = isMac ? '⌘' : 'Ctrl';
 
 const MOUSE: Row[] = [
   { text: 'Edit a block, a note, a line label, a lane name or the title', bindings: [['Double-click']] },
   { text: 'The menu for a block, line, lane, note, the title or the canvas', bindings: [['Right-click']] },
-  { text: 'Add to or remove from the selection', bindings: [['Shift', 'Click']] },
-  { text: 'Select with a box', bindings: [['Shift', 'Drag']] },
-  { text: 'Move a block, note or the title (snaps to alignment)', bindings: [['Drag']] },
+  { text: 'Add to or remove from the selection', bindings: [['Shift', 'Click'], [MOD, 'Click']] },
+  { text: 'Select the blocks inside a box', bindings: [['Drag the background']] },
+  { text: 'Add the blocks inside a box to the selection', bindings: [['Shift', 'Drag the background']] },
+  { text: 'Move a block, note or the title (snaps to alignment); drag a selected block to move them all', bindings: [['Drag']] },
   { text: 'Move without snapping', bindings: [[ALT, 'Drag']] },
   { text: 'Resize the selected block', bindings: [['Drag a handle']] },
   { text: 'Bend or straighten a line', bindings: [['Drag a line handle']] },
   { text: 'Connect from a side', bindings: [['Drag a connection point']] },
-  { text: 'Pan', bindings: [['Drag the background']] },
+  { text: 'Pan', bindings: [['Space', 'Drag'], ['Middle-button drag']] },
   { text: 'Zoom', bindings: [['Scroll'], ['Pinch']] },
   { text: 'Reorder lanes', bindings: [['Drag a lane header']] },
 ];

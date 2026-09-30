@@ -297,6 +297,18 @@ export class ConfigDoc {
     });
   }
 
+  /**
+   * A12 paste: write a copied metadata entry (from this diagram or another) under a new id, appended at the end of
+   * `nodes`. An empty entry writes nothing.
+   */
+  addNodeEntry(id: string, entry: Record<string, unknown>): EditResult {
+    return this.run((src, cfg) => {
+      if (Object.hasOwn(cfg.nodes, id)) refuse(`The config already has an entry for "${id}"`);
+      if (!isPlainObject(entry) || Object.keys(entry).length === 0) return src;
+      return setIn(src, ['nodes', id], structuredClone(entry));
+    });
+  }
+
   /** UI27: delete a node's entry (an emptied `nodes` becomes `nodes: {}`). */
   deleteNodeEntry(id: string): EditResult {
     return this.run((src) => deleteIn(src, ['nodes', id]));

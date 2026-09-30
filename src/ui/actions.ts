@@ -121,7 +121,7 @@ export function addBlockAtCorner(store: Store, shape: ShapeKind, corner: Point):
   return true;
 }
 
-type Placed = { id: string; from: string; lane: string; box: Rect };
+export type Placed = { id: string; from: string; lane: string; box: Rect };
 
 /**
  * UI10/UI11: pin blocks at world boxes (each `lane`: the lane it ends in), as one undo step. Blocks that stay in their
@@ -176,7 +176,7 @@ export function dropNodes(store: Store, ids: readonly string[], dx: number, dy: 
  * against its lane as it really is. A settled pin can grow its lane and move later lanes, so repeat until it holds
  * (it does after one or two passes). Also used when nothing changed lanes: then the first pass confirms the pins.
  */
-function settlePlaced(store: Store, before: Files, after: Files, placed: readonly Placed[]): OpResult {
+export function settlePlaced(store: Store, before: Files, after: Files, placed: readonly Placed[]): OpResult {
   const s = store.getState();
   let files = after;
   for (let pass = 0; pass < 4; pass++) {

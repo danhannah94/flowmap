@@ -98,10 +98,23 @@ inspector.
 **Moving.** Drag a block to move it; it is pinned where you drop it (saved within a second). Drop it in another lane
 to move it there (the lane it will land in lights up while you drag). Drop it outside every lane (below the last
 one, or past their end) to make it unassigned: it moves to the Unassigned lane, pinned where you dropped it, and
-while you drag, the place that lane will appear is outlined. Shift-click adds to the selection, Shift-drag on
-the background draws a selection box, and the arrow keys nudge by 10 px. Unpin puts selected blocks back under
-automatic placement; Re-layout all clears every pin. Drag the background to pan; scroll or pinch to zoom; Fit shows
-everything.
+while you drag, the place that lane will appear is outlined. Unpin puts selected blocks back under automatic
+placement; Re-layout all clears every pin. Hold Space and drag (or drag with the middle button) to pan; scroll or
+pinch to zoom; Fit shows everything.
+
+**Selecting several.** Shift-click or Cmd/Ctrl-click adds a block to the selection or takes it out. Drag on the
+background to draw a box: the blocks wholly inside it are selected (with Shift held, they are added to the
+selection). Cmd/Ctrl+A selects every block, Escape clears. Drag any selected block to move them all together: each
+lands in the lane under its own centre and is pinned there, and the whole drop is one undo step. The arrow keys nudge
+the selection by 10 px, and Delete removes it with its lines.
+
+**Copy and paste.** Cmd/Ctrl+C copies the selected blocks with the lines between them (labels, metadata and sizes
+included); Cmd/Ctrl+X cuts. Cmd/Ctrl+V pastes, in this diagram or another one open in the same browser: with the
+pointer over the canvas the copy lands there (each block in the lane under it), otherwise 40 px along and across from
+the originals, in the same lanes if the diagram has them (else the first lane). Pasted blocks get ids made from the
+originals (`review` becomes `review-2`, then `review-3`), keep an id that's still free, and become the selection. A
+copy is also put on the system clipboard as flowmap Mermaid text, so it pastes into a text editor or a chat. Cmd/Ctrl+D
+duplicates the selection in place (40 px along and across, lines included) without touching the clipboard.
 
 **Lines.** Drag from a block's connection handle (the dot on its side, shown on hover) to another block, or select a
 block, press Connect and click the target. Select a line and drag either end to reconnect it. Double-click a line to
@@ -142,8 +155,9 @@ picture as `flowmap export`) and show the path, with a button to copy it.
 |---|---|
 | Cmd/Ctrl+Z, Shift+Cmd/Ctrl+Z | Undo, redo |
 | Delete or Backspace | Delete the selected blocks and lines |
+| Cmd/Ctrl+C, Cmd/Ctrl+X, Cmd/Ctrl+V | Copy, cut, paste the selected blocks (and the lines between them) |
 | Cmd/Ctrl+D | Duplicate the selected blocks |
-| Cmd/Ctrl+A | Select everything |
+| Cmd/Ctrl+A | Select every block |
 | Enter | Edit the selected block's label |
 | Escape | Cancel an edit, or clear the selection |
 | Arrow keys | Nudge the selection 10 px (pins it) |

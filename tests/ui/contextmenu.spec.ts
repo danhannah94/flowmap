@@ -183,17 +183,17 @@ test('block shape opens the shape options inside the menu; one click rewrites th
   await expect(node(page, 'a1')).toHaveAttribute('data-kind', 'database');
 });
 
-test('block duplicate copies it (pinned 24 px along and across) and selects the copy', async ({ page }, info) => {
+test('block duplicate copies it (pinned 40 px along and across, A12) and selects the copy', async ({ page }, info) => {
   const d = makeDiagram(info, MENUS);
   await open(page, d);
   const b1 = await attrs(node(page, 'b1'));
   await rightClick(page, node(page, 'b1'));
   await item(page, 'duplicate').click();
-  const f = await onDisk(page, d, (x) => x.mmd.includes('n1{"Check?"}'));
-  expect(declaredLane(f.mmd, 'n1')).toBe('beta');
-  expect(pins(f.layout).n1).toEqual({ lane: 'beta', along: 420 + 24, across: 30 + 24 });
-  await expect(node(page, 'n1')).toHaveAttribute('data-selected', 'true');
-  expect((await attrs(node(page, 'n1'))).x).toBe(b1.x + 24);
+  const f = await onDisk(page, d, (x) => x.mmd.includes('b1-2{"Check?"}'));
+  expect(declaredLane(f.mmd, 'b1-2')).toBe('beta');
+  expect(pins(f.layout)['b1-2']).toEqual({ lane: 'beta', along: 420 + 40, across: 30 + 40 });
+  await expect(node(page, 'b1-2')).toHaveAttribute('data-selected', 'true');
+  expect((await attrs(node(page, 'b1-2'))).x).toBe(b1.x + 40);
 });
 
 test('block unpin shows only on a pinned block and removes its pin', async ({ page }, info) => {
@@ -264,9 +264,25 @@ const LAST_COLUMN: Files = {
   layout: null,
 };
 
+/**
+ * A block's box once the view has settled. When a right-click opens the side column, the store keeps the diagram in
+ * view only after the press ends (a task and a frame later: it never moves the world under a press); under load that
+ * lands after the test's next step has already measured a block, so measure once two frames in a row agree.
+ */
+async function settledBox(page: Page, id: string) {
+  let prev: { x: number; y: number; width: number; height: number } | null = null;
+  for (let i = 0; i < 30; i++) {
+    await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+    const b = await node(page, id).boundingBox();
+    if (b && prev && b.x === prev.x && b.y === prev.y && b.width === prev.width && b.height === prev.height) return b;
+    prev = b;
+  }
+  return prev;
+}
+
 /** Right-click a block's centre; it must open the block's own menu. On failure, says what covers the centre. */
 async function rightClickBlock(page: Page, id: string): Promise<void> {
-  const b = (await node(page, id).boundingBox())!;
+  const b = (await settledBox(page, id))!;
   const p = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
   const under = await page.evaluate(({ x, y }) => {
     const el = document.elementFromPoint(x, y);
@@ -292,12 +308,13 @@ for (const first of ['s1', 's6', 'f', 'h']) {
     expect(f0.x + f0.width).toBeGreaterThan(canvas.x + canvas.width - 340);
     await rightClickBlock(page, first);
     await item(page, 'duplicate').click();
-    await onDisk(page, d, (x) => x.mmd.includes('n1'));
-    await expect(node(page, 'n1')).toHaveAttribute('data-selected', 'true');
+    const copy = `${first}-2`;
+    await onDisk(page, d, (x) => x.mmd.includes(copy));
+    await expect(node(page, copy)).toHaveAttribute('data-selected', 'true');
     await expect(page.getByTestId('inspector')).toBeVisible();
     // With the copy selected and the column open, every other block still opens its own menu at its centre.
     for (const id of ids) {
-      if (id === first) continue; // the copy sits 24 px along and across, over its original's centre
+      if (id === first) continue; // the copy sits 40 px along and across, possibly over its original's centre
       await rightClickBlock(page, id);
       await page.keyboard.press('Escape');
       await expect(menu(page)).toHaveCount(0);
@@ -314,7 +331,7 @@ for (const first of ['s1', 's6', 'f', 'h']) {
     const after = await onDisk(page, d, (x) => !/^\s+f@/m.test(x.mmd));
     expect(after.mmd).not.toContain('s6 --> f');
     await expect(node(page, 'f')).toHaveCount(0);
-    await expect(node(page, 'n1')).toHaveCount(1);
+    await expect(node(page, copy)).toHaveCount(1);
   });
 }
 
@@ -360,17 +377,18 @@ test('on a block that is one of several selected: only the items for all of them
   for (const n of ['duplicate', 'unpin', 'delete']) expect(names).toContain(n);
   for (const n of names) expect(['colors', 'duplicate', 'unpin', 'reset-size', 'reset-colors', 'delete']).toContain(n);
   await item(page, 'duplicate').click();
-  const f = await onDisk(page, d, (x) => ['n1', 'n2', 'n3'].every((id) => x.mmd.includes(`${id}[`) || x.mmd.includes(`${id}{`)));
-  // In file declaration order: a1's copy is n1 (alpha), b1's n2 (beta), g1's n3 (gamma).
-  expect(declaredLane(f.mmd, 'n1')).toBe('alpha');
-  expect(declaredLane(f.mmd, 'n2')).toBe('beta');
-  expect(declaredLane(f.mmd, 'n3')).toBe('gamma');
-  for (const id of ['n1', 'n2', 'n3']) await expect(node(page, id)).toHaveAttribute('data-selected', 'true');
+  const copies = ['a1-2', 'b1-2', 'g1-2'];
+  const f = await onDisk(page, d, (x) => copies.every((id) => x.mmd.includes(`${id}[`) || x.mmd.includes(`${id}{`)));
+  // Each copy in its original's lane (A12 ids: the original's id and -2).
+  expect(declaredLane(f.mmd, 'a1-2')).toBe('alpha');
+  expect(declaredLane(f.mmd, 'b1-2')).toBe('beta');
+  expect(declaredLane(f.mmd, 'g1-2')).toBe('gamma');
+  for (const id of copies) await expect(node(page, id)).toHaveAttribute('data-selected', 'true');
   // Delete from the menu on one of the copies deletes all three copies.
   await saved(page);
-  await rightClick(page, node(page, 'n2'));
+  await rightClick(page, node(page, 'b1-2'));
   await item(page, 'delete').click();
-  const g = await onDisk(page, d, (x) => !x.mmd.includes('n1') && !x.mmd.includes('n2') && !x.mmd.includes('n3'));
+  const g = await onDisk(page, d, (x) => copies.every((id) => !x.mmd.includes(id)));
   expect(g.mmd).toBe(MENUS.mmd);
 });
 
