@@ -1,12 +1,14 @@
 // Lanes, diagram, export and keyboard features (UI18–UI23, UI32, UI33, A7, A8, A13), wired into the foundation
 // through its extension points only: the lane-header extras hook (the lane menu), the lane-layer extras hook (A8 resize
 // handles, A13 length handle), the gesture and double-click registries (header drag reorder, header double-click), and the overlay slot
-// (menu popover, delete dialog, drop indicator, export result, shortcut list). Imported once, for its side effects, by commands/lanes.ts.
+// (menu popover, delete dialog, drop indicator, export result, shortcut list, controls legend A14). Imported once, for
+// its side effects, by commands/lanes.ts.
 import { useEffect } from 'react';
 import { registerDoubleClick } from '../canvas/gestures';
 import { setLaneHeaderExtras, setLaneLayerExtras } from '../canvas/LanesLayer';
 import { overlays } from '../chrome/Panels';
 import { useStore } from '../store/hooks';
+import { ControlsLegend } from './ControlsLegend';
 import { editTitle } from './diagramActions';
 import { EmptyHint } from './EmptyHint';
 import { ExportResult } from './ExportResult';
@@ -39,6 +41,7 @@ function FeatureHost() {
       <LaneDragOverlay />
       <ExportResult />
       <ShortcutList />
+      <ControlsLegend />
       <EmptyHint />
     </>
   );

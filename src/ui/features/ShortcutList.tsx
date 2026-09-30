@@ -4,7 +4,9 @@
 // is open, so a person can try them. `?` again, Escape or × closes it. (v1.1 rows: editing and moving a selected note
 // or the title come from the note commands; double-click, right-click menus, Alt to skip snapping, resize, line
 // shaping and connection points are listed under Mouse. A11/A12: copy, cut and paste come from the clipboard commands;
-// a background drag draws a selection box, and Space+drag or the middle button pans.)
+// a background drag draws a selection box, and Space+drag or the middle button pans. A14: a trackpad's two-finger
+// scroll pans too, and Cmd/Ctrl+scroll always zooms (wheel-intent.ts); the controls legend beside this button covers
+// the same ground more compactly, with the "Scroll to" override.)
 import { useEffect } from 'react';
 import { COMMANDS, type Command } from '../commands';
 import { isTyping } from '../keyboard';
@@ -83,8 +85,8 @@ const MOUSE: Row[] = [
   { text: 'Resize the selected block', bindings: [['Drag a handle']] },
   { text: 'Bend or straighten a line', bindings: [['Drag a line handle']] },
   { text: 'Connect from a side', bindings: [['Drag a connection point']] },
-  { text: 'Pan', bindings: [['Space', 'Drag'], ['Middle-button drag']] },
-  { text: 'Zoom', bindings: [['Scroll'], ['Pinch']] },
+  { text: 'Pan', bindings: [['Two-finger scroll'], ['Space', 'Drag'], ['Middle-button drag']] },
+  { text: 'Zoom', bindings: [['Pinch'], ['Scroll wheel'], [MOD, 'Scroll']] },
   { text: 'Reorder lanes', bindings: [['Drag a lane header']] },
 ];
 

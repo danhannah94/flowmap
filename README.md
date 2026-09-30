@@ -99,8 +99,11 @@ inspector.
 to move it there (the lane it will land in lights up while you drag). Drop it outside every lane (below the last
 one, or past their end) to make it unassigned: it moves to the Unassigned lane, pinned where you dropped it, and
 while you drag, the place that lane will appear is outlined. Unpin puts selected blocks back under automatic
-placement; Re-layout all clears every pin. Hold Space and drag (or drag with the middle button) to pan; scroll or
-pinch to zoom; Fit shows everything.
+placement; Re-layout all clears every pin. To pan: a trackpad's two-finger scroll, hold Space and drag, or drag with
+the middle button. To zoom around the cursor: a trackpad pinch, a mouse's scroll wheel, or Cmd/Ctrl+scroll; Shift+scroll
+pans sideways with a mouse. Fit shows everything. There's no perfect way to tell a trackpad from a mouse wheel, so if
+the guess is ever wrong for your hardware, pick Pan or Zoom instead of Auto in the controls legend (the small icon
+beside the `?` button), which also lists every gesture above.
 
 **Selecting several.** Shift-click or Cmd/Ctrl-click adds a block to the selection or takes it out. Drag on the
 background to draw a box: the blocks wholly inside it are selected (with Shift held, they are added to the
@@ -152,7 +155,9 @@ is read-only until the file is fixed.
 **Export.** The SVG and PNG buttons write `exports/<name>.svg` or `.png` beside the `.mmd` (light theme, the same
 picture as `flowmap export`) and show the path, with a button to copy it.
 
-**Keyboard.** Press `?` (or the `?` button at the bottom left) for the full list. The main ones:
+**Keyboard.** Press `?` (or the `?` button at the bottom left) for the full list; the small icon beside it opens the
+controls legend, a compact reminder of the pan/zoom/select/edit gestures and the "Scroll to" choice. The main
+keyboard ones:
 
 | Keys | Does |
 |---|---|
