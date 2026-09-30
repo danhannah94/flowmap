@@ -1,9 +1,10 @@
-import { readFile, readdir, watch } from 'node:fs/promises';
+import { readFile, readdir, watch, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
-  applyPut, deleteIfExists, diagramFileNames, isValidMmdName, readDiagram, readOptional, writeAtomic, type PutIo,
+  applyPut, deleteDiagram, deleteIfExists, diagramFileNames, isValidMmdName, readDiagram, readOptional, TRASH_DIR_NAME,
+  writeAtomic, type PutIo,
 } from './files.js';
 import { makeTempDiagramDir, removeTempDir } from './test-support.js';
 
@@ -96,6 +97,70 @@ describe('writeAtomic', () => {
     const target = join(dir, 'brand-new.flow.yaml');
     await writeAtomic(target, 'version: 1\n');
     expect(await readFile(target, 'utf8')).toBe('version: 1\n');
+  });
+});
+
+describe('deleteDiagram', () => {
+  let dir: string;
+  const MMD = 'purchase-request.mmd';
+
+  beforeEach(async () => {
+    dir = await makeTempDiagramDir();
+  });
+
+  afterEach(async () => {
+    await removeTempDir(dir);
+  });
+
+  it('moves all three files into .flowmap-trash/<timestamp>-<name>/, leaving none behind', async () => {
+    const before = await readDiagram(dir, MMD);
+    const r = await deleteDiagram(dir, MMD);
+    expect(r.ok).toBe(true);
+    const parts = r.trashPath!.split(/[/\\]/);
+    expect(parts[0]).toBe(TRASH_DIR_NAME);
+    expect(parts[1]).toMatch(/^.+-purchase-request$/);
+
+    const remaining = await readdir(dir);
+    expect(remaining).not.toContain('purchase-request.mmd');
+    expect(remaining).not.toContain('purchase-request.flow.yaml');
+    expect(remaining).not.toContain('purchase-request.layout.json');
+    expect(remaining).toContain(TRASH_DIR_NAME);
+
+    const trashed = await readdir(join(dir, r.trashPath!));
+    expect(trashed.sort()).toEqual(['purchase-request.flow.yaml', 'purchase-request.layout.json', 'purchase-request.mmd'].sort());
+    expect(await readFile(join(dir, r.trashPath!, 'purchase-request.mmd'), 'utf8')).toBe(before.files.mmd);
+    expect(await readFile(join(dir, r.trashPath!, 'purchase-request.flow.yaml'), 'utf8')).toBe(before.files.config);
+    expect(await readFile(join(dir, r.trashPath!, 'purchase-request.layout.json'), 'utf8')).toBe(before.files.layout);
+  });
+
+  it('moves only the files that exist, when the config or layout file is missing', async () => {
+    await deleteIfExists(join(dir, 'purchase-request.layout.json'));
+    const r = await deleteDiagram(dir, MMD);
+    expect(r.ok).toBe(true);
+    const trashed = await readdir(join(dir, r.trashPath!));
+    expect(trashed.sort()).toEqual(['purchase-request.flow.yaml', 'purchase-request.mmd'].sort());
+  });
+
+  it('is ok: false for a diagram that does not exist, and touches nothing', async () => {
+    const r = await deleteDiagram(dir, 'nope.mmd');
+    expect(r).toEqual({ ok: false, error: '"nope.mmd" does not exist' });
+    const remaining = await readdir(dir);
+    expect(remaining).not.toContain(TRASH_DIR_NAME);
+  });
+
+  it('never touches exports/', async () => {
+    const { mkdir } = await import('node:fs/promises');
+    await mkdir(join(dir, 'exports'), { recursive: true });
+    await writeFile(join(dir, 'exports', 'purchase-request.svg'), '<svg/>');
+    await deleteDiagram(dir, MMD);
+    expect(await readFile(join(dir, 'exports', 'purchase-request.svg'), 'utf8')).toBe('<svg/>');
+  });
+
+  it('two deletes of different diagrams land in different trash folders', async () => {
+    await writeFile(join(dir, 'second.mmd'), 'flowchart LR\n  a["A"]\n');
+    const r1 = await deleteDiagram(dir, MMD);
+    const r2 = await deleteDiagram(dir, 'second.mmd');
+    expect(r1.trashPath).not.toBe(r2.trashPath);
   });
 });
 

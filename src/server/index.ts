@@ -10,6 +10,7 @@ import {
   type DiagramVersions,
   type FilesPatch,
   applyPut,
+  deleteDiagram,
   isValidMmdName,
   listMmdFiles,
 } from './files.js';
@@ -135,6 +136,25 @@ export async function serve(options: ServeOptions): Promise<ServeHandle> {
     sendJson(res, 200, result.snapshot);
   }
 
+  /** Moves the diagram's files into `.flowmap-trash` (design.md §8.2, the home page's delete control). The
+   *  directory watcher notices the files disappearing on its own (same as any other external change), so a tab
+   *  with this diagram open gets the usual "changed" SSE event, with `files.mmd: null`; `beginWrite`/`endWrite`
+   *  only keep it from reading a half-moved state while the renames are in flight. */
+  async function handleDiagramDelete(res: ServerResponse, file: string): Promise<void> {
+    watcher.beginWrite(file);
+    let result: Awaited<ReturnType<typeof deleteDiagram>>;
+    try {
+      result = await deleteDiagram(dir, file);
+    } finally {
+      watcher.endWrite(file);
+    }
+    if (!result.ok) {
+      sendJson(res, 404, { error: result.error });
+      return;
+    }
+    sendJson(res, 200, { ok: true, trash: result.trashPath });
+  }
+
   function handleEvents(req: IncomingMessage, res: ServerResponse, file: string): void {
     void (async () => {
       await watcher.ensureTracked(file);
@@ -196,13 +216,14 @@ export async function serve(options: ServeOptions): Promise<ServeHandle> {
       return;
     }
 
-    if (pathname === '/api/diagram' && (req.method === 'GET' || req.method === 'PUT')) {
+    if (pathname === '/api/diagram' && (req.method === 'GET' || req.method === 'PUT' || req.method === 'DELETE')) {
       const file = url.searchParams.get('file');
       if (!isValidMmdName(file)) {
         sendJson(res, 400, { error: 'invalid "file" parameter' });
         return;
       }
       if (req.method === 'GET') return handleDiagramGet(res, file);
+      if (req.method === 'DELETE') return handleDiagramDelete(res, file);
       return handleDiagramPut(req, res, file);
     }
 
