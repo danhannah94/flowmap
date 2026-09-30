@@ -402,7 +402,7 @@ function ManyBlocks({ ids }: { ids: string[] }) {
     <>
       <header className="fm-ev-head">
         <span className="fm-ev-kicker">Selection</span>
-        <div className="fm-ev-title">{ids.length} blocks</div>
+        <div className="fm-ev-title" data-testid="selection-count">{ids.length} blocks selected</div>
         <div className="fm-ev-ids">
           {ids.map((id) => <code key={id} className="fm-ev-code fm-ev-code-quiet">{id}</code>)}
         </div>

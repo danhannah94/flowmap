@@ -1,16 +1,18 @@
 // The diagram canvas: one transformed "world" (layout coordinates, §7) holding the title, lanes, edges, nodes and
-// legend, plus pan (drag the background), zoom (wheel, or pinch = Ctrl+wheel) and the pointer gestures (gestures.ts).
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+// legend, plus pan (Space+drag or the middle button; A11: a plain drag on the background draws a selection box), zoom
+// (wheel, or pinch = Ctrl+wheel) and the pointer gestures (gestures.ts).
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getTheme, type Theme } from '../../core/theme';
 import { useStore, useStoreState } from '../store/hooks';
 import { Legend } from './Decorations';
 import { EdgesLayer } from './EdgesLayer';
-import { gestureFor, hitTest, onDoubleClick, type Gesture, type GestureContext, type Hit } from './gestures';
+import { gestureFor, hitTest, onDoubleClick, panGesture, type Gesture, type GestureContext, type Hit } from './gestures';
 import { InlineEditor } from './InlineEditor';
 import { LanesLayer } from './LanesLayer';
 import { NodesLayer } from './NodesLayer';
 import { toWorld } from './viewport';
 import { NotesLayer } from '../notes';
+import { isTyping } from '../keyboard';
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
@@ -66,6 +68,36 @@ export function Canvas() {
   // One gesture at a time; moves and the release are routed to it through pointer capture.
   const gesture = useRef<{ g: Gesture; pointerId: number } | null>(null);
 
+  // Space held: a drag anywhere pans (A11). Not while typing, and not on a focused button (Space presses it).
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  const space = useRef(false);
+  useEffect(() => {
+    const set = (on: boolean) => {
+      if (space.current === on) return;
+      space.current = on;
+      setSpaceHeld(on);
+    };
+    const down = (e: KeyboardEvent) => {
+      if (e.key !== ' ' || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
+      if (isTyping(e.target) || store.getState().editing) return;
+      if (e.target instanceof HTMLElement && e.target.closest('button, a, [role="button"], [role="menuitem"]')) return;
+      e.preventDefault(); // the page never scrolls
+      set(true);
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.key === ' ') set(false);
+    };
+    const off = () => set(false);
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', off);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', off);
+    };
+  }, [store]);
+
   // Whether a press is down (the store never moves the view under one) and where the last right-click was (the side
   // column opening from its menu keeps the diagram in view around it). A press ends after its gesture's handlers ran.
   useEffect(() => {
@@ -96,11 +128,14 @@ export function Canvas() {
     if (store.getState().editing && active && active !== document.body) active.blur();
     // macOS: Ctrl+click is a right-click (it opens the context menu, UI40), not a press on what is under it.
     if (e.button === 0 && native.ctrlKey && IS_MAC) return;
+    // A press on the canvas drops any text selected in a panel, so Cmd/Ctrl+C copies blocks again (A12).
+    const textSel = window.getSelection();
+    if (e.button === 0 && textSel && !textSel.isCollapsed) textSel.removeAllRanges();
     let g: Gesture | null = null;
-    // The middle button always pans. (v1.1: Alt+drag on a block moves it without snapping, UI39, so Alt no longer
-    // pans from anywhere; Alt+drag on the background still pans, like any background drag.)
-    if (e.button === 1) {
-      g = gestureFor({ kind: 'background' }, native, ctx);
+    // The middle button, and a drag with Space held, pan from anywhere (A11). (v1.1: Alt+drag on a block moves it
+    // without snapping, UI39; A11: a plain or Alt drag on the background draws a selection box.)
+    if (e.button === 1 || (e.button === 0 && space.current)) {
+      g = panGesture(ctx, native);
     } else if (e.button === 0) {
       g = gestureFor(hit, native, ctx);
       // Until a feature registers them, handles and edge ends act like their block or edge.
@@ -116,6 +151,7 @@ export function Canvas() {
     }
   };
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    store.notePointer(ctx.local(e));
     const cur = gesture.current;
     if (cur && cur.pointerId === e.pointerId) cur.g.move(e.nativeEvent);
   };
@@ -163,6 +199,7 @@ export function Canvas() {
       data-readonly={readOnly ? 'true' : 'false'}
       data-placing={placing ? 'true' : undefined}
       data-dragging={dragging ? 'true' : undefined}
+      data-space-pan={spaceHeld ? 'true' : undefined}
       style={{
         ...themeVars(theme),
         // Handles and grips keep a usable on-screen size at low zoom (lines.css `.fm-port`, resize.css, EdgesLayer grips).
@@ -174,6 +211,7 @@ export function Canvas() {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
+      onPointerLeave={() => store.notePointer(null)}
       onDoubleClick={onDoubleClickCapture}
       onContextMenu={(e) => {
         e.preventDefault();

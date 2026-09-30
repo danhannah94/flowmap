@@ -154,10 +154,10 @@ describe('ops measure pins in the stored frame', () => {
     const r = lay(again.mmd, again.layout);
     expect([node(r, 'n2').x, node(r, 'n2').y]).toEqual([node(doc.layout!.result, 'n2').x, node(doc.layout!.result, 'n2').y]);
   });
-  test('duplicate pins the copy 24 px along and across from the original, in the stored frame', () => {
+  test('duplicate pins the copy 40 px along and across from the original, in the stored frame (A12)', () => {
     const doc = loadDocument(files.mmd, null, files.layout, 't.mmd');
     const r = ok(duplicateNodes(files, ['n1'], doc.layout!.result));
     const pins = JSON.parse(r.files.layout!).nodes as Record<string, Pin>;
-    expect(pins[r.ids[0]!]).toEqual(P(U, -126, -66));
+    expect(pins[r.ids[0]!]).toEqual(P(U, -110, -50));
   });
 });

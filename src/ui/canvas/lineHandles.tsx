@@ -16,7 +16,7 @@ import { signal } from '../features/signal';
 import { snapSession } from '../snap/session';
 import type { SnapTarget } from '../snap/snap';
 import type { Store } from '../store/store';
-import { registerGesture, type Gesture, type GestureContext, type GestureFactory } from './gestures';
+import { extendsSelection, registerGesture, type Gesture, type GestureContext, type GestureFactory } from './gestures';
 import { bendDragPreview, lineModel, segmentDragPreview, type LineModel, type XY } from './lineGeometry';
 import type { Point } from './viewport';
 import './lineMenu';
@@ -257,7 +257,7 @@ function labelGesture(ctx: GestureContext, e: PointerEvent, edgeId: string): Ges
 
 const edgeGesture: GestureFactory<'edge'> | undefined = registerGesture('edge', (hit, e, ctx): Gesture | null => {
   const el = e.target instanceof Element ? e.target : null;
-  if (el && !e.shiftKey && e.button === 0) {
+  if (el && !extendsSelection(e) && e.button === 0) {
     const seg = el.closest<SVGElement>('[data-segment]');
     const bend = el.closest<SVGElement>('[data-bend]');
     const label = el.closest<SVGElement>('[data-role="edge-label"]');

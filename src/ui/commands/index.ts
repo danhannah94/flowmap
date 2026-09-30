@@ -1,5 +1,6 @@
 // Every command, and the toolbar's layout. Feature modules own their command files; this file only lists them.
 import { blockCommands } from './blocks';
+import { clipboardCommands } from './clipboard';
 import { coreCommands } from './core';
 import { diagramCommands } from './diagram';
 import { laneCommands } from './lanes';
@@ -9,7 +10,7 @@ import type { Command } from './types';
 export type { Command } from './types';
 
 export const COMMANDS: readonly Command[] = [
-  ...coreCommands, ...blockCommands, ...laneCommands, ...diagramCommands, ...noteCommands,
+  ...coreCommands, ...clipboardCommands, ...blockCommands, ...laneCommands, ...diagramCommands, ...noteCommands,
 ];
 
 const byId = new Map(COMMANDS.map((c) => [c.id, c]));

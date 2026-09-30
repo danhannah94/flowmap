@@ -24,7 +24,7 @@ import { shallow, useStore, useStoreState } from '../store/hooks';
 import type { State, Store } from '../store/store';
 import { edgePoints, roundedPath, type LayoutNode } from './geometry';
 import {
-  hitTest, registerDoubleClick, registerGesture, type Gesture, type GestureContext, type GestureFactory,
+  extendsSelection, hitTest, registerDoubleClick, registerGesture, type Gesture, type GestureContext, type GestureFactory,
 } from './gestures';
 import { connectorPath, facingSide, lineModel, manualPath, nearestPort, PORT_SNAP_PX, portSnapRadius, type XY } from './lineGeometry';
 import { connectTarget } from './ports';
@@ -157,7 +157,7 @@ function handleDrag(store: Store, ctx: GestureContext, e: PointerEvent, id: stri
       setPreview(null);
       if (!active) {
         // A click on a handle is a click on its block.
-        store.select({ nodes: [id] }, ev.shiftKey ? 'toggle' : 'replace');
+        store.select({ nodes: [id] }, extendsSelection(ev) ? 'toggle' : 'replace');
         return;
       }
       const drop = dropAt(store.layout ?? layout, ctx.world(ev), zoom(), id);
@@ -175,8 +175,8 @@ const SIDE_NAMES: readonly string[] = ['top', 'right', 'bottom', 'left'];
 registerGesture('handle', (hit, e, ctx) => {
   const { store } = ctx;
   const s = store.getState();
-  // Placing a shape, a read-only diagram, or Shift (selection): the handle is just part of its block.
-  if (s.tool.kind === 'place' || store.readOnlyReason() || e.shiftKey) return null;
+  // Placing a shape, a read-only diagram, or Shift/Cmd (selection): the handle is just part of its block.
+  if (s.tool.kind === 'place' || store.readOnlyReason() || extendsSelection(e)) return null;
   if (connectArmed(s)) return clickPathGesture(ctx, e, hit.id);
   const el = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-port]') : null;
   const side = el?.dataset.port;
@@ -210,7 +210,7 @@ function clickPathGesture(ctx: GestureContext, e: PointerEvent, id: string): Ges
 
 const nodeGesture: GestureFactory<'node'> | undefined = registerGesture('node', (hit, e, ctx): Gesture | null => {
   const s = ctx.store.getState();
-  if (connectArmed(s) && s.tool.kind === 'select' && !e.shiftKey && e.button === 0) return clickPathGesture(ctx, e, hit.id);
+  if (connectArmed(s) && s.tool.kind === 'select' && !extendsSelection(e) && e.button === 0) return clickPathGesture(ctx, e, hit.id);
   return nodeGesture ? nodeGesture(hit, e, ctx) : null;
 });
 
@@ -277,7 +277,7 @@ registerGesture('edge-end', (hit, e, ctx) => {
     up(ev) {
       setPreview(null);
       if (!active) {
-        store.select({ edges: [hit.id] }, ev.shiftKey ? 'toggle' : 'replace');
+        store.select({ edges: [hit.id] }, extendsSelection(ev) ? 'toggle' : 'replace');
         return;
       }
       const drop = dropAt(store.layout ?? layout, ctx.world(ev), zoom(), null);

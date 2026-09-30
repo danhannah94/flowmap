@@ -4,7 +4,7 @@
 // will land. Unassigned can't be dragged, and nothing can be dropped after it (it always shows last).
 import { UNASSIGNED } from '../../core/types';
 import { editable } from '../commands/types';
-import { backgroundGesture, registerGesture, type Gesture } from '../canvas/gestures';
+import { backgroundGesture, extendsSelection, registerGesture, type Gesture } from '../canvas/gestures';
 import type { Point } from '../canvas/viewport';
 import { useStoreState } from '../store/hooks';
 import type { Store } from '../store/store';
@@ -46,7 +46,7 @@ export function registerLaneReorder(): void {
     const fallback = backgroundGesture(hit, e, ctx);
     const { store } = ctx;
     const s = store.getState();
-    if (!hit.header || hit.id === UNASSIGNED || e.shiftKey || s.tool.kind !== 'select' || !editable(s)) return fallback;
+    if (!hit.header || hit.id === UNASSIGNED || extendsSelection(e) || s.tool.kind !== 'select' || !editable(s)) return fallback;
     const lane = store.layout?.lanes.find((l) => l.id === hit.id);
     const canvasEl = document.querySelector<HTMLElement>('[data-testid="canvas"]');
     if (!lane || !canvasEl) return fallback;

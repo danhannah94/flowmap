@@ -77,33 +77,44 @@ const DRAG_THRESHOLD = 3;
 
 const moved = (a: Point, b: Point) => Math.abs(a.x - b.x) > DRAG_THRESHOLD || Math.abs(a.y - b.y) > DRAG_THRESHOLD;
 
-// ---- Pan (drag the background or a lane), click to select a lane / clear, click to place an armed shape ----------
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
-function panOrClick(ctx: GestureContext, e: PointerEvent, onClick: (e: PointerEvent) => void): Gesture {
+/**
+ * Does this press add to (or toggle within) the selection rather than replace it (A11)? Shift, or Cmd (Ctrl on other
+ * systems; on a Mac, Ctrl+click is a right-click and never reaches a gesture).
+ */
+export function extendsSelection(e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }): boolean {
+  return e.shiftKey || e.metaKey || (!IS_MAC && e.ctrlKey);
+}
+
+// ---- Pan: Space+drag anywhere, or the middle button (A11: a plain drag on the background draws a selection box) --
+
+export function panGesture(ctx: GestureContext, e: PointerEvent): Gesture {
   const { store } = ctx;
   const start = ctx.local(e);
   const v0 = store.getState().viewport;
-  let panning = false;
   return {
     move(ev) {
       const p = ctx.local(ev);
-      if (!panning && !moved(start, p)) return;
-      panning = true;
       store.setViewport({ ...v0, x: v0.x + p.x - start.x, y: v0.y + p.y - start.y });
     },
-    up(ev) {
-      if (!panning) onClick(ev);
-    },
+    up() {},
     cancel() {},
   };
 }
 
-// ---- Shift-drag: selection box --------------------------------------------------------------------------------
+// ---- Drag on the background: selection box (A11) ---------------------------------------------------------------
 
-function marquee(ctx: GestureContext, e: PointerEvent): Gesture {
+/**
+ * A drag draws a selection box; on release the blocks wholly inside it are selected (lines and notes aren't: UI10).
+ * With Shift or Cmd/Ctrl held at the press, the boxed blocks are added to the selection; otherwise they replace it.
+ * A press that doesn't move is a click (`onClick`).
+ */
+function marquee(ctx: GestureContext, e: PointerEvent, onClick: (e: PointerEvent) => void = () => {}): Gesture {
   const { store } = ctx;
   const start = ctx.world(e);
   const startLocal = ctx.local(e);
+  const additive = extendsSelection(e);
   let active = false;
   return {
     move(ev) {
@@ -112,11 +123,19 @@ function marquee(ctx: GestureContext, e: PointerEvent): Gesture {
       store.set({ marquee: rectFromPoints(start, ctx.world(ev)) });
     },
     up(ev) {
-      if (!active) return;
+      if (!active) {
+        onClick(ev);
+        return;
+      }
       const box = rectFromPoints(start, ctx.world(ev));
-      const nodes = (store.layout?.nodes ?? []).filter((n) => containsRect(box, n)).map((n) => n.id);
+      const boxed = (store.layout?.nodes ?? []).filter((n) => containsRect(box, n)).map((n) => n.id);
       store.set({ marquee: null });
-      store.select({ nodes });
+      if (!additive) {
+        store.select({ nodes: boxed });
+        return;
+      }
+      const cur = store.getState().selection;
+      store.select({ nodes: [...new Set([...cur.nodes, ...boxed])], edges: cur.edges });
     },
     cancel() {
       store.set({ marquee: null });
@@ -124,17 +143,21 @@ function marquee(ctx: GestureContext, e: PointerEvent): Gesture {
   };
 }
 
-/** Pan, click to select a lane or clear, click to place (exported so a wrapping gesture, e.g. lane-header reorder, can fall back to it). */
+/**
+ * The background and a lane's empty area: a drag draws a selection box; a click selects the lane, clears the
+ * selection, or places an armed shape. (Exported so a wrapping gesture, e.g. lane-header reorder, can fall back to it.)
+ */
 export function backgroundGesture(hit: Hit, e: PointerEvent, ctx: GestureContext): Gesture | null {
   const { store } = ctx;
-  if (e.shiftKey && e.button === 0) return marquee(ctx, e);
-  return panOrClick(ctx, e, () => {
+  return marquee(ctx, e, (ev) => {
     const s = store.getState();
+    if (hit.kind === 'lane' && s.tool.kind === 'place') {
+      addBlock(store, s.tool.shape, hit.id);
+      return;
+    }
+    // A Shift- or Cmd-click that misses every block keeps the selection (it was meant to extend it).
+    if (extendsSelection(ev) && s.tool.kind === 'select') return;
     if (hit.kind === 'lane') {
-      if (s.tool.kind === 'place') {
-        addBlock(store, s.tool.shape, hit.id);
-        return;
-      }
       store.select({ lane: hit.id });
       return;
     }
@@ -146,7 +169,7 @@ export function backgroundGesture(hit: Hit, e: PointerEvent, ctx: GestureContext
 registerGesture('background', backgroundGesture);
 registerGesture('lane', backgroundGesture);
 
-// ---- Nodes: click / Shift-click to select, drag to move and pin (UI10, UI11) -----------------------------------
+// ---- Nodes: click / Shift- or Cmd-click to select, drag to move and pin (UI10, UI11) ----------------------------
 
 registerGesture('node', (hit, e, ctx) => {
   const { store } = ctx;
@@ -158,7 +181,7 @@ registerGesture('node', (hit, e, ctx) => {
     return null;
   }
   const wasSelected = s.selection.nodes.includes(hit.id);
-  if (e.shiftKey) {
+  if (extendsSelection(e)) {
     store.select({ nodes: [hit.id] }, 'toggle');
     if (wasSelected) return null; // Shift-click removed it: nothing to drag
   } else if (!wasSelected) {
@@ -184,7 +207,7 @@ registerGesture('node', (hit, e, ctx) => {
       if (!dragging) {
         if (blocked && moved(startLocal, ctx.local(ev))) store.toast(blocked, 'info');
         // A plain click inside a multi-selection narrows it to this block.
-        if (!ev.shiftKey && wasSelected && ids.length > 1) store.select({ nodes: [hit.id] });
+        if (!extendsSelection(ev) && wasSelected && ids.length > 1) store.select({ nodes: [hit.id] });
         return;
       }
       const p = ctx.world(ev);
@@ -200,15 +223,15 @@ registerGesture('node', (hit, e, ctx) => {
   };
 });
 
-// ---- Edges: click / Shift-click to select --------------------------------------------------------------------
+// ---- Edges: click / Shift- or Cmd-click to select ------------------------------------------------------------
 
 registerGesture('edge', (hit, e, ctx) => {
   const { store } = ctx;
-  if (!e.shiftKey) {
+  if (!extendsSelection(e)) {
     store.select({ edges: [hit.id] });
     return null;
   }
-  // Shift: a click toggles the edge; a drag draws a selection box (edges are thin, easy to start on by accident).
+  // Shift or Cmd: a click toggles the edge; a drag adds a selection box (edges are thin, easy to start on by accident).
   const box = marquee(ctx, e);
   const start = ctx.local(e);
   let dragged = false;

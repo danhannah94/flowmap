@@ -49,8 +49,10 @@ export function installKeyboard(store: Store): () => void {
     const matching = COMMANDS.filter((cmd) => cmd.keys?.some((k) => matches(e, k)));
     if (matching.length === 0) return;
     const cmd = matching.find((c) => isEnabled(c, s, store));
-    // A matching but disabled shortcut still swallows browser defaults like Cmd+A or Cmd+Z.
-    if (cmd || e.metaKey || e.ctrlKey || e.key.startsWith('Arrow')) e.preventDefault();
+    // A matching but disabled shortcut still swallows browser defaults like Cmd+A or Cmd+Z, unless every command
+    // bound to it defers to the browser then (copy and paste, A12).
+    const swallow = (e.metaKey || e.ctrlKey) && !matching.every((c) => c.native);
+    if (cmd || swallow || e.key.startsWith('Arrow')) e.preventDefault();
     cmd?.run(store, e);
   };
   window.addEventListener('keydown', onKey);

@@ -197,6 +197,8 @@ export class Store {
   private pressing = false;
   /** The canvas size before it narrowed during a press (handled when the press ends). */
   private narrowedFrom: { width: number; height: number } | null = null;
+  /** Where the pointer is over the canvas (canvas px), or null when it's elsewhere: where a paste lands (A12). */
+  private pointer: Point | null = null;
 
   constructor() {
     if (typeof matchMedia === 'function') {
@@ -472,10 +474,11 @@ export class Store {
     if (s.nodes.length || s.edges.length || s.lane || s.annotation) this.set({ selection: EMPTY_SELECTION });
   }
 
+  /** Cmd/Ctrl+A: every block (UI10 v1.1: blocks only; lines between them go with them in a copy, A12). */
   selectAll(): void {
     const layout = this.layout;
     if (!layout) return;
-    this.set({ selection: { nodes: layout.nodes.map((n) => n.id), edges: layout.edges.map((e) => e.id), lane: null } });
+    this.set({ selection: { nodes: layout.nodes.map((n) => n.id), edges: [], lane: null } });
   }
 
   // ---------------------------------------------------------------------------------------------------------------
@@ -521,6 +524,18 @@ export class Store {
   notePress(_p: Point, button: number): void {
     this.pressing = true;
     if (button === 0) this.menuAnchor = null; // a click or drag on the canvas ends the menu session
+  }
+
+  /** The pointer moved over the canvas to this point (canvas px), or left it (null). Not rendered state. */
+  notePointer(p: Point | null): void {
+    this.pointer = p ? { x: p.x, y: p.y } : null;
+  }
+
+  /** Where the pointer is over the canvas, in world (diagram) coordinates, or null when it isn't over the canvas. */
+  pointerWorld(): Point | null {
+    if (!this.pointer) return null;
+    const v = this.state.viewport;
+    return { x: (this.pointer.x - v.x) / v.zoom, y: (this.pointer.y - v.y) / v.zoom };
   }
 
   /** The canvas saw a right-click (a context menu) at this point (canvas px). */

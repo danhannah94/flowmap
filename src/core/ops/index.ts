@@ -5,10 +5,14 @@
 export { mentions, type Files, type OpResult } from './context';
 export { type LayoutArg } from './frame';
 export {
-  NEW_BLOCK_LABELS, addNode, addNodeAt, changeShape, clearAllPins, deleteItems, duplicateNodes, moveNodesToLane,
+  NEW_BLOCK_LABELS, addNode, addNodeAt, changeShape, clearAllPins, deleteItems, moveNodesToLane,
   pinNodes, positionInLane, renameNode, resetSize, resizedBox, resizeNode, setNodeLabel, unpinNodes, type DropPosition,
   type ResizableBlock, type ResizeHandle,
 } from './nodes';
+export {
+  PASTE_STEP, copyFragment, duplicateNodes, fragmentBounds, fragmentToMermaid, isFragment, pasteFragment,
+  type Fragment, type FragmentEdge, type FragmentNode, type PastedBlock, type PastePlacement,
+} from './fragment';
 export { connect, reconnect, setEdgeLabel, type ConnectSides } from './edges';
 export {
   STUB, addBend, dragBend, dragSegment, makeManual, removeBend, resetLabelAt, resetLine, setLabelAt,

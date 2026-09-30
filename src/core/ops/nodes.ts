@@ -1,12 +1,12 @@
 // Block operations (design.md §8.2 UI6–UI14, and v1.1 UI34 resize and UI40's "add a block here").
 import {
   clearPinsAndPoints, MIN_SIZE, pinFromDrop, removeNodeEntries, removePins, renameNodeEntry, roundPx,
-  setPins, setSizes, sizeOf,
+  setPins, setSizes,
 } from '../layoutfile';
-import type { LayoutOutput, Translation } from '../layout';
+import type { Translation } from '../layout';
 import { labelNeeds, nodeSize } from '../measure';
 import { findNode, type NodeDecl } from '../mmd';
-import { SHAPE_KINDS, UNASSIGNED, type LayoutResult, type Pin, type ShapeKind, type Size, type XY } from '../types';
+import { SHAPE_KINDS, type LayoutResult, type Pin, type ShapeKind, type Size, type XY } from '../types';
 import { checkBlockLabel, refuse, run, type Ctx, type Files, type OpResult } from './context';
 import { bandStart, blockLaneAt, checkXY, storedCorner, viewOf, type LayoutArg } from './frame';
 
@@ -201,7 +201,7 @@ export function clearAllPins(files: Files): OpResult {
   });
 }
 
-// ---- UI13 Duplicate
+// ---- UI13 Duplicate (see fragment.ts)
 
 /**
  * Where a node is now, as a pin would record it (§5): `along` is its box's start on the flow axis less the frame's
@@ -219,47 +219,6 @@ export function positionInLane(
   return layout.direction === 'TB'
     ? { along: node.y - shift.along, across: node.x - lane.x - u }
     : { along: node.x - shift.along, across: node.y - lane.y - u };
-}
-
-/**
- * UI13: copy each block (same shape, label, class and lane; comments and edges aren't copied) under a new id, as the
- * last declaration of its lane, in file declaration order; copy its config metadata under the new id; pin each copy
- * 24 px along and 24 px across from its original's current position in `layout`. Returns the new ids, index-aligned
- * with the originals in declaration order (`from`).
- */
-export function duplicateNodes(
-  files: Files,
-  ids: readonly string[],
-  layout: Pick<LayoutResult, 'direction' | 'lanes' | 'nodes'> | LayoutOutput,
-): OpResult<{ ids: string[]; from: string[] }> {
-  return run(files, (ctx) => {
-    const ordered = ctx.sortByDeclaration(ids);
-    const newIds: string[] = [];
-    const pins: [string, Pin][] = [];
-    const sizes: [string, Size][] = [];
-    // The layout's frame (§6): its own translation when given, else worked out from the pins and bend points that
-    // apply, as the layout function does (a frame from pins alone is wrong once a bend point is negative).
-    const shift = 'result' in layout ? layout.translation : ctx.frame();
-    const drawn = 'result' in layout ? layout.result : layout;
-    for (const id of ordered) {
-      const found = findNode(ctx.d, id);
-      const lane = found?.lane ?? UNASSIGNED;
-      const src = found?.node ?? { shape: 'step' as const, label: id, className: null };
-      const pos = positionInLane(drawn, id, shift);
-      if (!pos) refuse(`The layout has no position for "${id}"`);
-      const copy = ctx.nextNodeId();
-      ctx.declsOf(lane).push({ id: copy, shape: src.shape, label: src.label, className: src.className, comments: [] });
-      pins.push([copy, pinFromDrop(lane, pos.along + 24, pos.across + 24, ctx.firstLane())]);
-      // v1.1 UI13: the copy keeps its original's stored size.
-      const size = sizeOf(ctx.layoutIn && Object.hasOwn(ctx.layoutIn.nodes, id) ? ctx.layoutIn.nodes[id] : undefined);
-      if (size) sizes.push([copy, size]);
-      newIds.push(copy);
-    }
-    ordered.forEach((id, k) => ctx.editConfig([id], (doc) => doc.copyNode(id, newIds[k]!)));
-    if (pins.length) ctx.editLayout('always', (file) => setPins(file, pins));
-    if (sizes.length) ctx.editLayout('always', (file) => setSizes(file, sizes));
-    return { ids: newIds, from: ordered };
-  });
 }
 
 // ---- UI14 Delete

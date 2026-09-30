@@ -761,6 +761,17 @@ a.fm-home:hover {
 }
 
 /* selection box */
+/* A11: Space held pans; everything under the pointer shows the hand. */
+.fm-canvas[data-space-pan='true'],
+.fm-canvas[data-space-pan='true'] * {
+  cursor: grab !important;
+}
+
+.fm-canvas[data-space-pan='true']:active,
+.fm-canvas[data-space-pan='true']:active * {
+  cursor: grabbing !important;
+}
+
 .fm-marquee {
   position: absolute;
   border: 1px solid var(--accent);
