@@ -5,9 +5,9 @@
 // - Entries keep their place in the file; a new entry goes last; a renamed entry keeps its place (R5.10).
 // - An entry an operation empties is removed, and an empty `edges` or `notes` map is left out (§5 Values).
 // - Values are checked: a bad value is a programming error and throws (the file must always parse back).
-import type { LayoutEdgeEntry, LayoutFile, LayoutNodeEntry, Pin, Side, Size, XY } from '../types';
+import type { LayoutEdgeEntry, LayoutFile, LayoutLaneEntry, LayoutNodeEntry, Pin, Side, Size, XY } from '../types';
 import { pinOf, sizeOf } from '../types';
-import { isCoord, isLabelAt, isSide, isSizeValue, MIN_SIZE, put } from './parse';
+import { isCoord, isLabelAt, isLaneSizeValue, isSide, isSizeValue, MIN_LANE_SIZE, MIN_SIZE, put } from './parse';
 
 type Entries<T> = Record<string, T>;
 
@@ -15,15 +15,17 @@ function emptyFile(): LayoutFile {
   return { version: 1, nodes: {} };
 }
 
-/** Build a file in canonical shape: key order version, nodes, edges, notes, title, hints; empty maps left out. */
+/** Build a file in canonical shape: key order version, nodes, lanes, edges, notes, title, hints; empty maps left out. */
 function build(parts: {
   nodes: Entries<LayoutNodeEntry>;
+  lanes?: Entries<LayoutLaneEntry>;
   edges?: Entries<LayoutEdgeEntry>;
   notes?: Entries<XY>;
   title?: XY;
   hints?: unknown;
 }): LayoutFile {
   const out: LayoutFile = { version: 1, nodes: parts.nodes };
+  if (parts.lanes && Object.keys(parts.lanes).length) out.lanes = parts.lanes;
   if (parts.edges && Object.keys(parts.edges).length) out.edges = parts.edges;
   if (parts.notes && Object.keys(parts.notes).length) out.notes = parts.notes;
   if (parts.title) out.title = parts.title;
@@ -31,7 +33,9 @@ function build(parts: {
   return out;
 }
 
-const partsOf = (f: LayoutFile) => ({ nodes: f.nodes, edges: f.edges, notes: f.notes, title: f.title, hints: f.hints });
+const partsOf = (f: LayoutFile) => ({
+  nodes: f.nodes, lanes: f.lanes, edges: f.edges, notes: f.notes, title: f.title, hints: f.hints,
+});
 
 /** Map every entry of a section; `undefined` from `fn` drops the entry; a returned key renames it (in place). */
 function mapEntries<T>(
@@ -134,6 +138,38 @@ export function setSizes(file: LayoutFile | null, sizes: Iterable<[string, Size 
 /** Delete nodes' whole entries, pin and size (UI14 delete, UI27 orphan delete). No file stays no file. */
 export function removeNodeEntries(file: LayoutFile | null, ids: Iterable<string>): LayoutFile | null {
   return updateNodes(file, [...ids].map((id) => [id, () => undefined]), false);
+}
+
+// ---- lane entries: sizes (A8) ---------------------------------------------------------------------------------
+
+/**
+ * A8: set a lane's stored size (its size across the flow from its zero line), or with null remove it (Reset size).
+ * Creates the file only when setting.
+ */
+export function setLaneSize(file: LayoutFile | null, laneId: string, size: number | null): LayoutFile | null {
+  if (size !== null && !isLaneSizeValue(size)) {
+    throw new Error(`invalid lane size ${JSON.stringify(size)}: an integer of at least ${MIN_LANE_SIZE}`);
+  }
+  if (!file && size === null) return null;
+  const base = file ?? emptyFile();
+  return build({ ...partsOf(base), lanes: withEntry(base.lanes, laneId, size === null ? undefined : { size: size + 0 }) });
+}
+
+/**
+ * A8: keep only the entries of these lanes (a deleted lane's entry goes; an entry for a lane that no longer exists is
+ * dropped on the next write). Entries keep their place. No file stays no file.
+ */
+export function keepLaneEntries(file: LayoutFile | null, laneIds: Iterable<string>): LayoutFile | null {
+  if (!file || !file.lanes) return file;
+  const keep = new Set(laneIds);
+  return build({ ...partsOf(file), lanes: mapEntries(file.lanes, (id, v) => ({ value: keep.has(id) ? v : undefined })) });
+}
+
+/** A8: delete these lanes' entries. No file stays no file. */
+export function removeLaneEntries(file: LayoutFile | null, laneIds: Iterable<string>): LayoutFile | null {
+  if (!file || !file.lanes) return file;
+  const drop = new Set(laneIds);
+  return build({ ...partsOf(file), lanes: mapEntries(file.lanes, (id, v) => ({ value: drop.has(id) ? undefined : v })) });
 }
 
 // ---- edge entries ---------------------------------------------------------------------------------------------
@@ -294,9 +330,15 @@ export function renameNode(file: LayoutFile | null, oldId: string, newId: string
 /** v1.0 name of `renameNode`. */
 export const renamePinNode = renameNode;
 
-/** UI19: every pin and bend point in the old lane records the new lane id. */
+/**
+ * UI19: every pin and bend point in the old lane records the new lane id, and (A8) the lane's size entry is re-keyed
+ * in place (replacing any entry the new id already had). Also used by A7, promoting Unassigned to a real lane.
+ */
 export function renameLane(file: LayoutFile | null, oldLane: string, newLane: string): LayoutFile | null {
   if (!file) return null;
+  const lanes = file.lanes && Object.hasOwn(file.lanes, oldLane) && oldLane !== newLane
+    ? mapEntries(file.lanes, (id, v) => (id === newLane ? { value: undefined } : { key: id === oldLane ? newLane : id, value: v }))
+    : file.lanes;
   const nodes = mapEntries(file.nodes, (_id, e) => {
     const pin = pinOf(e);
     return { value: pin && pin.lane === oldLane ? nodeEntry({ ...pin, lane: newLane }, sizeOf(e)) : e };
@@ -306,7 +348,7 @@ export function renameLane(file: LayoutFile | null, oldLane: string, newLane: st
       ? { ...e, points: e.points.map((p) => (p.lane === oldLane ? { ...p, lane: newLane } : p)) }
       : e,
   }));
-  return build({ ...partsOf(file), nodes, edges });
+  return build({ ...partsOf(file), nodes, lanes, edges });
 }
 
 /** v1.0 name of `renameLane` (it now renames bend points too). */
@@ -356,7 +398,9 @@ export function movePointsToLane(
  * - stored note and title positions get `u` added on the across axis, y for `LR` and x for `TB` (R14.1);
  * - a pin or bend point there that would still be negative applies to nothing (it didn't count toward U), and is
  *   removed so the file stays valid (R15.2): the pin goes (a size stays), the point goes, and a point set left empty
- *   goes (a manual line needs a bend point, R11.1).
+ *   goes (a manual line needs a bend point, R11.1);
+ * - (A8) the lane's stored size gets `u` added too: it is measured from the lane's zero line, which moves back to its
+ *   start edge, so the lane keeps its thickness on screen.
  * Entries keep their place. No file stays no file.
  */
 export function reexpressOldFirstLane(
@@ -380,12 +424,13 @@ export function reexpressOldFirstLane(
   const LR = direction !== 'TB';
   const shift = (p: XY): XY => (LR ? { x: p.x, y: p.y + u + 0 } : { x: p.x + u + 0, y: p.y });
   const notes = mapEntries(file.notes, (_id, p) => ({ value: shift(p) }));
-  return build({ ...partsOf(file), nodes, edges, notes, title: file.title ? shift(file.title) : undefined });
+  const lanes = mapEntries(file.lanes, (id, e) => ({ value: id === lane ? { size: e.size + u + 0 } : e }));
+  return build({ ...partsOf(file), nodes, lanes, edges, notes, title: file.title ? shift(file.title) : undefined });
 }
 
 /**
- * UI12 "Re-layout all": remove every pin and every line's `points`; keep sizes, sides, `label_at`, notes, the title
- * position and `hints`. No file stays no file.
+ * UI12 "Re-layout all": remove every pin and every line's `points`; keep sizes (of blocks and, A8, lanes), sides,
+ * `label_at`, notes, the title position and `hints`. No file stays no file.
  */
 export function clearPinsAndPoints(file: LayoutFile | null): LayoutFile | null {
   if (!file) return null;
@@ -427,7 +472,7 @@ export function setTitlePosition(file: LayoutFile | null, pos: XY | null): Layou
 const ROTATE: Record<Side, Side> = { right: 'bottom', bottom: 'right', left: 'top', top: 'left' };
 
 /**
- * UI23: flipping the direction keeps pins, sizes, bend points and `label_at`; sides rotate with the diagram
+ * UI23: flipping the direction keeps pins, sizes (A8: lane sizes too), bend points and `label_at`; sides rotate with the diagram
  * (right ↔ bottom, left ↔ top) and note and title positions swap x and y. No file stays no file.
  */
 export function flipDirection(file: LayoutFile | null): LayoutFile | null {

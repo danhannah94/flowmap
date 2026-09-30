@@ -220,6 +220,14 @@ export class ConfigDoc {
     });
   }
 
+  /**
+   * A7: rename a lane id only in rules that match `lane` with the old value (promoting Unassigned: `_unassigned` is
+   * never a `lanes` entry, so a stale one is left alone).
+   */
+  renameLaneMatches(oldId: string, newId: string): EditResult {
+    return this.run((src) => (oldId === newId ? src : renameMatchValues(src, 'lane', oldId, newId)));
+  }
+
   // ---- node metadata (UI24, UI9, UI13, UI27)
 
   setNodeField(id: string, key: string, value: FieldValue): EditResult {

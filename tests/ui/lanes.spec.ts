@@ -245,13 +245,19 @@ test('reorder lanes by dragging a header, with a drop indicator; a short drag ch
   await expectUndoRedo(page, d, PR, after);
 });
 
-test('Unassigned has no menu, can’t be renamed or dragged, and always stays last', async ({ page }, info) => {
+test('Unassigned’s menu only renames it (A7); it can’t be dragged, and always stays last', async ({ page }, info) => {
   const start: Files = { ...PR, mmd: fmt(edit(PR.mmd, [FILE_COMMENT, `${FILE_COMMENT}  loose["Loose end"]\n`])) };
   const d = makeDiagram(info, start);
   await open(page, d);
   await expect(lane(page, '_unassigned')).toBeVisible();
-  await expect(header(page, '_unassigned').getByTestId('lane-menu')).toHaveCount(0);
+  await openLaneMenu(page, '_unassigned');
+  await expect(page.getByTestId('lane-rename-label')).toBeVisible();
+  for (const item of ['lane-rename-id', 'lane-up', 'lane-down', 'lane-delete']) await expect(page.getByTestId(item)).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  // A double-click opens the label editor; Escape leaves everything as it was.
   await header(page, '_unassigned').dblclick();
+  await expect(page.getByTestId('label-editor')).toHaveValue('Unassigned');
+  await page.getByTestId('label-editor').press('Escape');
   await expect(page.getByTestId('label-editor')).toHaveCount(0);
   // Dragging Unassigned's header pans; it doesn't reorder.
   const hu = (await header(page, '_unassigned').boundingBox())!;

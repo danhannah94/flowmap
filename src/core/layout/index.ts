@@ -11,7 +11,8 @@
 //    in their cell; unpinned nodes that would collide with a pinned node slide across within their lane (L3, which
 //    never disturbs L5); lanes grow to hold their nodes and pins (L1, L2, L4). Pins may be negative (a block dropped
 //    before or above everything, v1.1 §5): all of this is computed in stored coordinates, then translated (§6 Frame,
-//    `pinTranslation`) so the output starts at 0 and the first lane grows toward its start to hold its pins.
+//    `pinTranslation`) so the output starts at 0 and the first lane grows toward its start to hold its pins. A lane
+//    with a stored size (A8) is at least that thick, measured from its zero line.
 // 6. Ports per node side (decisions use their four corners), then the orthogonal A* router (router.ts), then edge
 //    labels next to the source (L8).
 // Everything from step 2 on works in abstract coordinates: x along the flow, y across it; the output maps them to
@@ -90,6 +91,11 @@ export interface LayoutOutput {
    * position back into a stored one subtract it.
    */
   translation: Translation;
+  /**
+   * A8: how thick each lane's band would be across the flow without its stored size, by lane id: what its content
+   * needs (never less than L1's 100, and including U for the first lane). A lane can't be dragged thinner than this.
+   */
+  laneNeeds: Record<string, number>;
 }
 
 /** Room between the title's bottom and the diagram's top, and the title's default top: as the UI has drawn it. */
@@ -388,6 +394,16 @@ export function layoutDiagram(input: LayoutInput): LayoutOutput {
       pointEnd = Math.max(pointEnd, p.along + shift.along + END_MARGIN);
     }
   }
+  // A8: a stored lane size is a minimum, measured from the lane's zero line (U after its start edge in the first lane).
+  const laneNeeds: Record<string, number> = {};
+  const laneEntries = file?.lanes ?? {};
+  laneList.forEach((l, li) => {
+    laneNeeds[l.id] = laneThick[li]!;
+    const stored = Object.prototype.hasOwnProperty.call(laneEntries, l.id) ? laneEntries[l.id]!.size : undefined;
+    if (typeof stored === 'number' && Number.isFinite(stored)) {
+      laneThick[li] = Math.max(laneThick[li]!, (li === 0 ? shift.across : 0) + Math.round(stored));
+    }
+  });
   const laneStart: number[] = [];
   let acc = 0;
   for (let li = 0; li < L; li++) {
@@ -482,7 +498,7 @@ export function layoutDiagram(input: LayoutInput): LayoutOutput {
   const hr: Hints['rows'] = {};
   laneList.forEach((l, li) => (hr[l.id] = rowH[li]!.slice()));
   const hintsOut: Hints = { v: 1, dir, n: hn, cols: colW.slice(), gaps: gapW.slice(), rows: hr };
-  return { result, hints: hintsOut, translation: { along: shift.along, across: shift.across } };
+  return { result, hints: hintsOut, translation: { along: shift.along, across: shift.across }, laneNeeds };
 }
 
 /** Nearest across position to `want` (at least LANE_PAD... or 12 when crowded) that keeps CLEAR from placed boxes. */

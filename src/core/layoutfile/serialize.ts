@@ -1,5 +1,5 @@
 // The layout file's text (§5): stable, so the UI's writes give small diffs and a canonical file round-trips unchanged.
-import type { LayoutEdgeEntry, LayoutFile, LayoutNodeEntry, Pin, XY } from '../types';
+import type { LayoutEdgeEntry, LayoutFile, LayoutLaneEntry, LayoutNodeEntry, Pin, XY } from '../types';
 import { pinOf, sizeOf } from '../types';
 
 const q = JSON.stringify;
@@ -25,6 +25,8 @@ function edgeLine(e: LayoutEdgeEntry): string {
   return `{ ${parts.join(', ')} }`;
 }
 
+const laneLine = (e: LayoutLaneEntry) => `{ "size": ${num(e.size)} }`;
+
 const xyText = (p: XY) => `{ "x": ${num(p.x)}, "y": ${num(p.y)} }`;
 
 function section<T>(entries: Record<string, T>, line: (v: T) => string): string {
@@ -34,13 +36,14 @@ function section<T>(entries: Record<string, T>, line: (v: T) => string): string 
 }
 
 /**
- * The file text: 2-space JSON with keys in a fixed order (`version`, `nodes`, `edges`, `notes`, `title`, `hints`),
- * one line per entry in file order, each entry's keys in a fixed order (`lane`, `along`, `across`, `width`, `height`;
- * `source_side`, `target_side`, `points`, `label_at`; `x`, `y`), ending with a newline. Empty `edges` and `notes` maps
- * are left out. A v1.0 file written by v1.0 comes out byte-identical.
+ * The file text: 2-space JSON with keys in a fixed order (`version`, `nodes`, `lanes`, `edges`, `notes`, `title`,
+ * `hints`), one line per entry in file order, each entry's keys in a fixed order (`lane`, `along`, `across`, `width`,
+ * `height`; `size`; `source_side`, `target_side`, `points`, `label_at`; `x`, `y`), ending with a newline. Empty
+ * `lanes`, `edges` and `notes` maps are left out. A v1.0 file written by v1.0 comes out byte-identical.
  */
 export function serializeLayoutFile(file: LayoutFile): string {
   let out = `{\n  "version": 1,\n  "nodes": ${section(file.nodes, nodeLine)}`;
+  if (file.lanes && Object.keys(file.lanes).length) out += `,\n  "lanes": ${section(file.lanes, laneLine)}`;
   if (file.edges && Object.keys(file.edges).length) out += `,\n  "edges": ${section(file.edges, edgeLine)}`;
   if (file.notes && Object.keys(file.notes).length) out += `,\n  "notes": ${section(file.notes, xyText)}`;
   if (file.title) out += `,\n  "title": ${xyText(file.title)}`;

@@ -112,9 +112,20 @@ export interface LayoutEdgeEntry {
   label_at?: number;
 }
 
+/**
+ * One `lanes` entry of the layout file (A8), keyed by lane id (`_unassigned` included): the lane's size across the
+ * flow as a person dragged it, measured from the lane's zero line to its far edge (§6 Frame: the band's thickness, less
+ * the first lane's growth U). An integer of at least 100 (L1). The layout uses it as a minimum.
+ */
+export interface LayoutLaneEntry {
+  size: number;
+}
+
 export interface LayoutFile {
   version: 1;
   nodes: Record<string, LayoutNodeEntry>;
+  /** A8: stored lane sizes by lane id; absent when the file has none (an empty map is never written). */
+  lanes?: Record<string, LayoutLaneEntry>;
   /** v1.1: absent when the file has none (an empty map is never written). */
   edges?: Record<string, LayoutEdgeEntry>;
   /** v1.1: note positions by note id. */
