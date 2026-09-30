@@ -1,10 +1,11 @@
-// Lane operations (design.md §8.2 UI18–UI21), promoting Unassigned to a real lane (A7) and lane sizes (A8).
+// Lane operations (design.md §8.2 UI18–UI21), promoting Unassigned to a real lane (A7), lane sizes (A8) and the lanes'
+// length along the flow (A13).
 import { laneOrder } from '../config';
 import {
-  dropPointsInLanes, removeLaneEntries, removePins, renameLane as renameLaneInLayout, roundPx, setLaneSize,
+  dropPointsInLanes, removeLaneEntries, removePins, renameLane as renameLaneInLayout, roundPx, setLaneLength, setLaneSize,
 } from '../layoutfile';
 import { isReservedId, undeclaredNodes, type Lane, type NodeDecl } from '../mmd';
-import { UNASSIGNED } from '../types';
+import { isLaneFree, UNASSIGNED } from '../types';
 import { checkBlockLabel, loadLayout, refuse, run, type Ctx, type Files, type OpResult } from './context';
 import { deleteBlocksAndEdges } from './nodes';
 
@@ -146,6 +147,38 @@ export function resetLaneSize(files: Files, laneId: string): OpResult {
   return run(files, (ctx) => {
     ctx.requireLane(laneId, { unassigned: true });
     ctx.editLayout([laneId], (file) => setLaneSize(file, laneId, null));
+    return {};
+  });
+}
+
+// ---- A13 Lane length along the flow
+
+/**
+ * A13: set the lanes' shared length along the flow, by dragging the pool's far edge (the right edge of the lanes for
+ * `LR`, the bottom for `TB`). `length` is the lanes' length as drawn (layout px from the start of the flow, header
+ * strip included; rounded to a whole pixel as UI10 rounds). The lanes can't be shorter than their content needs
+ * (`LayoutOutput.laneLengthNeed`): at or below that, the stored length is removed and the lanes fit their content
+ * again. The layout file stores it from the flow axis's zero line, so the frame's T (§6 Frame: room made for
+ * something dropped before the flow start) is left out, and the far edge stays where it is when T changes later.
+ * Refused for a diagram without lanes (A4: there is no band to lengthen). Reports the length stored (null: none).
+ */
+export function resizeLaneLength(files: Files, length: number): OpResult<{ length: number | null }> {
+  return run(files, (ctx) => {
+    ctx.requireLayout();
+    if (typeof length !== 'number' || !Number.isFinite(length)) refuse('A lane length must be a finite number');
+    const out = loadLayout(ctx.input);
+    if (!out || isLaneFree(out.result.lanes)) return refuse('This diagram has no lanes to lengthen');
+    const want = roundPx(length);
+    const stored = want <= out.laneLengthNeed ? null : want - out.translation.along;
+    ctx.editLayout('always', (file) => setLaneLength(file, stored));
+    return { length: stored };
+  });
+}
+
+/** A13 "Reset length": remove the lanes' stored length, so they fit their content again. */
+export function resetLaneLength(files: Files): OpResult {
+  return run(files, (ctx) => {
+    ctx.editLayout(['lane_length'], (file) => setLaneLength(file, null));
     return {};
   });
 }

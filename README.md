@@ -49,7 +49,7 @@ A diagram is up to three files with the same base name, side by side. Only the `
 |---|---|---|
 | `<name>.mmd` | What the process is: lanes, steps, decisions, lines, labels. A strict subset of Mermaid flowchart syntax, so GitHub renders it too. | Both. The editor always writes canonical form (`flowmap fmt`), so diffs stay small. |
 | `<name>.flow.yaml` | How it looks and what we know: the title, lane order, per-step metadata (who said it, how sure we are, quotes, open questions) and style rules that turn that metadata into looks, with a legend. | Both. The editor changes only the lines it edits; comments and formatting elsewhere survive byte for byte. |
-| `<name>.layout.json` | Where things are: the positions you pinned by dragging, relative to their lane, and any lane sizes you set by dragging a lane's edge. | The editor (hand edits are allowed but rare). |
+| `<name>.layout.json` | Where things are: the positions you pinned by dragging, relative to their lane, any lane sizes you set by dragging a lane's edge, and the lanes' length if you drag their far end. | The editor (hand edits are allowed but rare). |
 
 Why three and not two: the layout file changes on every drag, so keeping it apart means the human-edited config never
 picks up noise from the editor, and neither author's edits clobber the other's.
@@ -111,7 +111,10 @@ set or clear its label.
 (the `···` button that appears on hover) can also change the lane's id, move it up or down, or delete it. Drag a lane
 header to reorder the lanes; a line shows where it will land. Deleting a lane that still has blocks asks whether to
 move them to another lane (or Unassigned) or delete them with it. Blocks with no lane live in the Unassigned lane,
-which always shows last.
+which always shows last. Drag a lane's far edge across the flow (its bottom, or its right side top-to-bottom) to make it
+bigger, or the far end of all the lanes along the flow (the right edge, or the bottom top-to-bottom) to make them
+longer; neither goes smaller than the blocks need. A double-click on the edge, or Reset size or Reset length in the lane
+menu, fits them to their blocks again.
 
 **Title and direction.** Double-click the title to edit it (empty falls back to the file name). The direction button
 flips between left-to-right and top-to-bottom; pins keep their values.

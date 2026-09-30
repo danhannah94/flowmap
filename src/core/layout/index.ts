@@ -12,7 +12,8 @@
 //    never disturbs L5); lanes grow to hold their nodes and pins (L1, L2, L4). Pins may be negative (a block dropped
 //    before or above everything, v1.1 §5): all of this is computed in stored coordinates, then translated (§6 Frame,
 //    `pinTranslation`) so the output starts at 0 and the first lane grows toward its start to hold its pins. A lane
-//    with a stored size (A8) is at least that thick, measured from its zero line.
+//    with a stored size (A8) is at least that thick, measured from its zero line; with a stored lane length (A13), the
+//    lanes are at least that long along the flow, measured from the flow axis's zero line (T after the start).
 // 6. Ports per node side (decisions use their four corners), then the orthogonal A* router (router.ts), then edge
 //    labels next to the source (L8).
 // Everything from step 2 on works in abstract coordinates: x along the flow, y across it; the output maps them to
@@ -96,6 +97,11 @@ export interface LayoutOutput {
    * needs (never less than L1's 100, and including U for the first lane). A lane can't be dragged thinner than this.
    */
   laneNeeds: Record<string, number>;
+  /**
+   * A13: how long the lanes would be along the flow without the stored lane length: what the content needs (the
+   * diagram's flow-axis length, T included). The pool's far edge can't be dragged shorter than this.
+   */
+  laneLengthNeed: number;
 }
 
 /** Room between the title's bottom and the diagram's top, and the title's default top: as the UI has drawn it. */
@@ -416,6 +422,14 @@ export function layoutDiagram(input: LayoutInput): LayoutOutput {
     v.y = laneStart[v.lane]! + v.c;
     totalA = Math.max(totalA, v.x + v.sa + END_MARGIN);
   }
+  // A13: a stored lane length is a minimum, measured from the flow axis's zero line (T after the start), so the far
+  // edge keeps its place relative to everything else when T changes. A lane-free diagram (A4) has no bands, so it
+  // doesn't apply there (the file keeps it for when lanes come back).
+  const laneLengthNeed = totalA;
+  const storedLength = file?.lane_length;
+  if (head > 0 && typeof storedLength === 'number' && Number.isFinite(storedLength)) {
+    totalA = Math.max(totalA, shift.along + Math.round(storedLength));
+  }
 
   // ---- Edges.
   const boxes: RBox[] = nodes.map((v) => ({ x: v.x, y: v.y, w: v.sa, h: v.sc }));
@@ -498,7 +512,7 @@ export function layoutDiagram(input: LayoutInput): LayoutOutput {
   const hr: Hints['rows'] = {};
   laneList.forEach((l, li) => (hr[l.id] = rowH[li]!.slice()));
   const hintsOut: Hints = { v: 1, dir, n: hn, cols: colW.slice(), gaps: gapW.slice(), rows: hr };
-  return { result, hints: hintsOut, translation: { along: shift.along, across: shift.across }, laneNeeds };
+  return { result, hints: hintsOut, translation: { along: shift.along, across: shift.across }, laneNeeds, laneLengthNeed };
 }
 
 /** Nearest across position to `want` (at least LANE_PAD... or 12 when crowded) that keeps CLEAR from placed boxes. */

@@ -126,6 +126,13 @@ export interface LayoutFile {
   nodes: Record<string, LayoutNodeEntry>;
   /** A8: stored lane sizes by lane id; absent when the file has none (an empty map is never written). */
   lanes?: Record<string, LayoutLaneEntry>;
+  /**
+   * A13: the lanes' shared length along the flow as a person dragged it (the pool's far edge: the right for `LR`, the
+   * bottom for `TB`), measured from the flow axis's zero line (§6 Frame: the frame's length less T), so a block
+   * dropped before the flow start doesn't move the far edge on screen. An integer of at least 100; the layout uses it
+   * as a minimum. Absent when not set.
+   */
+  lane_length?: number;
   /** v1.1: absent when the file has none (an empty map is never written). */
   edges?: Record<string, LayoutEdgeEntry>;
   /** v1.1: note positions by note id. */

@@ -19,7 +19,7 @@ export {
 } from './notes';
 export {
   addLane, deleteLane, displayLaneOrder, laneSlug, moveLane, promoteUnassigned, renameLane, reorderLanes,
-  resetLaneSize, resizeLane, setLaneLabel, type DeleteLaneMode,
+  resetLaneLength, resetLaneSize, resizeLane, resizeLaneLength, setLaneLabel, type DeleteLaneMode,
 } from './lanes';
 export { setDirection, setTitle } from './diagram';
 export {

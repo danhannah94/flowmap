@@ -18,7 +18,7 @@ export interface LayoutParse {
   problems: Problems;
 }
 
-const TOP_KEYS = new Set(['version', 'nodes', 'lanes', 'edges', 'notes', 'title', 'hints']);
+const TOP_KEYS = new Set(['version', 'nodes', 'lanes', 'lane_length', 'edges', 'notes', 'title', 'hints']);
 const PIN_KEYS = ['lane', 'along', 'across'] as const;
 const SIZE_KEYS = ['width', 'height'] as const;
 const NODE_KEYS = new Set<string>([...PIN_KEYS, ...SIZE_KEYS]);
@@ -30,6 +30,12 @@ const LANE_KEYS = new Set(['size']);
 export const MIN_SIZE = 40;
 /** The smallest stored lane size (A8): every lane is at least 100 px across anyway (§6 L1). */
 export const MIN_LANE_SIZE = 100;
+/**
+ * The smallest stored lane length along the flow (A13), matching a lane size's minimum. Never binding in practice: a
+ * diagram with lanes is always longer than this (the header strip, the lead and a first column), and the stored value
+ * is only a minimum.
+ */
+export const MIN_LANE_LENGTH = MIN_LANE_SIZE;
 
 const err = (message: string): Problem => ({ code: 'E-layout', line: null, message });
 const warn = (code: string, message: string): Problem => ({ code, line: null, message });
@@ -49,6 +55,8 @@ export const isCoord = (v: unknown): v is number => typeof v === 'number' && Num
 export const isSizeValue = (v: unknown): v is number => isCoord(v) && v >= MIN_SIZE;
 /** A stored lane size (A8): an integer of at least 100. */
 export const isLaneSizeValue = (v: unknown): v is number => isCoord(v) && v >= MIN_LANE_SIZE;
+/** A stored lane length along the flow (A13): an integer of at least 100. */
+export const isLaneLengthValue = (v: unknown): v is number => isCoord(v) && v >= MIN_LANE_LENGTH;
 export const isSide = (v: unknown): v is Side => typeof v === 'string' && (SIDES as readonly string[]).includes(v);
 /** `label_at`: a number from 0 to 1 with at most two decimals. */
 export const isLabelAt = (v: unknown): v is number =>
@@ -179,7 +187,7 @@ const hasPinKey = (v: unknown) => !isObject(v) || PIN_KEYS.some((k) => k in v);
  * hold anything and passes through untouched), an empty entry, or a value of the wrong type or range. Every bad
  * entry is reported. An empty `lanes`, `edges` or `notes` map is accepted and dropped (the writer never writes one).
  * (A8) `lanes` maps a lane id to `{size}`; an entry for a lane that doesn't exist is not a problem here (the UI's next
- * write drops it).
+ * write drops it). (A13) `lane_length` is one integer of at least 100.
  */
 export function parseLayoutFile(text: string | null): LayoutParse {
   const problems: Problems = { errors: [], warnings: [] };
@@ -216,6 +224,11 @@ export function parseLayoutFile(text: string | null): LayoutParse {
     const r = readXY(v);
     return { value: r.xy, bad: r.bad };
   }, (id) => `Note position "${id}"`);
+  let laneLength: number | undefined;
+  if ('lane_length' in js) {
+    if (isLaneLengthValue(js.lane_length)) laneLength = js.lane_length + 0;
+    else problems.errors.push(err(`Layout file "lane_length" must be an integer of at least ${MIN_LANE_LENGTH}`));
+  }
   let title: XY | undefined;
   if ('title' in js) {
     const r = readXY(js.title);
@@ -225,6 +238,7 @@ export function parseLayoutFile(text: string | null): LayoutParse {
   if (problems.errors.length) return { file: null, problems };
   const file: LayoutFile = { version: 1, nodes: nodes ?? {} };
   if (lanes && Object.keys(lanes).length) file.lanes = lanes;
+  if (laneLength !== undefined) file.lane_length = laneLength;
   if (edges && Object.keys(edges).length) file.edges = edges;
   if (notes && Object.keys(notes).length) file.notes = notes;
   if (title) file.title = title;

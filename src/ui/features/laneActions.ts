@@ -1,10 +1,10 @@
-// Lane actions (design.md §8.2 UI18–UI21, A7 renaming Unassigned, A8 lane sizes): each turns a person's intent into
-// one core operation through `store.apply` (one undo step). Transient UI state (the open lane menu, the delete
+// Lane actions (design.md §8.2 UI18–UI21, A7 renaming Unassigned, A8 lane sizes, A13 lane length): each turns a
+// person's intent into one core operation through `store.apply` (one undo step). Transient UI state (the open lane menu, the delete
 // dialog) lives in signals here.
 import { LANE_HEADER } from '../../core/layout';
 import {
-  addLane, deleteLane, moveLane, promoteUnassigned, renameLane, reorderLanes, resetLaneSize, setLaneLabel,
-  type Files, type OpResult,
+  addLane, deleteLane, moveLane, promoteUnassigned, renameLane, reorderLanes, resetLaneLength, resetLaneSize,
+  setLaneLabel, type Files, type OpResult,
 } from '../../core/ops';
 import { UNASSIGNED } from '../../core/types';
 import type { LayoutLane } from '../canvas/geometry';
@@ -155,6 +155,18 @@ export function resetLaneSizeOf(store: Store, id: string): void {
   laneMenu.set(null);
   if (storedLaneSize(store, id) === null) return;
   store.apply(resetLaneSize, id);
+}
+
+/** A13: the lanes' stored length along the flow (layout file `lane_length`), or null when they fit their content. */
+export function storedLaneLength(store: Store): number | null {
+  return store.getState().derived?.doc.layoutFile?.lane_length ?? null;
+}
+
+/** A13 "Reset length" (lane menu, or a double-click on the far-edge handle): the lanes fit their content again. */
+export function resetLaneLengthOf(store: Store): void {
+  laneMenu.set(null);
+  if (storedLaneLength(store) === null) return;
+  store.apply(resetLaneLength);
 }
 
 /** UI20: Move up / Move down (left / right for TB). The first lane up, or the last down, changes nothing. */
