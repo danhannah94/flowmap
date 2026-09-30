@@ -307,12 +307,33 @@ a.fm-home:hover {
 }
 
 .fm-problems-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   font-weight: 600;
   margin-bottom: 6px;
 }
 
 .fm-has-errors .fm-problems-summary {
   color: var(--danger);
+}
+
+.fm-dismiss-all {
+  flex: none;
+  font: 600 11.5px/18px inherit;
+  color: var(--faint);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.fm-dismiss-all:hover,
+.fm-dismiss-all:focus-visible {
+  color: var(--text);
+  background: var(--hover);
 }
 
 .fm-problems-list {
@@ -329,6 +350,26 @@ a.fm-home:hover {
   align-items: baseline;
   gap: 10px;
   line-height: 20px;
+}
+
+.fm-problem-dismiss {
+  flex: none;
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--faint);
+  font-size: 15px;
+  line-height: 1;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.fm-problem-dismiss:hover,
+.fm-problem-dismiss:focus-visible {
+  color: var(--text);
+  background: var(--hover);
 }
 
 .fm-problem-code {
