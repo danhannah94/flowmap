@@ -1,6 +1,6 @@
 // Root-relative path helpers shared by the home screen and the editor's "back to folder" links (design.md §8.2
 // amendment A16: folders are real subdirectories of the served root; a diagram's id is its root-relative path
-// without the `.mmd` extension, e.g. `brehob/stage-2`).
+// without the `.mmd` extension, e.g. `sales/stage-2`).
 
 /** The folder part of a root-relative path (`''` when it has none, i.e. the served root). */
 export function folderOf(relPath: string): string {
@@ -25,8 +25,8 @@ export function homeHref(dir: string): string {
   return dir ? `/?dir=${encodeURIComponent(dir)}` : '/';
 }
 
-/** Breadcrumb segments for a folder path, root first: `"brehob/legal"` → `[{label:"brehob",dir:"brehob"},
- *  {label:"legal",dir:"brehob/legal"}]` (the root itself isn't included; render it separately). */
+/** Breadcrumb segments for a folder path, root first: `"sales/legal"` → `[{label:"sales",dir:"sales"},
+ *  {label:"legal",dir:"sales/legal"}]` (the root itself isn't included; render it separately). */
 export function crumbs(dir: string): { label: string; dir: string }[] {
   if (!dir) return [];
   const parts = dir.split('/');

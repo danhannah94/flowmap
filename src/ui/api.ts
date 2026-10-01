@@ -31,7 +31,7 @@ async function failure(res: Response): Promise<string> {
 }
 
 /** Every diagram in the served directory, recursively, as root-relative `.mmd` paths (design.md §8.2 A16: e.g.
- *  `"brehob/stage-2.mmd"`, same as a bare `"a.mmd"` for one with no folder). */
+ *  `"sales/stage-2.mmd"`, same as a bare `"a.mmd"` for one with no folder). */
 export async function listDiagrams(): Promise<string[]> {
   const res = await fetch('/api/diagrams');
   if (!res.ok) throw new Error(await failure(res));

@@ -23,7 +23,7 @@ pnpm exec flowmap serve <dir> --port 5000
 
 Open the address it prints, pick a diagram (or a folder to browse into, or start one with New diagram: a Flowchart,
 or Swimlanes with a lane per role), and edit. `/?file=<path>.mmd` opens one directly (`<path>` may include folders,
-e.g. `brehob/stage-2.mmd`); `/?dir=<path>` opens the list browsing that folder.
+e.g. `sales/stage-2.mmd`); `/?dir=<path>` opens the list browsing that folder.
 
 The other commands (each takes the path to a `.mmd`; its config and layout files are found beside it):
 
@@ -46,10 +46,10 @@ the browser tests (Playwright), and `pnpm dev:ui` serves the UI with hot reload,
 
 Diagrams can live in folders: real subdirectories of the served directory, so they work with git, the command line
 and any editor. A diagram's id is its path relative to the served directory, without the `.mmd` extension
-(`brehob/stage-2`); a flat directory of diagrams keeps working exactly as before.
+(`sales/stage-2`); a flat directory of diagrams keeps working exactly as before.
 
-The home page shows the current folder's subfolders first, then its diagrams, with a breadcrumb (Root › brehob › …)
-that's remembered in the address (`?dir=brehob`), so the browser's Back button retraces your steps. **New folder**
+The home page shows the current folder's subfolders first, then its diagrams, with a breadcrumb (Root › sales › …)
+that's remembered in the address (`?dir=sales`), so the browser's Back button retraces your steps. **New folder**
 creates one in the folder you're looking at; a folder's own menu (the `···` button, like a diagram's) can rename it
 or delete it, but only while it's empty — a folder with anything in it refuses, with a message saying so. New
 diagrams (New diagram) are created in the folder you're in.

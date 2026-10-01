@@ -69,7 +69,7 @@ export const BLOCK_STYLE_KEY = 'style';
 
 /**
  * A15: the metadata key that holds a block's link to another diagram (§4 "link"): a path to another diagram's
- * `.mmd`, relative to the served root, without the extension, forward slashes only (e.g. `brehob/stage-2`).
+ * `.mmd`, relative to the served root, without the extension, forward slashes only (e.g. `sales/stage-2`).
  * Reserved like `style`: the inspector shows it as the "Links to" field, not a field row, and the field form refuses
  * it as a key. Unlike `style`, it stays an ordinary metadata value for matching: `{match: {link: present}}` works.
  */

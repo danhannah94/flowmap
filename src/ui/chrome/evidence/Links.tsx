@@ -98,7 +98,7 @@ export function Links({ id }: { id: string }) {
           data-testid="link-input"
           className="fm-ev-input fm-ev-grow"
           value={link ?? ''}
-          placeholder="e.g. brehob/stage-2"
+          placeholder="e.g. sales/stage-2"
           disabled={off}
           aria-label="Links to another diagram"
           onCommit={(text) => commitLink(store, id, text, setError)}
@@ -159,7 +159,7 @@ function LinkMenuControl({ ctx }: { ctx: MenuContext<'block'> }) {
           data-testid="link-input"
           className="fm-ev-input fm-ev-grow"
           value={link ?? ''}
-          placeholder="e.g. brehob/stage-2"
+          placeholder="e.g. sales/stage-2"
           autoFocus
           aria-label="Links to another diagram"
           onCommit={(text) => commitLink(ctx.store, id, text, setError)}

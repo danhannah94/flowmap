@@ -411,9 +411,9 @@ describe('rewriteLinks (A17, §12)', () => {
 nodes:
   a:
     kind: step
-    link: brehob/stage-2   # a comment worth keeping
+    link: sales/stage-2   # a comment worth keeping
   b:
-    link: brehob/stage-2x
+    link: sales/stage-2x
   c:
     kind: wait
   d:
@@ -421,12 +421,12 @@ nodes:
 `;
 
   test('rewrites an exact match only, keeping every other byte (a line comment included)', () => {
-    const result = new ConfigDoc(LINKS_FIXTURE).rewriteLinks((t) => (t === 'brehob/stage-2' ? 'brehob/hub/stage-2' : null));
+    const result = new ConfigDoc(LINKS_FIXTURE).rewriteLinks((t) => (t === 'sales/stage-2' ? 'sales/hub/stage-2' : null));
     expect(result.count).toBe(1);
-    changed(LINKS_FIXTURE, result.text!, ['    link: brehob/stage-2   # a comment worth keeping']);
-    expect(result.text).toContain('link: brehob/hub/stage-2   # a comment worth keeping');
+    changed(LINKS_FIXTURE, result.text!, ['    link: sales/stage-2   # a comment worth keeping']);
+    expect(result.text).toContain('link: sales/hub/stage-2   # a comment worth keeping');
     // Everything else — including targets that merely start with the same text — is untouched.
-    expect(result.text).toContain('link: brehob/stage-2x');
+    expect(result.text).toContain('link: sales/stage-2x');
     expect(result.text).toContain('link: other/thing');
   });
 
@@ -439,16 +439,16 @@ nodes:
 
   test('folder-rename remap: a nested link keeps its tail, a same-prefixed sibling is untouched', () => {
     const fixture = [
-      'nodes:', '  a:', '    link: brehob/stage-2', '  b:', '    link: brehob/hub/stage-2',
-      '  c:', '    link: brehob-other/x', '  d:', '    link: brehobx/x', '',
+      'nodes:', '  a:', '    link: sales/stage-2', '  b:', '    link: sales/hub/stage-2',
+      '  c:', '    link: sales-other/x', '  d:', '    link: salesx/x', '',
     ].join('\n');
-    const remap = (t: string) => (t.startsWith('brehob/') ? `brehob-bc/${t.slice('brehob/'.length)}` : null);
+    const remap = (t: string) => (t.startsWith('sales/') ? `sales-team/${t.slice('sales/'.length)}` : null);
     const result = new ConfigDoc(fixture).rewriteLinks(remap);
     expect(result.count).toBe(2);
-    expect(result.text).toContain('link: brehob-bc/stage-2');
-    expect(result.text).toContain('link: brehob-bc/hub/stage-2');
-    expect(result.text).toContain('link: brehob-other/x');
-    expect(result.text).toContain('link: brehobx/x');
+    expect(result.text).toContain('link: sales-team/stage-2');
+    expect(result.text).toContain('link: sales-team/hub/stage-2');
+    expect(result.text).toContain('link: sales-other/x');
+    expect(result.text).toContain('link: salesx/x');
   });
 
   test('no-op when nothing links: the exact same text, byte for byte, and count 0', () => {

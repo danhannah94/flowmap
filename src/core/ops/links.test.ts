@@ -7,23 +7,23 @@ import { edit, expectParity, ok, PR, refused } from './testkit';
 // PR's `m02` has no config entry yet; `p05` already has one with several fields (fixtures/purchase-request).
 describe('A15 setNodeLink / clearNodeLink: parity with a hand edit', () => {
   test('a block with no entry gets a new one, appended at the end of nodes', () => {
-    expectParity(setNodeLink(PR, 'm02', 'brehob/stage-2'), PR, {
-      config: edit(PR.config!, ['nodes:\n', 'nodes:\n  m02:\n    link: brehob/stage-2\n']),
+    expectParity(setNodeLink(PR, 'm02', 'sales/stage-2'), PR, {
+      config: edit(PR.config!, ['nodes:\n', 'nodes:\n  m02:\n    link: sales/stage-2\n']),
     });
   });
 
   test('a block with an entry gets the field appended at its end', () => {
-    expectParity(setNodeLink(PR, 'p05', 'brehob/stage-2'), PR, {
+    expectParity(setNodeLink(PR, 'p05', 'sales/stage-2'), PR, {
       config: edit(
         PR.config!,
-        ['      warehouse: one quote is fine under $5,000\n', '      warehouse: one quote is fine under $5,000\n    link: brehob/stage-2\n'],
+        ['      warehouse: one quote is fine under $5,000\n', '      warehouse: one quote is fine under $5,000\n    link: sales/stage-2\n'],
       ),
     });
   });
 
   test('accepts a pasted .mmd name and backslashes, normalising them', () => {
-    expectParity(setNodeLink(PR, 'm02', 'Brehob\\Stage-2.MMD'), PR, {
-      config: edit(PR.config!, ['nodes:\n', 'nodes:\n  m02:\n    link: Brehob/Stage-2\n']),
+    expectParity(setNodeLink(PR, 'm02', 'Sales\\Stage-2.MMD'), PR, {
+      config: edit(PR.config!, ['nodes:\n', 'nodes:\n  m02:\n    link: Sales/Stage-2\n']),
     });
   });
 

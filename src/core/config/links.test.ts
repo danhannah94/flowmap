@@ -10,8 +10,8 @@ import type { FlowConfig } from './model';
 describe('isWellFormedLinkTarget', () => {
   it.each([
     'stage-2',
-    'brehob/stage-2',
-    'brehob/bc-api/v3-2-complete',
+    'sales/stage-2',
+    'sales/bc-api/v3-2-complete',
     'a.b-c_d',
     '..', // well-formed (a lone traversal segment); linkHasTraversal flags it separately
     '../sibling',
@@ -37,18 +37,18 @@ describe('linkHasTraversal', () => {
 
 describe('linkTargetToMmdPath', () => {
   it('appends .mmd for a well-formed target, null otherwise', () => {
-    expect(linkTargetToMmdPath('brehob/stage-2')).toBe('brehob/stage-2.mmd');
+    expect(linkTargetToMmdPath('sales/stage-2')).toBe('sales/stage-2.mmd');
     expect(linkTargetToMmdPath('/abs')).toBeNull();
   });
 });
 
 describe('normalizeLinkTarget', () => {
   it('trims, drops a trailing .mmd (any case) and a trailing slash, and turns backslashes into forward slashes', () => {
-    expect(normalizeLinkTarget('  brehob/stage-2  ')).toBe('brehob/stage-2');
-    expect(normalizeLinkTarget('brehob/stage-2.mmd')).toBe('brehob/stage-2');
-    expect(normalizeLinkTarget('brehob/stage-2.MMD')).toBe('brehob/stage-2');
-    expect(normalizeLinkTarget('brehob\\stage-2')).toBe('brehob/stage-2');
-    expect(normalizeLinkTarget('brehob/stage-2/')).toBe('brehob/stage-2');
+    expect(normalizeLinkTarget('  sales/stage-2  ')).toBe('sales/stage-2');
+    expect(normalizeLinkTarget('sales/stage-2.mmd')).toBe('sales/stage-2');
+    expect(normalizeLinkTarget('sales/stage-2.MMD')).toBe('sales/stage-2');
+    expect(normalizeLinkTarget('sales\\stage-2')).toBe('sales/stage-2');
+    expect(normalizeLinkTarget('sales/stage-2/')).toBe('sales/stage-2');
   });
 
   it('null when the result is not well-formed', () => {
@@ -65,7 +65,7 @@ function configWith(nodes: Record<string, Record<string, unknown>>): FlowConfig 
 
 describe('linkOf', () => {
   it('the text value when link is a scalar; null when absent or not a scalar', () => {
-    expect(linkOf({ link: 'brehob/stage-2' })).toBe('brehob/stage-2');
+    expect(linkOf({ link: 'sales/stage-2' })).toBe('sales/stage-2');
     expect(linkOf({ link: 2 })).toBe('2');
     expect(linkOf({})).toBeNull();
     expect(linkOf(undefined)).toBeNull();
@@ -124,9 +124,9 @@ describe('link stays a matchable field, unlike style', () => {
   });
 
   it('a rule matching a link\'s exact value also works', () => {
-    const config = configWith({ a: { link: 'brehob/stage-2' } });
+    const config = configWith({ a: { link: 'sales/stage-2' } });
     const fields = matchFields(config, { id: 'a', lane: '_unassigned', label: 'A', kind: 'step' });
-    const rule = { legend: null, match: [{ field: 'link', op: 'equals' as const, value: 'brehob/stage-2' }], style: {}, rawStyle: {} };
+    const rule = { legend: null, match: [{ field: 'link', op: 'equals' as const, value: 'sales/stage-2' }], style: {}, rawStyle: {} };
     expect(ruleMatches(rule, fields)).toBe(true);
   });
 });
@@ -135,26 +135,26 @@ describe('link stays a matchable field, unlike style', () => {
 
 describe('movedLinkTarget', () => {
   it('an exact match becomes the new id', () => {
-    expect(movedLinkTarget('brehob/stage-2', 'brehob/stage-2', 'brehob/hub/stage-2')).toBe('brehob/hub/stage-2');
+    expect(movedLinkTarget('sales/stage-2', 'sales/stage-2', 'sales/hub/stage-2')).toBe('sales/hub/stage-2');
   });
 
   it('a self-link (equal to the old id) is corrected the same way', () => {
-    expect(movedLinkTarget('stage-2', 'stage-2', 'brehob/stage-2')).toBe('brehob/stage-2');
+    expect(movedLinkTarget('stage-2', 'stage-2', 'sales/stage-2')).toBe('sales/stage-2');
   });
 
   it('anything else is untouched (null)', () => {
-    expect(movedLinkTarget('brehob/stage-3', 'brehob/stage-2', 'brehob/hub/stage-2')).toBeNull();
-    expect(movedLinkTarget('brehob/stage-2x', 'brehob/stage-2', 'brehob/hub/stage-2')).toBeNull();
+    expect(movedLinkTarget('sales/stage-3', 'sales/stage-2', 'sales/hub/stage-2')).toBeNull();
+    expect(movedLinkTarget('sales/stage-2x', 'sales/stage-2', 'sales/hub/stage-2')).toBeNull();
   });
 });
 
 describe('renamedFolderLinkTarget', () => {
   it('a link inside the renamed folder keeps its tail', () => {
-    expect(renamedFolderLinkTarget('brehob/stage-2', 'brehob', 'brehob-bc')).toBe('brehob-bc/stage-2');
+    expect(renamedFolderLinkTarget('sales/stage-2', 'sales', 'sales-team')).toBe('sales-team/stage-2');
   });
 
   it('a nested link keeps its whole suffix', () => {
-    expect(renamedFolderLinkTarget('brehob/hub/stage-2', 'brehob', 'brehob-bc')).toBe('brehob-bc/hub/stage-2');
+    expect(renamedFolderLinkTarget('sales/hub/stage-2', 'sales', 'sales-team')).toBe('sales-team/hub/stage-2');
   });
 
   it('a nested-folder rename only touches links inside that subfolder', () => {
@@ -163,12 +163,12 @@ describe('renamedFolderLinkTarget', () => {
   });
 
   it('is prefix-safe: a same-prefixed sibling is not a match', () => {
-    expect(renamedFolderLinkTarget('brehob-other/x', 'brehob', 'brehob-bc')).toBeNull();
-    expect(renamedFolderLinkTarget('brehobx/x', 'brehob', 'brehob-bc')).toBeNull();
+    expect(renamedFolderLinkTarget('sales-other/x', 'sales', 'sales-team')).toBeNull();
+    expect(renamedFolderLinkTarget('salesx/x', 'sales', 'sales-team')).toBeNull();
     expect(renamedFolderLinkTarget('a/bc/x', 'a/b', 'a/c')).toBeNull();
   });
 
   it('a link outside the folder entirely is untouched', () => {
-    expect(renamedFolderLinkTarget('other/x', 'brehob', 'brehob-bc')).toBeNull();
+    expect(renamedFolderLinkTarget('other/x', 'sales', 'sales-team')).toBeNull();
   });
 });

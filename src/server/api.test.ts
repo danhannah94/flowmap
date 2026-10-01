@@ -247,32 +247,32 @@ describe('flowmap server: folders (design.md A16)', () => {
 
   it('GET /api/diagrams lists diagrams recursively, folder paths included', async () => {
     const { mkdir, writeFile } = await import('node:fs/promises');
-    await mkdir(join(dir, 'brehob'), { recursive: true });
-    await writeFile(join(dir, 'brehob', 'stage-2.mmd'), 'flowchart LR\n  a["A"]\n');
+    await mkdir(join(dir, 'sales'), { recursive: true });
+    await writeFile(join(dir, 'sales', 'stage-2.mmd'), 'flowchart LR\n  a["A"]\n');
     const res = await fetch(`${base}/api/diagrams`);
     const body = (await res.json()) as { files: string[] };
-    expect(body.files).toEqual(['brehob/stage-2.mmd', 'purchase-request.mmd']);
+    expect(body.files).toEqual(['purchase-request.mmd', 'sales/stage-2.mmd']);
   });
 
   it('GET /api/folder lists the root’s immediate subfolders and diagrams', async () => {
     const { mkdir, writeFile } = await import('node:fs/promises');
-    await mkdir(join(dir, 'brehob', 'legal'), { recursive: true });
-    await writeFile(join(dir, 'brehob', 'stage-2.mmd'), 'flowchart LR\n  a["A"]\n');
+    await mkdir(join(dir, 'sales', 'legal'), { recursive: true });
+    await writeFile(join(dir, 'sales', 'stage-2.mmd'), 'flowchart LR\n  a["A"]\n');
     const res = await fetch(`${base}/api/folder?dir=`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { dir: string; folders: string[]; diagrams: string[] };
-    expect(body.folders).toEqual(['brehob']);
+    expect(body.folders).toEqual(['sales']);
     expect(body.diagrams).toEqual(['purchase-request.mmd']);
   });
 
   it('GET /api/folder descends into a named folder', async () => {
     const { mkdir, writeFile } = await import('node:fs/promises');
-    await mkdir(join(dir, 'brehob', 'legal'), { recursive: true });
-    await writeFile(join(dir, 'brehob', 'stage-2.mmd'), 'flowchart LR\n  a["A"]\n');
-    const res = await fetch(`${base}/api/folder?dir=brehob`);
+    await mkdir(join(dir, 'sales', 'legal'), { recursive: true });
+    await writeFile(join(dir, 'sales', 'stage-2.mmd'), 'flowchart LR\n  a["A"]\n');
+    const res = await fetch(`${base}/api/folder?dir=sales`);
     const body = (await res.json()) as { folders: string[]; diagrams: string[] };
-    expect(body.folders).toEqual(['brehob/legal']);
-    expect(body.diagrams).toEqual(['brehob/stage-2.mmd']);
+    expect(body.folders).toEqual(['sales/legal']);
+    expect(body.diagrams).toEqual(['sales/stage-2.mmd']);
   });
 
   it('GET /api/folder rejects an invalid or escaping "dir"', async () => {
@@ -286,17 +286,17 @@ describe('flowmap server: folders (design.md A16)', () => {
     const res = await fetch(`${base}/api/folder`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dir: '', name: 'brehob' }),
+      body: JSON.stringify({ dir: '', name: 'sales' }),
     });
     expect(res.status).toBe(200);
-    expect(((await res.json()) as { dir: string }).dir).toBe('brehob');
+    expect(((await res.json()) as { dir: string }).dir).toBe('sales');
     const list = (await fetch(`${base}/api/folder?dir=`).then((r) => r.json())) as { folders: string[] };
-    expect(list.folders).toContain('brehob');
+    expect(list.folders).toContain('sales');
 
     const again = await fetch(`${base}/api/folder`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dir: '', name: 'brehob' }),
+      body: JSON.stringify({ dir: '', name: 'sales' }),
     });
     expect(again.status).toBe(409);
   });
@@ -314,41 +314,41 @@ describe('flowmap server: folders (design.md A16)', () => {
     await fetch(`${base}/api/folder`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dir: '', name: 'brehob' }),
+      body: JSON.stringify({ dir: '', name: 'sales' }),
     });
     const res = await fetch(`${base}/api/folder`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dir: 'brehob', name: 'brehob-2' }),
+      body: JSON.stringify({ dir: 'sales', name: 'sales-2' }),
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { dir: string; rewrittenLinks: { file: string; count: number }[] };
-    expect(body.dir).toBe('brehob-2');
-    expect(body.rewrittenLinks).toEqual([]); // nothing links into "brehob": a no-op, reported as empty not absent
+    expect(body.dir).toBe('sales-2');
+    expect(body.rewrittenLinks).toEqual([]); // nothing links into "sales": a no-op, reported as empty not absent
     const list = (await fetch(`${base}/api/folder?dir=`).then((r) => r.json())) as { folders: string[] };
-    expect(list.folders).toEqual(['brehob-2']);
+    expect(list.folders).toEqual(['sales-2']);
   });
 
   it('PUT /api/folder rewrites link: values elsewhere that pointed inside the renamed folder (A17)', async () => {
     const { mkdir, writeFile } = await import('node:fs/promises');
-    await mkdir(join(dir, 'brehob'), { recursive: true });
-    await writeFile(join(dir, 'brehob', 'stage-2.mmd'), 'flowchart LR\n  a["A"]\n');
-    await writeFile(join(dir, 'brehob', 'stage-2.flow.yaml'), 'nodes:\n  a:\n    kind: step\n');
+    await mkdir(join(dir, 'sales'), { recursive: true });
+    await writeFile(join(dir, 'sales', 'stage-2.mmd'), 'flowchart LR\n  a["A"]\n');
+    await writeFile(join(dir, 'sales', 'stage-2.flow.yaml'), 'nodes:\n  a:\n    kind: step\n');
     await writeFile(join(dir, 'other.mmd'), 'flowchart LR\n  a["A"]\n');
-    await writeFile(join(dir, 'other.flow.yaml'), 'nodes:\n  a:\n    link: brehob/stage-2   # keep me\n  b:\n    link: elsewhere\n');
+    await writeFile(join(dir, 'other.flow.yaml'), 'nodes:\n  a:\n    link: sales/stage-2   # keep me\n  b:\n    link: elsewhere\n');
 
     const res = await fetch(`${base}/api/folder`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dir: 'brehob', name: 'brehob-bc' }),
+      body: JSON.stringify({ dir: 'sales', name: 'sales-team' }),
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: true; dir: string; rewrittenLinks: { file: string; count: number }[] };
-    expect(body.dir).toBe('brehob-bc');
+    expect(body.dir).toBe('sales-team');
     expect(body.rewrittenLinks).toEqual([{ file: 'other.mmd', count: 1 }]);
 
     const otherConfig = await readFile(join(dir, 'other.flow.yaml'), 'utf8');
-    expect(otherConfig).toBe('nodes:\n  a:\n    link: brehob-bc/stage-2   # keep me\n  b:\n    link: elsewhere\n');
+    expect(otherConfig).toBe('nodes:\n  a:\n    link: sales-team/stage-2   # keep me\n  b:\n    link: elsewhere\n');
   });
 
   it('DELETE /api/folder removes an empty folder, and refuses a non-empty one', async () => {
@@ -376,25 +376,25 @@ describe('flowmap server: folders (design.md A16)', () => {
     await fetch(`${base}/api/folder`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dir: '', name: 'brehob' }),
+      body: JSON.stringify({ dir: '', name: 'sales' }),
     });
     const res = await fetch(`${base}/api/diagram/move`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ file: 'purchase-request.mmd', to: 'brehob' }),
+      body: JSON.stringify({ file: 'purchase-request.mmd', to: 'sales' }),
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: true; file: string; rewrittenLinks: { file: string; count: number }[] };
-    expect(body.file).toBe('brehob/purchase-request.mmd');
+    expect(body.file).toBe('sales/purchase-request.mmd');
     expect(body.rewrittenLinks).toEqual([]); // nothing links to it: a no-op, reported as empty not absent
 
     const gone = await fetch(`${base}/api/diagram?file=purchase-request.mmd`);
     expect(gone.status).toBe(404);
-    const moved = await fetch(`${base}/api/diagram?file=brehob/purchase-request.mmd`);
+    const moved = await fetch(`${base}/api/diagram?file=sales/purchase-request.mmd`);
     expect(moved.status).toBe(200);
 
     const list = (await fetch(`${base}/api/diagrams`).then((r) => r.json())) as { files: string[] };
-    expect(list.files).toEqual(['brehob/purchase-request.mmd']);
+    expect(list.files).toEqual(['sales/purchase-request.mmd']);
   });
 
   it('POST /api/diagram/move rewrites link: values elsewhere that pointed at the old id (A17)', async () => {
@@ -405,26 +405,26 @@ describe('flowmap server: folders (design.md A16)', () => {
     await fetch(`${base}/api/folder`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dir: '', name: 'brehob' }),
+      body: JSON.stringify({ dir: '', name: 'sales' }),
     });
     const res = await fetch(`${base}/api/diagram/move`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ file: 'purchase-request.mmd', to: 'brehob' }),
+      body: JSON.stringify({ file: 'purchase-request.mmd', to: 'sales' }),
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { rewrittenLinks: { file: string; count: number }[] };
     expect(body.rewrittenLinks).toEqual([{ file: 'other.mmd', count: 1 }]);
 
     const otherConfig = await readFile(join(dir, 'other.flow.yaml'), 'utf8');
-    expect(otherConfig).toBe('nodes:\n  a:\n    link: brehob/purchase-request   # keep me\n');
+    expect(otherConfig).toBe('nodes:\n  a:\n    link: sales/purchase-request   # keep me\n');
   });
 
   it('POST /api/diagram/move refuses a destination collision, and a missing diagram', async () => {
     const missing = await fetch(`${base}/api/diagram/move`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ file: 'nope.mmd', to: 'brehob' }),
+      body: JSON.stringify({ file: 'nope.mmd', to: 'sales' }),
     });
     expect(missing.status).toBe(404);
   });

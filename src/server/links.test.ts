@@ -87,22 +87,22 @@ describe('rewriteLinksAcrossDir (A17, §12)', () => {
   });
 
   it('folder-rename remap: prefix-safe, nested links keep their tail, same-prefixed siblings are untouched', async () => {
-    await writeDiagram(dir, 'brehob/stage-1.mmd', 'nodes:\n  n1:\n    link: brehob/stage-2\n');
-    await writeDiagram(dir, 'brehob/hub/stage-3.mmd', 'nodes:\n  n1:\n    link: brehob/stage-2\n');
-    await writeDiagram(dir, 'brehob-other/x.mmd', 'nodes:\n  n1:\n    link: brehob/stage-2\n'); // points inside brehob: still moves
-    await writeDiagram(dir, 'sibling/y.mmd', 'nodes:\n  n1:\n    link: brehobx/z\n'); // not inside brehob at all: untouched
+    await writeDiagram(dir, 'sales/stage-1.mmd', 'nodes:\n  n1:\n    link: sales/stage-2\n');
+    await writeDiagram(dir, 'sales/hub/stage-3.mmd', 'nodes:\n  n1:\n    link: sales/stage-2\n');
+    await writeDiagram(dir, 'sales-other/x.mmd', 'nodes:\n  n1:\n    link: sales/stage-2\n'); // points inside sales: still moves
+    await writeDiagram(dir, 'sibling/y.mmd', 'nodes:\n  n1:\n    link: salesx/z\n'); // not inside sales at all: untouched
 
-    const result = await rewriteLinksAcrossDir(dir, (t) => renamedFolderLinkTarget(t, 'brehob', 'brehob-bc'));
+    const result = await rewriteLinksAcrossDir(dir, (t) => renamedFolderLinkTarget(t, 'sales', 'sales-team'));
 
     expect([...result.rewritten].sort((x, y) => x.file.localeCompare(y.file))).toEqual([
-      { file: 'brehob-other/x.mmd', count: 1 },
-      { file: 'brehob/hub/stage-3.mmd', count: 1 },
-      { file: 'brehob/stage-1.mmd', count: 1 },
+      { file: 'sales-other/x.mmd', count: 1 },
+      { file: 'sales/hub/stage-3.mmd', count: 1 },
+      { file: 'sales/stage-1.mmd', count: 1 },
     ]);
-    expect(await readConfig(dir, 'brehob/stage-1.mmd')).toContain('link: brehob-bc/stage-2');
-    expect(await readConfig(dir, 'brehob/hub/stage-3.mmd')).toContain('link: brehob-bc/stage-2');
-    expect(await readConfig(dir, 'brehob-other/x.mmd')).toContain('link: brehob-bc/stage-2');
-    expect(await readConfig(dir, 'sibling/y.mmd')).toContain('link: brehobx/z'); // unchanged
+    expect(await readConfig(dir, 'sales/stage-1.mmd')).toContain('link: sales-team/stage-2');
+    expect(await readConfig(dir, 'sales/hub/stage-3.mmd')).toContain('link: sales-team/stage-2');
+    expect(await readConfig(dir, 'sales-other/x.mmd')).toContain('link: sales-team/stage-2');
+    expect(await readConfig(dir, 'sibling/y.mmd')).toContain('link: salesx/z'); // unchanged
   });
 
   it('no diagrams at all: an empty, safe result', async () => {

@@ -1,6 +1,6 @@
 // UI1: the home page lists the current folder's subfolders then its diagrams; `?dir=<path>` remembers the folder
 // (design.md §8.2 amendment A16). Folders are real subdirectories of the served root, so a diagram's id is its
-// root-relative path without the `.mmd` extension (`brehob/stage-2`), and `?file=` is that id plus `.mmd`.
+// root-relative path without the `.mmd` extension (`sales/stage-2`), and `?file=` is that id plus `.mmd`.
 import { useEffect, useRef, useState } from 'react';
 import {
   createDiagram, createFolder, deleteDiagram, deleteFolder, listFolder, moveDiagram, renameFolder,

@@ -167,7 +167,7 @@ export async function readOptional(path: string): Promise<string | null> {
 export const MAX_FOLDER_DEPTH = 12;
 
 /** Every `.mmd` file under `dir`, recursively (design.md §8.2 A16: "list diagrams recursively"), as root-relative
- *  posix paths (`"a.mmd"`, `"brehob/stage-2.mmd"`), sorted. Skips dot-folders (so `.flowmap-trash` and any other
+ *  posix paths (`"a.mmd"`, `"sales/stage-2.mmd"`), sorted. Skips dot-folders (so `.flowmap-trash` and any other
  *  hidden folder are invisible here), `node_modules` and `exports`, and stops descending past `MAX_FOLDER_DEPTH`. */
 export async function listMmdFiles(dir: string, maxDepth = MAX_FOLDER_DEPTH): Promise<string[]> {
   const out: string[] = [];
