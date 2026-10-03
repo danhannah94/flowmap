@@ -55,7 +55,7 @@ function useHandle(start: (down: PointerEvent, el: HTMLElement) => () => void, r
   return {
     onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
-      e.stopPropagation(); // the canvas would pan
+      e.stopPropagation(); // the canvas would start a selection box (a Space or middle-button pan never gets here: the canvas claims it first)
       e.preventDefault();
       laneMenu.set(null);
       cleanup.current?.();
