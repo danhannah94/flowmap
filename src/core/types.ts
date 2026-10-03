@@ -32,6 +32,9 @@ export interface Problem {
   code: string;
   line: number | null;
   message: string;
+  /** A20: set only when the problem is in a file other than the diagram's own three: a preset pack file (§4.1), as
+   *  the config's `preset:` names it. Which of the three files any other problem is in follows from its code. */
+  file?: string;
 }
 
 export interface Problems {

@@ -171,7 +171,9 @@ async function cmdValidate(argv: string[]): Promise<void> {
   const warnings = [...doc.problems.warnings, ...linkWarnings];
 
   if (flags.json) {
-    process.stdout.write(`${JSON.stringify({ errors: doc.problems.errors, warnings }, null, 2)}\n`);
+    // §7's shape exactly: `{code, line, message}` (a pack file's problems name the file in their message).
+    const plain = (ps: Problem[]) => ps.map(({ code, line, message }) => ({ code, line, message }));
+    process.stdout.write(`${JSON.stringify({ errors: plain(doc.problems.errors), warnings: plain(warnings) }, null, 2)}\n`);
   } else {
     for (const e of doc.problems.errors) process.stdout.write(`error ${formatProblem(e)}\n`);
     for (const w of warnings) process.stdout.write(`warning ${formatProblem(w)}\n`);

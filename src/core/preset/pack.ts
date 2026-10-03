@@ -172,8 +172,14 @@ function readPack(js: unknown, ref: string, p: Problem[]): PresetPack | null {
   return { ref, name, kinds, byName };
 }
 
-/** Read a pack file's text (YAML, which includes JSON). A pack that can't be read at all gives no pack and a warning. */
+/** Read a pack file's text (YAML, which includes JSON). A pack that can't be read at all gives no pack and a warning.
+ *  Every warning is about the pack file's own content, so each carries `file: ref` (shown as its location). */
 export function parsePackText(text: string, ref: string): { pack: PresetPack | null; warnings: Problem[] } {
+  const { pack, warnings } = readPackText(text, ref);
+  return { pack, warnings: warnings.map((w) => ({ ...w, file: ref })) };
+}
+
+function readPackText(text: string, ref: string): { pack: PresetPack | null; warnings: Problem[] } {
   const warnings: Problem[] = [];
   const doc = parseDocument(text, { uniqueKeys: true });
   const [firstError] = doc.errors;
