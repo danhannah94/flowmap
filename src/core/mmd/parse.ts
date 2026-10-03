@@ -4,10 +4,11 @@
 // whole token (keywords, §3.1) and otherwise parsed as node declarations and edges by a small scanner. A line with a
 // syntax error is reported and skipped, and parsing carries on, so every error in the file is reported (§3.1, §7).
 // Cross-line rules (duplicates, lanes, unclosed subgraphs, edges to subgraphs, W-no-lane) are applied as lines are
-// read or at the end. A file with no subgraphs at all gives no W-no-lane (amendment A5).
+// read or at the end. A file with no subgraphs at all gives no W-no-lane (amendment A5). A subgraph inside a subgraph
+// is a group of it (amendment A19), to any depth.
 
 import type { Direction, Problem, Problems, ShapeKind } from '../types';
-import type { Comment, Diagram, Edge, Lane, NodeDecl } from './model';
+import type { Comment, Container, Diagram, Edge, NodeDecl } from './model';
 import { emptyDiagram, undeclaredNodes } from './model';
 import {
   ID_SOURCE, PASS_THROUGH_KEYWORDS, UNQUOTED_FORBIDDEN, decodeLabel, isReservedId, normaliseUnquoted,
@@ -370,8 +371,11 @@ function checkPassThroughSemicolons(text: string): void {
 
 interface OpenSubgraph {
   line: number;
-  /** The lane the block adds nodes to, or null if the `subgraph` line itself was an error. */
-  lane: Lane | null;
+  /**
+   * The lane or group the block adds nodes to, or null if the `subgraph` line itself was an error (its nodes then go
+   * to the nearest open subgraph around it that has one, or are unlaned).
+   */
+  container: Container | null;
 }
 
 export function parse(text: string): ParseResult {
@@ -423,17 +427,31 @@ export function parse(text: string): ParseResult {
   };
 
   const stack: OpenSubgraph[] = [];
-  const lanes = new Map<string, Lane>();
-  const nodes = new Map<string, { decl: NodeDecl; lane: string | null }>();
+  /** Every subgraph by id: lanes and (A19) groups. */
+  const subgraphs = new Map<string, Container>();
+  /** A19: each container's lane id, and its own id when it is a group (null for a lane). */
+  const placeOf = new Map<Container, { lane: string; group: string | null }>();
+  const nodes = new Map<string, { decl: NodeDecl; lane: string | null; group: string | null }>();
+
+  /** The innermost open subgraph that has a container (null: none, so a node there is unlaned). */
+  const current = (): Container | null => {
+    for (let k = stack.length - 1; k >= 0; k--) {
+      const c = stack[k]!.container;
+      if (c) return c;
+    }
+    return null;
+  };
 
   /**
-   * Declare a node (§3.2). Returns the new declaration, or null if it is a repeat (identical: no effect; different:
-   * E-duplicate at this line).
+   * Declare a node (§3.2). Returns the new declaration, or null if it is a repeat (identical: no effect; different,
+   * including another lane or (A19) another group: E-duplicate at this line).
    */
   const declare = (id: string, shape: ShapeDecl, line: number): NodeDecl | null => {
-    const lane = stack[0]?.lane ?? null;
-    const laneId = lane?.id ?? null;
-    if (lanes.has(id)) {
+    const container = current();
+    const place = container ? placeOf.get(container)! : null;
+    const laneId = place?.lane ?? null;
+    const groupId = place?.group ?? null;
+    if (subgraphs.has(id)) {
       error('E-duplicate', line, `"${id}" is already a subgraph id`);
       return null;
     }
@@ -441,13 +459,13 @@ export function parse(text: string): ParseResult {
     if (existing) {
       const d = existing.decl;
       const same = d.shape === shape.shape && d.label === shape.label && d.className === shape.className
-        && existing.lane === laneId;
+        && existing.lane === laneId && existing.group === groupId;
       if (!same) error('E-duplicate', line, `"${id}" is declared again differently (first at line ${d.line})`);
       return null;
     }
     const decl: NodeDecl = { id, shape: shape.shape, label: shape.label, className: shape.className, comments: [], line };
-    (lane ? lane.nodes : diagram.unlaned).push(decl);
-    nodes.set(id, { decl, lane: laneId });
+    (container ? container.nodes : diagram.unlaned).push(decl);
+    nodes.set(id, { decl, lane: laneId, group: groupId });
     if (!laneId) warn('W-no-lane', line, `"${id}" is not in any subgraph`);
     return decl;
   };
@@ -457,41 +475,48 @@ export function parse(text: string): ParseResult {
 
   const handleSubgraph = (stmt: string, line: number): void => {
     sawSubgraph = true;
-    if (stack.length > 0) {
-      // §3.1: one level only. The inner block still opens (and its `end` closes it); its nodes stay in the outer lane.
-      error('E-nested', line, 'a subgraph inside a subgraph');
-      stack.push({ line, lane: null });
-      return;
-    }
-    const open: OpenSubgraph = { line, lane: null };
+    // A19: a subgraph inside a subgraph is a group of the innermost one around it (no longer E-nested). If that one
+    // had an error, it nests in the nearest one around it that has a container; under none, it has none either.
+    const nested = stack.length > 0;
+    const parent = nested ? current() : null;
+    const open: OpenSubgraph = { line, container: null };
     stack.push(open);
     const m = SUBGRAPH.exec(stmt);
     if (!m) throw syntaxError(`bad subgraph line "${stmt}": expected "subgraph <id> [<Label>]"`);
     const id = m[1]!;
     if (isReservedId(id)) throw syntaxError(`"${id}" is a reserved id`);
     const label = parseLaneLabel(m[2]!) ?? id;
-    const existing = lanes.get(id);
+    const existing = subgraphs.get(id);
     if (existing) {
       error('E-duplicate', line, `subgraph "${id}" is already defined (line ${existing.line})`);
-      open.lane = existing;
+      // A repeated lane id keeps adding to that lane (as before A19); a repeated group's nodes stay in its parent.
+      open.container = nested ? parent : existing;
       return;
     }
     if (nodes.has(id)) {
       error('E-duplicate', line, `"${id}" is already a node id`);
+      if (nested) open.container = parent;
       return;
     }
-    const lane: Lane = { id, label, comments: takePending(), nodes: [], endComments: [], line };
-    lanes.set(id, lane);
-    diagram.lanes.push(lane);
-    open.lane = lane;
+    if (nested && !parent) return;
+    const c: Container = { id, label, comments: takePending(), nodes: [], endComments: [], line };
+    subgraphs.set(id, c);
+    if (parent) {
+      (parent.groups ??= []).push(c);
+      placeOf.set(c, { lane: placeOf.get(parent)!.lane, group: id });
+    } else {
+      diagram.lanes.push(c);
+      placeOf.set(c, { lane: id, group: null });
+    }
+    open.container = c;
   };
 
   const handleEnd = (stmt: string): void => {
     if (stmt !== 'end') throw syntaxError(`unexpected "${stmt}"`);
     if (stack.length === 0) throw syntaxError('"end" without a subgraph');
     const closed = stack.pop()!;
-    // §3.3: a comment directly above `end` stays inside that subgraph, as its last lines.
-    if (stack.length === 0 && closed.lane) closed.lane.endComments.push(...takePending());
+    // §3.3: a comment directly above `end` stays inside that subgraph (lane or, A19, group), as its last lines.
+    if (closed.container) closed.container.endComments.push(...takePending());
   };
 
   const handlePassThrough = (stmt: string, line: number): void => {
@@ -559,10 +584,10 @@ export function parse(text: string): ParseResult {
 
   for (const open of stack) error('E-unclosed', open.line, 'subgraph without "end"');
 
-  // §3.1: an edge to or from a subgraph id is E-syntax (once per line).
+  // §3.1: an edge to or from a subgraph id (a lane or, A19, a group) is E-syntax (once per line).
   const flagged = new Set<number>();
   for (const edge of diagram.edges) {
-    const laneEnd = lanes.has(edge.source) ? edge.source : lanes.has(edge.target) ? edge.target : null;
+    const laneEnd = subgraphs.has(edge.source) ? edge.source : subgraphs.has(edge.target) ? edge.target : null;
     if (laneEnd === null || edge.line === undefined || flagged.has(edge.line)) continue;
     flagged.add(edge.line);
     error('E-syntax', edge.line, `an edge can't connect to subgraph "${laneEnd}"`);
@@ -570,7 +595,7 @@ export function parse(text: string): ParseResult {
 
   // §3.2: a never-declared node has no lane; warn at its first mention.
   for (const node of undeclaredNodes(diagram)) {
-    if (lanes.has(node.id)) continue;
+    if (subgraphs.has(node.id)) continue;
     warn('W-no-lane', node.line ?? 1, `"${node.id}" is never declared, so it is not in any subgraph`);
   }
 

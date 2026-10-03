@@ -13,6 +13,9 @@ export interface Theme {
   laneFill: [string, string];
   laneBorder: string;
   laneLabel: string;
+  /** A19: a group's box (a box inside a lane): a fill a step off the lane bands, and its outline. */
+  groupFill: string;
+  groupBorder: string;
   titleColor: string;
   /** Defaults for a node with no matching style rule. */
   nodeFill: string;
@@ -33,6 +36,8 @@ export const lightTheme: Theme = {
   laneFill: ['#f8fafc', '#eef1f6'],
   laneBorder: '#d9dfe6',
   laneLabel: '#334155',
+  groupFill: '#ffffff',
+  groupBorder: '#a3b1c2',
   titleColor: '#0f172a',
   nodeFill: '#ffffff',
   nodeBorder: '#475569',
@@ -51,6 +56,8 @@ export const darkTheme: Theme = {
   laneFill: ['#111c2e', '#16233a'],
   laneBorder: '#2c3b52',
   laneLabel: '#cbd5e1',
+  groupFill: '#1a2840',
+  groupBorder: '#3e5272',
   titleColor: '#f1f5f9',
   nodeFill: '#1e293b',
   nodeBorder: '#94a3b8',

@@ -6,9 +6,9 @@ import {
 import type { Translation } from '../layout';
 import { labelNeeds, nodeSize } from '../measure';
 import { findNode, type NodeDecl } from '../mmd';
-import { SHAPE_KINDS, type LayoutResult, type Pin, type ShapeKind, type Size, type XY } from '../types';
+import { SHAPE_KINDS, UNASSIGNED, type LayoutResult, type NodePin, type ShapeKind, type Size, type XY } from '../types';
 import { checkBlockLabel, refuse, run, type Ctx, type Files, type OpResult } from './context';
-import { bandStart, blockLaneAt, checkXY, storedCorner, viewOf, type LayoutArg } from './frame';
+import { bandStart, blockGroupAt, blockLaneAt, checkXY, storedCorner, viewOf, type LayoutArg } from './frame';
 
 /** UI6: the starting label of a new block, per shape. */
 export const NEW_BLOCK_LABELS: Record<ShapeKind, string> = {
@@ -45,21 +45,22 @@ function declarationOf(ctx: Ctx, id: string): NodeDecl {
 // ---- UI6 Add
 
 /**
- * UI6: add a block of `shape` as the last declaration of `lane` (`_unassigned`: the unlaned section), with the
- * first free id `n1`, `n2`… and the shape's starting label. With `pin` (added by dragging from the palette), it is
- * pinned where it was dropped (rounded and clamped as in UI10).
+ * UI6: add a block of `shape` as the last declaration of `lane` (`_unassigned`: the unlaned section), or (A19) of
+ * `group` in that lane, with the first free id `n1`, `n2`… and the shape's starting label. With `pin` (added by
+ * dragging from the palette), it is pinned where it was dropped (rounded and clamped as in UI10).
  */
 export function addNode(
   files: Files,
-  args: { shape: ShapeKind; lane: string; pin?: DropPosition },
+  args: { shape: ShapeKind; lane: string; group?: string | null; pin?: DropPosition },
 ): OpResult<{ id: string }> {
   return run(files, (ctx) => {
     checkShape(args.shape);
     ctx.requireLane(args.lane, { unassigned: true });
+    const group = args.group ?? null;
     const id = ctx.nextNodeId();
-    ctx.declsOf(args.lane).push({ id, shape: args.shape, label: NEW_BLOCK_LABELS[args.shape], className: null, comments: [] });
+    containerDecls(ctx, args.lane, group).push({ id, shape: args.shape, label: NEW_BLOCK_LABELS[args.shape], className: null, comments: [] });
     if (args.pin) {
-      const pin = pinFromDrop(args.lane, args.pin.along, args.pin.across, ctx.firstLane());
+      const pin = pinFromDrop(args.lane, args.pin.along, args.pin.across, ctx.firstLane(), group);
       ctx.editLayout('always', (file) => setPins(file, [[id, pin]]));
     }
     return { id };
@@ -132,9 +133,10 @@ export function pinNodes(files: Files, pins: readonly ({ id: string } & DropPosi
   return run(files, (ctx) => {
     const byId = new Map(pins.map((p) => [p.id, p]));
     const ordered = ctx.sortByDeclaration([...byId.keys()]);
-    const out: [string, Pin][] = ordered.map((id) => {
+    const out: [string, NodePin][] = ordered.map((id) => {
       const p = byId.get(id)!;
-      return [id, pinFromDrop(ctx.laneOf(id), p.along, p.across, ctx.firstLane())];
+      // A19: a block in a group records its group with the pin.
+      return [id, pinFromDrop(ctx.laneOf(id), p.along, p.across, ctx.firstLane(), ctx.groupOf(id))];
     });
     if (out.length) ctx.editLayout('always', (file) => setPins(file, out));
     return {};
@@ -170,9 +172,60 @@ export function moveNodesToLane(
       moved.push(id);
     }
     const drop = moved.filter((id) => !dropAt.has(id));
-    const pins: [string, Pin][] = ordered
+    // A block already in `lane` keeps its place, so (A19) its group too.
+    const pins: [string, NodePin][] = ordered
       .filter((id) => dropAt.has(id))
-      .map((id) => [id, pinFromDrop(lane, dropAt.get(id)!.along, dropAt.get(id)!.across, ctx.firstLane())]);
+      .map((id) => [id, pinFromDrop(lane, dropAt.get(id)!.along, dropAt.get(id)!.across, ctx.firstLane(), ctx.groupOf(id))]);
+    if (drop.length) ctx.editLayout(drop, (file) => removePins(file, drop));
+    if (pins.length) ctx.editLayout('always', (file) => setPins(file, pins));
+    return {};
+  });
+}
+
+// ---- A19 Move into or out of a group
+
+/** The declaration list of a lane's top level (`group` null; `_unassigned`: the unlaned section) or of a group in it. */
+function containerDecls(ctx: Ctx, lane: string, group: string | null) {
+  if (group === null) return ctx.declsOf(lane);
+  const found = ctx.findGroup(group);
+  if (!found) return refuse(`There is no group "${group}"`);
+  if (found.lane !== lane) return refuse(`Group "${group}" is not in lane "${lane}"`);
+  return found.group.nodes;
+}
+
+/**
+ * A19 (UI11 with groups): move blocks to a group (`group`, in `lane`) or to the top level of `lane` (`group` null;
+ * `lane` may be `_unassigned`). Each block not already exactly there has its declaration, with its attached comments,
+ * appended as the last declaration of that group (or of the lane, before its groups), in file declaration order; a
+ * never-declared node is declared there. Pins: dropped (the inspector's group select), except for blocks listed in
+ * `opts.pins` (a drag), which are pinned at their drop position with the lane and the group (§5).
+ */
+export function moveNodesToGroup(
+  files: Files,
+  ids: readonly string[],
+  target: { lane: string; group: string | null },
+  opts: { pins?: readonly ({ id: string } & DropPosition)[] } = {},
+): OpResult {
+  return run(files, (ctx) => {
+    const { lane } = target;
+    const group = target.group ?? null;
+    ctx.requireLane(lane, { unassigned: true });
+    if (group !== null && lane === UNASSIGNED) refuse('Unassigned has no groups');
+    const decls = containerDecls(ctx, lane, group);
+    const ordered = ctx.sortByDeclaration(ids);
+    const dropAt = new Map((opts.pins ?? []).map((p) => [p.id, p]));
+    for (const id of dropAt.keys()) if (!ordered.includes(id)) refuse(`"${id}" has a drop position but isn't moved`);
+    const moved: string[] = [];
+    for (const id of ordered) {
+      if (ctx.laneOf(id) === lane && (ctx.groupOf(id) ?? null) === group) continue;
+      const decl = ctx.removeDecl(id) ?? { id, shape: 'step' as const, label: id, className: null, comments: [] };
+      decls.push(decl);
+      moved.push(id);
+    }
+    const drop = moved.filter((id) => !dropAt.has(id));
+    const pins: [string, NodePin][] = ordered
+      .filter((id) => dropAt.has(id))
+      .map((id) => [id, pinFromDrop(lane, dropAt.get(id)!.along, dropAt.get(id)!.across, ctx.firstLane(), group)]);
     if (drop.length) ctx.editLayout(drop, (file) => removePins(file, drop));
     if (pins.length) ctx.editLayout('always', (file) => setPins(file, pins));
     return {};
@@ -271,11 +324,15 @@ export function addNodeAt(
     ctx.requireLayout();
     const view = viewOf(ctx, layout);
     const size = nodeSize(NEW_BLOCK_LABELS[shape], shape);
-    const lane = blockLaneAt(view.result, at.x + size.width / 2, at.y + size.height / 2);
+    const cx = at.x + size.width / 2;
+    const cy = at.y + size.height / 2;
+    const lane = blockLaneAt(view.result, cx, cy);
+    // A19: in the innermost group under its centre, as a drop (UI11).
+    const group = blockGroupAt(view.result, lane, cx, cy);
     const id = ctx.nextNodeId();
-    ctx.declsOf(lane).push({ id, shape, label: NEW_BLOCK_LABELS[shape], className: null, comments: [] });
+    containerDecls(ctx, lane, group).push({ id, shape, label: NEW_BLOCK_LABELS[shape], className: null, comments: [] });
     const corner = storedCorner(view, lane, at.x, at.y);
-    const pin = pinFromDrop(lane, corner.along, corner.across, ctx.firstLane());
+    const pin = pinFromDrop(lane, corner.along, corner.across, ctx.firstLane(), group);
     ctx.editLayout('always', (file) => setPins(file, [[id, pin]]));
     return { id, lane };
   });
@@ -371,7 +428,7 @@ export function resizeNode(
     const box = resizedBox(node, handle, delta, LR, floor);
     const size = { width: box.width, height: box.height };
     const corner = storedCorner(view, lane, box.x, box.y);
-    const pin = pinFromDrop(lane, corner.along, corner.across, ctx.firstLane());
+    const pin = pinFromDrop(lane, corner.along, corner.across, ctx.firstLane(), ctx.groupOf(id));
     ctx.editLayout('always', (file) => setPins(setSizes(file, [[id, size]]), [[id, pin]]));
     return { size };
   });

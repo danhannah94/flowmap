@@ -2,12 +2,11 @@
 // `format(parse(format(parse(x)))) === format(parse(x))` holds as long as parse reads canonical form back into the
 // same model.
 
-import type { Comment, Diagram, Edge, Lane, NodeDecl } from './model';
+import type { Comment, Container, Diagram, Edge, Lane, NodeDecl } from './model';
 import { canWriteUnquoted, encodeLabel } from './syntax';
 import type { ShapeKind } from '../types';
 
 const NODE_INDENT_UNLANED = '  ';
-const NODE_INDENT_LANED = '    ';
 const STATEMENT_INDENT = '  ';
 
 /** Bracket pairs for the six bracket shapes (§3.1). `document` and `delay` use `@{…}`. */
@@ -56,6 +55,20 @@ function withComments(out: string[], comments: readonly Comment[], indent: strin
   out.push(indent + statement);
 }
 
+/**
+ * A subgraph block (§3.3 step 4): its `subgraph` line (with the comments above it) at `indent`, its own nodes 2 spaces
+ * further in, then (A19) its groups in file order, each the same way one level deeper, then the comments that were
+ * directly above its `end`, and `end` at `indent`. A lane is written at 2 spaces, so its nodes are at 4.
+ */
+function writeSubgraph(lines: string[], c: Container, indent: string): void {
+  const inner = indent + '  ';
+  withComments(lines, c.comments, indent, formatLaneHeader(c));
+  for (const node of c.nodes) withComments(lines, node.comments, inner, formatNodeDecl(node));
+  for (const g of c.groups ?? []) writeSubgraph(lines, g, inner);
+  for (const comment of c.endComments) lines.push(inner + comment);
+  lines.push(`${indent}end`);
+}
+
 /** The whole diagram in canonical form (§3.3), ending with exactly one newline. */
 export function format(d: Diagram): string {
   const out: string[] = [`flowchart ${d.direction}`, ...d.fileComment];
@@ -71,10 +84,7 @@ export function format(d: Diagram): string {
 
   for (const lane of d.lanes) {
     const lines: string[] = [];
-    withComments(lines, lane.comments, STATEMENT_INDENT, formatLaneHeader(lane));
-    for (const node of lane.nodes) withComments(lines, node.comments, NODE_INDENT_LANED, formatNodeDecl(node));
-    for (const c of lane.endComments) lines.push(NODE_INDENT_LANED + c);
-    lines.push(`${STATEMENT_INDENT}end`);
+    writeSubgraph(lines, lane, STATEMENT_INDENT);
     section(lines);
   }
 

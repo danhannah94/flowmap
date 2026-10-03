@@ -1,0 +1,30 @@
+%% Amendment A19: subgraphs inside lanes are groups, nested to any depth.
+graph TD
+  subgraph acct[Account]
+    %% the way in
+    gw[Gateway]
+    subgraph net ["Network"]
+      lb[(Load balancer)]
+      subgraph sub-a [Subnet A]
+        app1[App server 1]
+        app2[App server 2]
+        %% end of subnet A
+      end
+      subgraph sub-b [Subnet B]
+        db[(Database)]
+      end
+      app1 --> db
+    end
+    %% after the network
+    audit[Audit log]
+  end
+
+  subgraph ops [Operations]
+    subgraph empty [Empty group]
+    end
+    oncall([On call])
+  end
+
+  gw --> lb --> app1 & app2
+  app2 --> db
+  db --> audit

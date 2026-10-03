@@ -3,9 +3,9 @@
 // exist) or a refusal. The `.mmd` is always written in canonical form (§3.3); the config keeps every untouched byte
 // (UI26); the layout file is rewritten only when its content changes.
 export { mentions, type Files, type OpResult } from './context';
-export { type LayoutArg } from './frame';
+export { blockGroupAt, type LayoutArg } from './frame';
 export {
-  NEW_BLOCK_LABELS, addNode, addNodeAt, changeShape, clearAllPins, deleteItems, moveNodesToLane,
+  NEW_BLOCK_LABELS, addNode, addNodeAt, changeShape, clearAllPins, deleteItems, moveNodesToGroup, moveNodesToLane,
   pinNodes, positionInLane, renameNode, resetSize, resizedBox, resizeNode, setNodeLabel, unpinNodes, type DropPosition,
   type ResizableBlock, type ResizeHandle,
 } from './nodes';

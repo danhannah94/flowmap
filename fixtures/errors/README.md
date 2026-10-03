@@ -3,7 +3,6 @@ One file per error code. Each must make `flowmap validate` exit 1 with this code
 | File | Code | Line |
 |---|---|---|
 | E-header.mmd | E-header | 1 |
-| E-nested.mmd | E-nested | 3 |
 | E-unclosed.mmd | E-unclosed | 2 |
 | E-shape.mmd | E-shape | 3 |
 | E-edge.mmd | E-edge | 4 |

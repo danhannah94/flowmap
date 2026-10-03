@@ -70,7 +70,7 @@ A diagram is up to three files with the same base name, side by side. Only the `
 
 | File | Owns | Who writes it |
 |---|---|---|
-| `<name>.mmd` | What the process is: lanes, steps, decisions, lines, labels. A strict subset of Mermaid flowchart syntax, so GitHub renders it too. | Both. The editor always writes canonical form (`flowmap fmt`), so diffs stay small. |
+| `<name>.mmd` | What the process is: lanes (and groups inside them), steps, decisions, lines, labels. A strict subset of Mermaid flowchart syntax, so GitHub renders it too. | Both. The editor always writes canonical form (`flowmap fmt`), so diffs stay small. |
 | `<name>.flow.yaml` | How it looks and what we know: the title, lane order, per-step metadata (who said it, how sure we are, quotes, open questions) and style rules that turn that metadata into looks, with a legend. | Both. The editor changes only the lines it edits; comments and formatting elsewhere survive byte for byte. |
 | `<name>.layout.json` | Where things are: the positions you pinned by dragging, relative to their lane, any lane sizes you set by dragging a lane's edge, and the lanes' length if you drag their far end. | The editor (hand edits are allowed but rare). |
 
@@ -79,7 +79,8 @@ picks up noise from the editor, and neither author's edits clobber the other's.
 
 Anything you can do by editing these files, you can do in the editor, and it writes the same result. A few things
 are deliberately text-only and are kept untouched: comments in the `.mmd` (the AI's working notes), `:::class`
-suffixes and `classDef`/`style` lines, and the order of statements in the `.mmd`.
+suffixes and `classDef`/`style` lines, and the order of statements in the `.mmd`. Adding, renaming and deleting
+groups (A19, below) is text-only for now too.
 
 ## Flowcharts without lanes
 
@@ -109,6 +110,39 @@ the Unassigned lane until you move them. `flowmap validate` still notes each blo
 
 ![A flowchart without lanes, light theme](docs/screenshots/flowchart-light.png)
 ![The same flowchart, dark theme](docs/screenshots/flowchart-dark.png)
+
+## Groups inside lanes
+
+A `subgraph` inside a lane is a **group** (amendment A19): a labelled box drawn inside the lane around the blocks
+declared in it. Groups nest to any depth, which suits system and cloud maps (account > network > subnet). Lanes stay
+the top level and stay the only bands; a block's lane is still the lane around its group.
+
+```mermaid
+flowchart LR
+  subgraph acct [Account]
+    gw["Gateway"]
+    subgraph net [Network]
+      lb["Load balancer"]
+      subgraph sub-a [Subnet A]
+        app["App server"]
+      end
+      subgraph sub-b [Subnet B]
+        db[("Database")]
+      end
+    end
+  end
+
+  gw --> lb
+  lb --> app
+  app --> db
+```
+
+A group's box always holds its blocks and inner groups, with padding and room for its label; it isn't stored
+anywhere, it follows its contents. Drag a block into a group's box to move it into that group (the group lights up
+while you drag), or out of every group box to move it to the lane itself; the `.mmd` is rewritten and the pin records
+the group (`"group": "sub-a"` beside `"lane"` in the layout file). The inspector's Group select does the same without
+dragging. Creating, renaming and deleting groups is done in the text for now; `flowmap fmt` writes them indented one
+level deeper per group, and `flowmap layout --json` lists every group's box under `groups`.
 
 ## Using the editor
 

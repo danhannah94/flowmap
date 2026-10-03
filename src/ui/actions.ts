@@ -2,7 +2,7 @@
 // intent into one core operation through `store.apply` (one undo step), using the layout on screen for positions.
 import { nodeSize } from '../core/measure';
 import {
-  addNode, addNodeAt, moveNodesToLane, NEW_BLOCK_LABELS, pinNodes, setNodeLabel,
+  addNode, addNodeAt, blockGroupAt, moveNodesToGroup, moveNodesToLane, NEW_BLOCK_LABELS, pinNodes, setNodeLabel,
   type DropPosition, type Files, type OpResult,
 } from '../core/ops';
 import { roundPx } from '../core/layoutfile';
@@ -62,12 +62,15 @@ export function editNodeLabel(store: Store, id: string): void {
 export function addBlock(store: Store, shape: ShapeKind, lane: string, dropAt?: Point): boolean {
   const layout = store.layout;
   let pin: DropPosition | undefined;
+  let group: string | null = null;
   if (dropAt && layout) {
     const size = nodeSize(NEW_BLOCK_LABELS[shape], shape);
     const topLeft = { x: dropAt.x - size.width / 2, y: dropAt.y - size.height / 2 };
     pin = dropPosition(layout, dropBand(layout, lane), topLeft, translationOf(store.getState().derived));
+    // A19: dropped inside a group's box, it joins the innermost one (UI11).
+    group = blockGroupAt(layout, lane, dropAt.x, dropAt.y);
   }
-  const r = store.apply(addNode, { shape, lane, ...(pin ? { pin } : {}) });
+  const r = store.apply(addNode, { shape, lane, ...(group ? { group } : {}), ...(pin ? { pin } : {}) });
   if (!r.ok) return false;
   store.set({ tool: { kind: 'select' } });
   // Bring the whole new block into view (a click-added block is placed by the layout, possibly off screen).
@@ -113,7 +116,7 @@ export function addBlockAtCorner(store: Store, shape: ShapeKind, corner: Point):
     const added = addNodeAt(f, shape, corner, output);
     if (!added.ok) return added;
     id = added.id;
-    return settlePlaced(store, f, added.files, [{ id, from: added.lane, lane: added.lane, box }]);
+    return settlePlaced(store, f, added.files, [{ id, from: added.lane, lane: added.lane, group: null, fromGroup: null, box }]);
   });
   if (!r.ok || !id) return false;
   store.set({ tool: { kind: 'select' } });
@@ -121,7 +124,11 @@ export function addBlockAtCorner(store: Store, shape: ShapeKind, corner: Point):
   return true;
 }
 
-export type Placed = { id: string; from: string; lane: string; box: Rect };
+/**
+ * A block placed by a drop: its lane before (`from`) and after (`lane`), and (A19) its group before (`fromGroup`) and
+ * after (`group`; null: the lane's top level). `settlePlaced` reads only `id`, `lane` and `box`.
+ */
+export type Placed = { id: string; from: string; lane: string; group?: string | null; fromGroup?: string | null; box: Rect };
 
 /**
  * UI10/UI11: pin blocks at world boxes (each `lane`: the lane it ends in), as one undo step. Blocks that stay in their
@@ -135,14 +142,27 @@ function placeBlocks(store: Store, placed: readonly Placed[]): void {
   const shift = translationOf(store.getState().derived);
   const stay: ({ id: string } & DropPosition)[] = [];
   const moves = new Map<string, ({ id: string } & DropPosition)[]>();
+  // A19: moves into, out of or between groups, by target (lane and group).
+  const groupMoves = new Map<string, { lane: string; group: string | null; pins: ({ id: string } & DropPosition)[] }>();
   for (const p of placed) {
     const pos = { id: p.id, ...dropPosition(layout, dropBand(layout, p.lane), p.box, shift) };
-    if (p.lane === p.from) stay.push(pos);
-    else moves.set(p.lane, [...(moves.get(p.lane) ?? []), pos]);
+    const group = p.group ?? null;
+    const fromGroup = p.fromGroup ?? null;
+    if (p.lane === p.from && group === fromGroup) stay.push(pos);
+    else if (group === null && fromGroup === null) moves.set(p.lane, [...(moves.get(p.lane) ?? []), pos]);
+    else {
+      const key = `${p.lane}\u0000${group ?? ''}`;
+      const entry = groupMoves.get(key) ?? { lane: p.lane, group, pins: [] };
+      entry.pins.push(pos);
+      groupMoves.set(key, entry);
+    }
   }
   const steps: ((f: Files) => OpResult)[] = [];
   if (stay.length) steps.push((f) => pinNodes(f, stay));
   for (const [lane, pins] of moves) steps.push((f) => moveNodesToLane(f, pins.map((p) => p.id), lane, { pins }));
+  for (const { lane, group, pins } of groupMoves.values()) {
+    steps.push((f) => moveNodesToGroup(f, pins.map((p) => p.id), { lane, group }, { pins }));
+  }
   store.apply(function moveBlocks(f: Files) {
     const r = chain(f, steps);
     return r.ok ? settlePlaced(store, f, r.files, placed) : r;
@@ -163,7 +183,10 @@ export function dropNodes(store: Store, ids: readonly string[], dx: number, dy: 
     const n = layout.nodes.find((x) => x.id === id);
     if (!n) continue;
     const box = { x: roundPx(n.x + dx), y: roundPx(n.y + dy), width: n.width, height: n.height };
-    placed.push({ id, from: n.lane, lane: dropLaneAt(layout, centre(box)), box });
+    const lane = dropLaneAt(layout, centre(box));
+    // A19: the innermost group whose box (as drawn when the drag started) holds the block's centre, or none.
+    const group = blockGroupAt(layout, lane, centre(box).x, centre(box).y);
+    placed.push({ id, from: n.lane, lane, group, fromGroup: n.group ?? null, box });
   }
   placeBlocks(store, placed);
 }
@@ -212,7 +235,10 @@ export function nudgeSelection(store: Store, dx: number, dy: number): void {
     const n = layout.nodes.find((x) => x.id === id);
     if (!n || !layout.lanes.some((l) => l.id === n.lane)) continue;
     // A nudge keeps the block in its lane (a drag is how it changes lanes).
-    placed.push({ id, from: n.lane, lane: n.lane, box: { x: n.x + dx, y: n.y + dy, width: n.width, height: n.height } });
+    placed.push({
+      id, from: n.lane, lane: n.lane, group: n.group ?? null, fromGroup: n.group ?? null,
+      box: { x: n.x + dx, y: n.y + dy, width: n.width, height: n.height },
+    });
   }
   placeBlocks(store, placed);
 }

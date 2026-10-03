@@ -33,13 +33,27 @@ export interface Lane {
   label: string;
   /** Comment block directly above the `subgraph` line; it stays there (§3.3). */
   comments: Comment[];
-  /** Nodes first declared in this subgraph, in order of first declaration. */
+  /** Nodes first declared directly in this subgraph (not in one of its groups), in order of first declaration. */
   nodes: NodeDecl[];
-  /** Comment block directly above `end`; written as the lane's last lines, after its declarations (§3.3). */
+  /**
+   * A19: subgraphs nested inside this one (groups), in file order. Absent or empty when there are none; canonical form
+   * writes them after `nodes`, one level deeper.
+   */
+  groups?: Group[];
+  /** Comment block directly above `end`; written as the subgraph's last lines, after its declarations and groups (§3.3). */
   endComments: Comment[];
   /** 1-based source line of the `subgraph` line, when parsed from text. */
   line?: number;
 }
+
+/**
+ * A19: a subgraph inside a lane or another group: a box inside its lane around the blocks declared in it. It has the
+ * same shape as a lane (its own nodes, its own groups, comments); only where it sits differs.
+ */
+export type Group = Lane;
+
+/** A lane or a group: anything a node can be declared in. */
+export type Container = Lane;
 
 export interface NodeDecl {
   id: string;
@@ -84,16 +98,62 @@ export function emptyDiagram(direction: Direction = 'LR'): Diagram {
   return { direction, fileComment: [], unlaned: [], lanes: [], edges: [], passThrough: [], trailingComments: [] };
 }
 
-/** Every declared node with its lane id (null = unlaned), in canonical order: unlaned first, then lanes in file order. */
-export function declaredNodes(d: Diagram): { node: NodeDecl; lane: string | null }[] {
-  const out: { node: NodeDecl; lane: string | null }[] = d.unlaned.map((node) => ({ node, lane: null }));
-  for (const lane of d.lanes) for (const node of lane.nodes) out.push({ node, lane: lane.id });
+/** A declared node, with its lane id (null = unlaned) and (A19) its group: the innermost group around it, or null. */
+export interface DeclaredNode {
+  node: NodeDecl;
+  lane: string | null;
+  group: string | null;
+}
+
+/**
+ * Every declared node with its lane and group, in canonical order: unlaned first, then lanes in file order; inside a
+ * subgraph, its own nodes before those of its groups (depth first, in file order).
+ */
+export function declaredNodes(d: Diagram): DeclaredNode[] {
+  const out: DeclaredNode[] = d.unlaned.map((node) => ({ node, lane: null, group: null }));
+  const walk = (c: Container, lane: string, group: string | null) => {
+    for (const node of c.nodes) out.push({ node, lane, group });
+    for (const g of c.groups ?? []) walk(g, lane, g.id);
+  };
+  for (const lane of d.lanes) walk(lane, lane.id, null);
   return out;
 }
 
-/** Find a declared node and the lane it's in (null = unlaned). */
-export function findNode(d: Diagram, id: string): { node: NodeDecl; lane: string | null } | undefined {
+/** Find a declared node, the lane it's in (null = unlaned) and its group (null = none). */
+export function findNode(d: Diagram, id: string): DeclaredNode | undefined {
   return declaredNodes(d).find((entry) => entry.node.id === id);
+}
+
+/** A19: a group as found in the diagram, with its lane and its parent group (null: directly in its lane). */
+export interface GroupInfo {
+  group: Group;
+  lane: string;
+  parent: string | null;
+  /** 1 for a group directly in its lane, 2 inside that, and so on. */
+  depth: number;
+}
+
+/** A19: every group, in file order (a group before the groups inside it). */
+export function allGroups(d: Diagram): GroupInfo[] {
+  const out: GroupInfo[] = [];
+  const walk = (c: Container, lane: string, parent: string | null, depth: number) => {
+    for (const g of c.groups ?? []) {
+      out.push({ group: g, lane, parent, depth });
+      walk(g, lane, g.id, depth + 1);
+    }
+  };
+  for (const lane of d.lanes) walk(lane, lane.id, null, 1);
+  return out;
+}
+
+/** A19: every subgraph id (lanes and groups), in file order. */
+export function subgraphIds(d: Diagram): string[] {
+  const out: string[] = [];
+  for (const lane of d.lanes) {
+    out.push(lane.id);
+    for (const g of allGroups({ ...d, lanes: [lane] })) out.push(g.group.id);
+  }
+  return out;
 }
 
 /**

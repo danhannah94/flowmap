@@ -1537,50 +1537,6 @@
   "title": "E-header",
   "laidOut": false
  },
- "fixtures/errors/E-nested.mmd": {
-  "problems": {
-   "errors": [
-    {
-     "code": "E-nested",
-     "line": 3,
-     "message": "a subgraph inside a subgraph"
-    }
-   ],
-   "warnings": []
-  },
-  "config": {
-   "version": 1,
-   "title": null,
-   "lanes": null,
-   "styles": [],
-   "nodes": {}
-  },
-  "pins": {},
-  "graph": {
-   "direction": "LR",
-   "lanes": [
-    {
-     "id": "outer",
-     "label": "Outer"
-    }
-   ],
-   "nodes": [
-    {
-     "id": "a",
-     "label": "A",
-     "kind": "step",
-     "lane": "outer"
-    }
-   ],
-   "edges": []
-  },
-  "styles": {
-   "a": {}
-  },
-  "legend": [],
-  "title": "E-nested",
-  "laidOut": false
- },
  "fixtures/errors/E-shape.mmd": {
   "problems": {
    "errors": [
