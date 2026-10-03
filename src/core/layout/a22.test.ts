@@ -2,13 +2,18 @@
 // (`source_at` / `target_at`, §5, L12), and with `spread_ends` the ends sharing a side are spread evenly along it.
 // Without either, every layout is exactly what it was (the golden tests hold that for the fixtures; this file checks
 // the new behaviour and that its defaults change nothing).
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { loadDocument } from '../document';
 import type { Graph, LayoutFile, LayoutInput, LayoutResult, Pin } from '../types';
 import { SHAPE_KINDS, SIDES } from '../types';
 import { alongSide, portPoint } from '../shapes';
 import { layoutDiagram } from './index';
 import { edgeEndPort, endAtPort, fractionAlongSide, nodePort } from './geometry';
-import { atPortAt, checkLayout, randomGraph, randomShaping, rng } from './testkit';
+import {
+  atPortAt, checkLayout, overlappingTracks, qualityStats, randomGraph, randomShaping, rng, spreadProblems,
+} from './testkit';
 
 const run = (input: LayoutInput) => layoutDiagram(input);
 const node = (r: LayoutResult, id: string) => r.nodes.find((n) => n.id === id)!;
@@ -279,6 +284,116 @@ describe('spread_ends', () => {
     expect(facesABlock(r, edge(r, 'a->z'), 'source')).toBe(true);
     expect(checkLayout(g, pins, r, { file: f }).every((p) => p.startsWith('L7 edge a->z crosses blk'))).toBe(true);
   });
+});
+
+// ---- spread_ends counts every end where it lands -------------------------------------------------------------------
+// QA regression: with no sides stored, a line against the flow is planned on one side but the router may take another
+// (each other side's midline port is on offer), and those ends were left at the midline, uncounted: two blocks
+// exchanging four messages got 0.33/0.67 for the forward lines and both answers on one midline, overlapping. The
+// fixtures in tests/layout-qa are the QA diagrams, with neutral names.
+
+const QA = join(import.meta.dirname, '../../../tests/layout-qa');
+const qaDoc = (name: string, layoutText?: string | null) => {
+  const mmd = readFileSync(join(QA, `${name}.mmd`), 'utf8');
+  const lt = layoutText !== undefined ? layoutText : readFileSync(join(QA, `${name}.layout.json`), 'utf8');
+  const doc = loadDocument(mmd, null, lt, `${name}.mmd`);
+  return { doc, res: doc.layout!.result, file: doc.layoutFile! };
+};
+const endsOn = (r: LayoutResult, node: string, side: string) =>
+  r.edges.flatMap((e) => [
+    ...(e.source === node && e.source_side === side ? [{ id: e.id, at: e.source_at ?? 0.5, p: e.points[0]! }] : []),
+    ...(e.target === node && e.target_side === side ? [{ id: e.id, at: e.target_at ?? 0.5, p: e.points[e.points.length - 1]! }] : []),
+  ]);
+
+describe('spread_ends: every end that lands on a side counts (no stored sides)', () => {
+  it('two blocks exchanging four messages: 0.2, 0.4, 0.6, 0.8 on both facing sides, straight, nothing shared', () => {
+    const { doc, res, file } = qaDoc('exchange-unsided');
+    expect(file.edges).toBeUndefined(); // the point of this case: no sides stored
+    expect(checkLayout(doc.graph, doc.pins, res, { strict: true, file })).toEqual([]);
+    expect(spreadProblems(file, res)).toEqual([]);
+    for (const [node, side] of [['a', 'right'], ['b', 'left']] as const) {
+      const ends = endsOn(res, node, side);
+      // In message order from the side's top: 1, 2, 3, 4.
+      expect(ends.sort((p, q) => p.at - q.at).map((x) => [x.id, x.at])).toEqual([
+        ['a->b', 0.2], ['b->a', 0.4], ['a->b#2', 0.6], ['b->a#2', 0.8],
+      ]);
+      expect(new Set(ends.map((x) => x.p.join())).size).toBe(4);
+      for (const x of ends) expect(atPortAt('step', res.nodes.find((n) => n.id === node)!, side, x.p, x.at), x.id).toBe(true);
+    }
+    for (const e of res.edges) expect(e.points.length, e.id).toBe(2); // straight across
+    expect(overlappingTracks(res)).toEqual([]);
+    expect(qualityStats(res).crossings).toBe(0);
+  });
+
+  it('the same exchange with every side stored lays out the same lines', () => {
+    const unsided = qaDoc('exchange-unsided').res;
+    const { doc, res, file } = qaDoc('exchange-sided');
+    expect(checkLayout(doc.graph, doc.pins, res, { strict: true, file })).toEqual([]);
+    expect(res.edges.map((e) => [e.id, e.points, e.source_at, e.target_at])).toEqual(
+      unsided.edges.map((e) => [e.id, e.points, e.source_at, e.target_at]),
+    );
+  });
+
+  for (const dir of ['LR', 'TB'] as const) {
+    it(`${dir}: a sequence-style exchange of five messages spreads every end in message order (no sides stored)`, () => {
+      // Tall facing sides (the blocks are sized), as a sequence diagram has them.
+      const size = dir === 'LR' ? { width: 160, height: 300 } : { width: 300, height: 80 };
+      const nodes = Object.fromEntries(Object.entries(EXCHANGE_PINS).map(([id, p]) => [id, { ...p, ...size }]));
+      const g = { ...EXCHANGE, direction: dir };
+      const f = file({ nodes, spread_ends: true });
+      const r = run({ graph: g, file: f }).result;
+      expect(checkLayout(g, EXCHANGE_PINS, r, { strict: true, file: f })).toEqual([]);
+      expect(spreadProblems(f, r)).toEqual([]);
+      const [out, back] = dir === 'LR' ? ['right', 'left'] : ['bottom', 'top'];
+      const want = EXCHANGE.edges.map((e, k) => [e.id, [0.17, 0.33, 0.5, 0.67, 0.83][k]]);
+      for (const [node, side] of [['client', out], ['server', back]] as const) {
+        const ends = endsOn(r, node, side).sort((p, q) => p.at - q.at);
+        expect(ends.map((x) => [x.id, x.at])).toEqual(want);
+        expect(new Set(ends.map((x) => x.p.join())).size).toBe(5);
+      }
+      for (const e of r.edges) expect(e.points.length, e.id).toBe(2);
+      expect(overlappingTracks(r)).toEqual([]);
+      expect(qualityStats(r).crossings).toBe(0);
+    });
+  }
+
+  it('three blocks with stored sides, a manual line and lines around the middle block: every side spread', () => {
+    const { doc, res, file } = qaDoc('three-party-mixed');
+    expect(checkLayout(doc.graph, doc.pins, res, { file })).toEqual([]);
+    expect(spreadProblems(file, res)).toEqual([]);
+    // The two lines arriving at the right-hand block's left side (from the middle one) no longer share its midline.
+    expect(endsOn(res, 'rs', 'left').length).toBeGreaterThan(1);
+  });
+
+  it('stored offsets with spreading switched on: offsets kept, every other end spread where it lands', () => {
+    const base = JSON.parse(readFileSync(join(QA, 'three-party-offsets.layout.json'), 'utf8')) as LayoutFile;
+    for (const spread of [false, true]) {
+      const { doc, res, file } = qaDoc('three-party-offsets', JSON.stringify({ ...base, spread_ends: spread }));
+      expect(checkLayout(doc.graph, doc.pins, res, { file })).toEqual([]);
+      for (const [id, entry] of Object.entries(base.edges!)) {
+        const e = res.edges.find((x) => x.id === id)!;
+        if (entry.source_at !== undefined) expect(e.source_at, id).toBe(entry.source_at);
+        if (entry.target_at !== undefined) expect(e.target_at, id).toBe(entry.target_at);
+      }
+      if (spread) expect(spreadProblems(file, res)).toEqual([]);
+    }
+  });
+
+  for (const sided of [0, 0.5, 1]) {
+    it(`random diagrams (${sided * 100}% of sides stored): the spread counts exactly the ends on each side, L1–L12 hold`, () => {
+      for (let k = 0; k < Number(process.env.FLOWMAP_RANDOM_SPREAD ?? 16); k++) {
+        const seed = 9400 + k + sided * 100;
+        const g = randomGraph(seed, { nodes: 8 + ((k * 13) % 50), direction: k % 2 ? 'TB' : 'LR' });
+        const s = randomShaping(seed, g, { sided, offsets: 0.3, spread: true });
+        const out = run({ graph: g, file: s.file });
+        expect(spreadProblems(s.file, out.result), `seed ${seed}`).toEqual([]);
+        const problems = checkLayout(g, s.pins, out.result, { file: s.file });
+        const blocked = new Set(out.result.edges.filter((e) => facesABlock(out.result, e, 'source') || facesABlock(out.result, e, 'target')).map((e) => e.id));
+        expect(problems.filter((p) => !(/^L7 edge (\S+) crosses /.test(p) && blocked.has(p.split(' ')[2]!))), `seed ${seed}`).toEqual([]);
+        expect(run({ graph: g, file: s.file }).result).toEqual(out.result); // L10
+      }
+    }, 60000);
+  }
 });
 
 /** Whether an end's port looks straight into another block less than 16 px (twice the router's margin) away. */

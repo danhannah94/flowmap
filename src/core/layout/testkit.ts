@@ -2,7 +2,7 @@
 // statistics, a seeded random graph generator and a hand-built copy of fixtures/purchase-request. Pure: no fs.
 import type { Graph, GraphEdge, GraphNode, LayoutEdgeEntry, LayoutFile, LayoutResult, NoteInput, Pin, ShapeKind, Side } from '../types';
 import { SHAPE_KINDS, SIDES, UNASSIGNED, sizeOf } from '../types';
-import { LABEL_FONT, SHAPE_GEOMETRY, labelNeeds, noteSize, textArea, textWidth, titleSize, wrapLabel } from '../measure';
+import { GROUP_FONT, LABEL_FONT, SHAPE_GEOMETRY, groupLabelWidth, labelNeeds, noteSize, textArea, textWidth, titleSize, wrapLabel } from '../measure';
 
 type Box = { x: number; y: number; width: number; height: number };
 
@@ -482,6 +482,100 @@ export function qualityStats(res: LayoutResult): { bends: number; crossings: num
       }
     }
   return { bends, crossings, sharedTrack, ownCross };
+}
+
+/**
+ * A22 `spread_ends` (§6 L12), checked on where the ends actually are: on every side of a block, the ends that have no
+ * stored offset (set side or not, manual or automatic) are at fractions `round((i + 1) / (n + 1), 2)` for i < n, n
+ * being how many of them land on that side (a reported `source_at` / `target_at`, else 0.5), each at its own point.
+ * Sides with a single attachment point (a diamond's, a terminal's round ends, a delay's round side) are skipped. Returns
+ * human-readable problems (empty = all good).
+ */
+export function spreadProblems(file: LayoutFile, res: LayoutResult): string[] {
+  const out: string[] = [];
+  const kind = new Map(res.nodes.map((n) => [n.id, n.kind]));
+  const single = (k: ShapeKind, side: Side) =>
+    k === 'decision' || (k === 'terminal' && (side === 'left' || side === 'right')) || (k === 'delay' && side === 'right');
+  const bySide = new Map<string, { at: number; p: string; end: string }[]>();
+  for (const e of res.edges) {
+    const entry = file.edges && Object.hasOwn(file.edges, e.id) ? file.edges[e.id] : undefined;
+    for (const end of ['source', 'target'] as const) {
+      const storedAt = end === 'source' ? entry?.source_at : entry?.target_at;
+      const storedSide = end === 'source' ? entry?.source_side : entry?.target_side;
+      if (typeof storedAt === 'number' && storedSide) continue; // at its stored offset, not counted
+      const node = end === 'source' ? e.source : e.target;
+      const side = end === 'source' ? e.source_side : e.target_side;
+      if (single(kind.get(node)!, side)) continue;
+      const key = `${node}:${side}`;
+      let list = bySide.get(key);
+      if (!list) bySide.set(key, (list = []));
+      list.push({
+        at: (end === 'source' ? e.source_at : e.target_at) ?? 0.5,
+        p: (end === 'source' ? e.points[0]! : e.points[e.points.length - 1]!).join(','),
+        end: `${e.id}:${end}`,
+      });
+    }
+  }
+  for (const [key, list] of bySide) {
+    const n = list.length;
+    const want = Array.from({ length: n }, (_, i) => Math.round(((i + 1) * 100) / (n + 1)) / 100);
+    const got = list.map((x) => x.at).sort((a, b) => a - b);
+    if (want.join() !== got.join()) out.push(`${key}: ${n} ends at ${got.join(' ')}, want ${want.join(' ')} (${list.map((x) => x.end).join(' ')})`);
+    if (new Set(list.map((x) => x.p)).size !== n) out.push(`${key}: ends share a point (${list.map((x) => x.end).join(' ')})`);
+  }
+  return out;
+}
+
+/** Pairs of different edges with collinear segments that overlap by more than `min` px (default 0: any overlap). */
+export function overlappingTracks(res: LayoutResult, min = 0): string[] {
+  const segs: { id: string; h: boolean; c: number; lo: number; hi: number }[] = [];
+  for (const e of res.edges) {
+    for (let k = 0; k + 1 < e.points.length; k++) {
+      const [ax, ay] = e.points[k]!;
+      const [bx, by] = e.points[k + 1]!;
+      if (ax === bx && ay === by) continue;
+      const h = ay === by;
+      segs.push({ id: e.id, h, c: h ? ay! : ax!, lo: h ? Math.min(ax!, bx!) : Math.min(ay!, by!), hi: h ? Math.max(ax!, bx!) : Math.max(ay!, by!) });
+    }
+  }
+  const out: string[] = [];
+  for (let a = 0; a < segs.length; a++) {
+    for (let b = a + 1; b < segs.length; b++) {
+      const A = segs[a]!;
+      const B = segs[b]!;
+      if (A.id === B.id || A.h !== B.h || A.c !== B.c) continue;
+      if (Math.min(A.hi, B.hi) - Math.max(A.lo, B.lo) > min) out.push(`${A.id} and ${B.id} share ${A.h ? 'y' : 'x'}=${A.c}`);
+    }
+  }
+  return out;
+}
+
+/**
+ * A19 (§6 L13): where a group's label is drawn (the SVG export and the UI agree: 10 px in from the box's left edge, a
+ * 16 px line from 4 px below its top edge, as wide as `groupLabelWidth`), written independently of the layout.
+ */
+export function groupLabelBox(g: { x: number; y: number; label: string }): Box {
+  return { x: g.x + 10, y: g.y + 4, width: groupLabelWidth(g.label), height: GROUP_FONT.lineHeight };
+}
+
+/** Automatic lines' segments that pass through a group label (as `edge id → group id`). */
+export function groupLabelCrossings(res: LayoutResult): string[] {
+  const out: string[] = [];
+  for (const g of res.groups ?? []) {
+    const b = groupLabelBox(g);
+    for (const e of res.edges) {
+      if (e.manual) continue;
+      for (let k = 0; k + 1 < e.points.length; k++) {
+        const [ax, ay] = e.points[k]!;
+        const [bx, by] = e.points[k + 1]!;
+        if (Math.max(ax!, bx!) > b.x && Math.min(ax!, bx!) < b.x + b.width && Math.max(ay!, by!) > b.y && Math.min(ay!, by!) < b.y + b.height) {
+          out.push(`${e.id} → ${g.id}`);
+          break;
+        }
+      }
+    }
+  }
+  return out;
 }
 
 // ------------------------------------------------------------------------------------------------------------

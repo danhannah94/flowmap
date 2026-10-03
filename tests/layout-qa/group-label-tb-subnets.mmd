@@ -1,0 +1,14 @@
+flowchart TB
+
+  subgraph vpc [VPC]
+    alb["Load balancer"]
+    subgraph priv [Private subnet]
+      app["App"]
+    end
+    subgraph data [Application data tier]
+      db[("DB")]
+    end
+  end
+
+  alb --> app
+  app --> db

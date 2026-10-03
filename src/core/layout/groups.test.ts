@@ -7,7 +7,7 @@ import { loadDocument } from '../document';
 import type { Graph, GraphGroup, LayoutFile, LayoutResult, NodePin, Pin } from '../types';
 import { UNASSIGNED } from '../types';
 import { layout, layoutDiagram } from './index';
-import { atPortAt, checkLayout, randomGraph, randomShaping, rng } from './testkit';
+import { atPortAt, checkLayout, groupLabelBox, groupLabelCrossings, randomGraph, randomShaping, rng } from './testkit';
 
 const ROOT = join(import.meta.dirname, '../../..');
 const GROUPS_MMD = readFileSync(join(ROOT, 'fixtures/syntax/groups.canonical.mmd'), 'utf8');
@@ -284,5 +284,120 @@ describe('A19 with A22: offsets and spreading on grouped blocks', () => {
     }
     // The run exercises the interaction: many line ends at an offset on blocks inside groups.
     expect(groupedOffsetEnds).toBeGreaterThan(20);
+  }, 60000);
+});
+
+// ---- L13: automatic lines keep off group labels ---------------------------------------------------------------------
+// QA regression: in a TB diagram a group's label sits across the top of its box, right where lines come in from above,
+// and the line into the top of a block under the label struck through the label's text. Automatic lines now treat each
+// label (and the room between it and the group's content) as off limits wherever another route exists. The fixtures
+// in tests/layout-qa are the QA diagrams, with neutral names, plus a two-level nesting.
+
+const QA = join(ROOT, 'tests/layout-qa');
+const LABEL_CASES = ['group-label-tb', 'group-label-tb-subnets', 'group-label-lr', 'group-label-nested'];
+const qaMmd = (name: string, dir: 'LR' | 'TB') =>
+  readFileSync(join(QA, `${name}.mmd`), 'utf8').replace(/^flowchart (LR|TB)/m, `flowchart ${dir}`);
+
+/** Pins every node where it was laid out, `along` px further along the flow, with its group (as a drag would). */
+function pinAll(res: LayoutResult, graph: Graph, along: number, every = 1): Record<string, NodePin> {
+  const LR = res.direction === 'LR';
+  const pins: Record<string, NodePin> = {};
+  res.nodes.forEach((node, k) => {
+    if (k % every) return;
+    const lane = res.lanes.find((l) => l.id === node.lane)!;
+    const gn = graph.nodes.find((x) => x.id === node.id)!;
+    pins[node.id] = {
+      lane: node.lane, ...(gn.group ? { group: gn.group } : {}),
+      along: (LR ? node.x : node.y) + along, across: LR ? node.y - lane.y : node.x - lane.x,
+    };
+  });
+  return pins;
+}
+
+describe('A19 layout: automatic lines keep off group labels (L13)', () => {
+  it('the label box the checks use is where the SVG export draws the label', () => {
+    const doc = loadDocument(qaMmd('group-label-tb-subnets', 'TB'), null, null, 'x.mmd');
+    const g = doc.layout!.result.groups!.find((x) => x.id === 'priv')!;
+    const b = groupLabelBox(g);
+    expect([b.x - g.x, b.y - g.y, b.height]).toEqual([10, 4, 16]);
+    expect(b.width).toBeGreaterThan(60);
+  });
+
+  for (const name of LABEL_CASES) {
+    for (const dir of ['TB', 'LR'] as const) {
+      it(`${name}, ${dir}: no line crosses a group label, unpinned and pinned, and L1–L13 hold`, () => {
+        const doc = loadDocument(qaMmd(name, dir), null, null, `${name}.mmd`);
+        const res = doc.layout!.result;
+        expect(res.groups!.length).toBeGreaterThan(0);
+        expect(groupLabelCrossings(res)).toEqual([]);
+        expect(checkLayout(doc.graph, {}, res, { strict: true })).toEqual([]);
+        expect(checkGroups(doc.graph, res)).toEqual([]);
+        // Every block pinned (moved 30 px along the flow), then every other one: still clear of every label.
+        for (const every of [1, 2]) {
+          const pins = pinAll(res, doc.graph, 30, every);
+          const f: LayoutFile = { version: 1, nodes: pins };
+          const pinned = loadDocument(qaMmd(name, dir), null, JSON.stringify(f), `${name}.mmd`).layout!.result;
+          expect(groupLabelCrossings(pinned), `pinned every ${every}`).toEqual([]);
+          expect(checkLayout(doc.graph, pins as Record<string, Pin>, pinned, { file: f }), `pinned every ${every}`).toEqual([]);
+          expect(checkGroups(doc.graph, pinned, pins), `pinned every ${every}`).toEqual([]);
+        }
+      });
+    }
+  }
+
+  it('TB: the line from above into a block right under its group\'s label comes in from the side instead of through it', () => {
+    const doc = loadDocument(qaMmd('group-label-tb-subnets', 'TB'), null, null, 'x.mmd');
+    const res = doc.layout!.result;
+    const e = res.edges.find((x) => x.id === 'alb->app')!;
+    expect(e.target_side).not.toBe('top');
+    expect(groupLabelCrossings(res)).toEqual([]);
+  });
+
+  it('a side set into a label is still kept off it when there is room: the line runs round the label to its port', () => {
+    const f: LayoutFile = { version: 1, nodes: {}, edges: { 'alb->app': { target_side: 'top' } } };
+    const doc = loadDocument(qaMmd('group-label-tb-subnets', 'TB'), null, JSON.stringify(f), 'x.mmd');
+    const res = doc.layout!.result;
+    expect(checkLayout(doc.graph, {}, res, { file: f })).toEqual([]);
+    expect(res.edges.find((x) => x.id === 'alb->app')!.target_side).toBe('top');
+    expect(groupLabelCrossings(res)).toEqual([]);
+  });
+
+  it('where there is no other way (a set side whose port is on the label) the line still goes, at its port (L12)', () => {
+    const mmd = qaMmd('group-label-tb-subnets', 'TB');
+    const free = loadDocument(mmd, null, null, 'x.mmd').layout!.result;
+    const label = groupLabelBox(free.groups!.find((g) => g.id === 'priv')!);
+    const alb = free.nodes.find((n) => n.id === 'alb')!;
+    const lane = free.lanes.find((l) => l.id === 'vpc')!;
+    // The load balancer pinned with its bottom side 2 px into the label, over its middle: its bottom port is on it.
+    const pin = { lane: 'vpc', along: label.y + 2 - alb.height, across: label.x + Math.floor(label.width / 2) - Math.floor(alb.width / 2) - lane.x };
+    // The other blocks stay where they were (pinned there, with their groups), so the label does too.
+    const stay = pinAll(free, loadDocument(mmd, null, null, 'x.mmd').graph, 0);
+    const f: LayoutFile = { version: 1, nodes: { ...stay, alb: pin }, edges: { 'alb->app': { source_side: 'bottom' } } };
+    const doc = loadDocument(mmd, null, JSON.stringify(f), 'x.mmd');
+    const res = doc.layout!.result;
+    expect(checkLayout(doc.graph, doc.pins, res, { file: f })).toEqual([]);
+    expect(res.edges.find((x) => x.id === 'alb->app')!.source_side).toBe('bottom');
+    expect(res.groups!.find((g) => g.id === 'priv')).toEqual(free.groups!.find((g) => g.id === 'priv'));
+    expect(groupLabelCrossings(res)).toEqual(['alb->app → priv']);
+  });
+
+  it('random grouped diagrams (both directions, up to three levels): no automatic line crosses a label, L1–L13 hold', () => {
+    let lines = 0;
+    for (const [seed, n] of [[1, 12], [2, 30], [3, 60], [5, 25], [6, 45], [8, 18], [11, 36], [12, 20]] as const) {
+      for (const dir of ['LR', 'TB'] as const) {
+        const graph = groupedGraph(seed, n, dir);
+        const free = layout(graph, {});
+        expect(groupLabelCrossings(free.result), `seed ${seed} ${dir}`).toEqual([]);
+        expect(checkLayout(graph, {}, free.result), `seed ${seed} ${dir}`).toEqual([]);
+        expect(checkGroups(graph, free.result), `seed ${seed} ${dir}`).toEqual([]);
+        const pins = pinAll(free.result, graph, 30, 5);
+        const pinned = layout(graph, pins as Record<string, Pin>, free.hints);
+        expect(groupLabelCrossings(pinned.result), `seed ${seed} ${dir} pinned`).toEqual([]);
+        expect(checkLayout(graph, pins, pinned.result), `seed ${seed} ${dir} pinned`).toEqual([]);
+        expect(checkGroups(graph, pinned.result, pins), `seed ${seed} ${dir} pinned`).toEqual([]);
+        lines += free.result.edges.length;
+      }
+    }
+    expect(lines).toBeGreaterThan(300);
   }, 60000);
 });
