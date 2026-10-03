@@ -1,0 +1,17 @@
+flowchart LR
+
+  subgraph l1 [Lane one]
+    src["Source"]
+    subgraph g1 ["A long group label sitting right over the target block"]
+      dst["Target"]
+      dst2["Second"]
+    end
+  end
+
+  subgraph l2 [Lane two]
+    side["Side"]
+  end
+
+  src --> dst
+  src --> dst2
+  side --> dst

@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "nodes": {
+    "client": { "lane": "flow", "along": 40, "across": 40, "width": 140, "height": 240 },
+    "auth": { "lane": "flow", "along": 400, "across": 40, "width": 160, "height": 240 },
+    "rs": { "lane": "flow", "along": 760, "across": 40, "width": 140, "height": 240 }
+  },
+  "edges": {
+    "client->auth": { "source_side": "right", "source_at": 0.25, "target_side": "left", "target_at": 0.25 },
+    "auth->client": { "source_side": "left", "source_at": 0.4, "target_side": "right", "target_at": 0.4 },
+    "auth->client#2": { "source_side": "left", "source_at": 0.75, "target_side": "right", "target_at": 0.73 },
+    "client->auth#2": { "target_side": "left", "target_at": 0.62 },
+    "rs->client": { "source_side": "left", "source_at": 0.75 }
+  },
+  "hints": {
+    "v": 1,
+    "dir": "LR",
+    "n": {
+      "client": [
+        "flow",
+        0,
+        -1
+      ],
+      "auth": [
+        "flow",
+        1,
+        -1
+      ],
+      "rs": [
+        "flow",
+        2,
+        -1
+      ]
+    },
+    "cols": [
+      0,
+      0,
+      0
+    ],
+    "gaps": [
+      116,
+      116,
+      114
+    ],
+    "rows": {
+      "flow": []
+    }
+  }
+}

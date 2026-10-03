@@ -1,0 +1,11 @@
+flowchart LR
+
+  subgraph flow [Flow]
+    a["A"]
+    b["B"]
+  end
+
+  a -->|1| b
+  b -->|2| a
+  a -->|3| b
+  b -->|4| a

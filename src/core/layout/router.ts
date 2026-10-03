@@ -9,6 +9,8 @@
 // - an edge starts at a start port moving outward and ends at a goal port moving inward.
 // Costs: length, a penalty per bend, crossings, running on a track another edge already uses (parallel edges get
 // their own track), touching another edge's corner, passing under a placed edge label, and the lane-header strip.
+// Keep-out areas (A19 group labels, `addKeepOut`): the clean searches don't cross them at all; only when no clean route
+// avoids them does a further clean search cross them, paying as for an edge label, before the fallbacks.
 
 import { MinHeap } from './graphalg';
 
@@ -111,6 +113,9 @@ export class Router {
   private nearH: Uint8Array; // grid edge runs close alongside some box
   private nearV: Uint8Array;
   private labelV: Uint8Array;
+  private keepH: Uint8Array; // grid edges inside a keep-out area (A19 group labels)
+  private keepV: Uint8Array;
+  private hasKeepOut = false;
   private rowExtra: Float64Array; // per y line: cost per px for horizontal moves along it
   private colExtra: Float64Array; // per x line: cost per px for vertical moves along it
   // A* scratch
@@ -176,6 +181,8 @@ export class Router {
     this.nearH = new Uint8Array(n);
     this.nearV = new Uint8Array(n);
     this.labelV = new Uint8Array(n);
+    this.keepH = new Uint8Array(n);
+    this.keepV = new Uint8Array(n);
     this.rowExtra = new Float64Array(ny);
     this.colExtra = new Float64Array(nx);
     for (let j = 0; j < ny; j++) {
@@ -287,6 +294,33 @@ export class Router {
     }
   }
 
+  /**
+   * Marks an area routes keep off where they can (A19: a group's label): the clean searches never cross it (grid
+   * edges strictly inside it, 2 px around included); a last clean search may, paying as for an edge label. Also marks
+   * it as a label (`addLabel`) for that search.
+   */
+  addKeepOut(r: RBox): void {
+    const { xs, ys, nx } = this;
+    const x0 = r.x - 2;
+    const x1 = r.x + r.w + 2;
+    const y0 = r.y - 2;
+    const y1 = r.y + r.h + 2;
+    for (let j = lowerBound(ys, y0); j < ys.length && ys[j]! < y1; j++) {
+      if (ys[j]! <= y0) continue;
+      for (let i = Math.max(0, lowerBound(xs, x0) - 1); i + 1 < xs.length && xs[i]! < x1; i++) {
+        if (xs[i + 1]! > x0) this.keepH[i + j * nx] = 1;
+      }
+    }
+    for (let i = lowerBound(xs, x0); i < xs.length && xs[i]! < x1; i++) {
+      if (xs[i]! <= x0) continue;
+      for (let j = Math.max(0, lowerBound(ys, y0) - 1); j + 1 < ys.length && ys[j]! < y1; j++) {
+        if (ys[j + 1]! > y0) this.keepV[i + j * nx] = 1;
+      }
+    }
+    this.hasKeepOut = true;
+    this.addLabel(r);
+  }
+
   /** The route, or null when there is none at all (a port facing out of the grid: see RouterOptions.pad). */
   route(req: RouteRequest): RouteResult | null {
     const box = this.boxes;
@@ -305,13 +339,26 @@ export class Router {
     const win = (pad: number) => [minX - pad, minY - pad, maxX + pad, maxY + pad];
     const span = maxX - minX + maxY - minY;
     // Walled in (inside overlapping or crowded pins)? A bounded flood from each end tells cheaply.
-    const walled = this.walledIn(req.starts) || this.walledIn(req.goals);
+    // With keep-out areas (only diagrams with groups have them), a pocket that holds a port at the other end isn't
+    // walled in: a small diagram's whole grid is such a pocket, and its routes then come from the clean searches too.
+    const walled = this.hasKeepOut
+      ? this.walledIn(req.starts, req.goals) || this.walledIn(req.goals, req.starts)
+      : this.walledIn(req.starts) || this.walledIn(req.goals);
     if (!walled) {
+      // Keep-out areas are walls for the clean searches; if they leave no clean route, one more clean search may cross
+      // them (only when there are any, so a diagram without them searches exactly as before).
       const r =
         (span < 1500 ? this.search(req, 0, win(160), NEAR_OPT_BUDGET, 0) : null) ??
         this.search(req, 0, null, STRICT_BUDGET, 3) ??
         this.search(req, 0, null, STRICT_BUDGET * 3, 8) ??
-        this.search(req, 1, null, STRICT_BUDGET * 3, 8);
+        (this.hasKeepOut ? this.search(req, 0, null, STRICT_BUDGET * 3, 8, false) : null) ??
+        this.search(req, 1, null, STRICT_BUDGET * 3, 8, false);
+      if (r) return r;
+    }
+    // The relaxed search, with keep-out areas: first as walls and with box interiors closed (a small diagram's grid is
+    // too small for the walled-in test to tell, so its routes come from here too), then exactly as without them.
+    if (this.hasKeepOut) {
+      const r = this.search(req, 2, null, Infinity, GREEDY, true, false);
       if (r) return r;
     }
     return this.search(req, 2, null, Infinity, GREEDY);
@@ -321,8 +368,13 @@ export class Router {
    * True when every port in `ports` sits in a small pocket (a few thousand grid points) that box interiors close
    * off, even allowing other boxes' margins: then no route can avoid crossing a box.
    */
-  private walledIn(ports: Port[]): boolean {
+  private walledIn(ports: Port[], others?: Port[]): boolean {
     const { xs, ys, nx, ny } = this;
+    const reach = (others ?? []).map((p) => {
+      const i = indexOf(xs, p.x);
+      const j = indexOf(ys, p.y);
+      return i < 0 || j < 0 ? -1 : i + j * nx;
+    });
     const LIMIT = 4000;
     for (const p of ports) {
       const i0 = indexOf(xs, p.x);
@@ -352,13 +404,17 @@ export class Router {
           }
         }
       }
-      if (escaped) return false;
+      if (escaped || reach.some((q) => seen.has(q))) return false;
     }
     return true;
   }
 
-  private search(req: RouteRequest, mode: 0 | 1 | 2, win: number[] | null, budget: number, weight: number): RouteResult | null {
+  private search(
+    req: RouteRequest, mode: 0 | 1 | 2, win: number[] | null, budget: number, weight: number, keepOut = mode === 0,
+    throughBoxes = mode === 2,
+  ): RouteResult | null {
     const relaxed = mode === 2;
+    const walls = keepOut && this.hasKeepOut;
     const { xs, ys, nx, ny } = this;
     const gen = ++this.gen;
     const g = this.g;
@@ -491,9 +547,10 @@ export class Router {
         let inOwn = false;
         const hard = horiz ? this.hardH[e]! : this.hardV[e]!;
         if (hard !== -1) {
-          if (mode < 2) continue;
+          if (!throughBoxes) continue;
           cost += RELAX_HARD;
         }
+        if (walls && (horiz ? this.keepH[e]! : this.keepV[e]!)) continue;
         const sa = horiz ? this.softAH[e]! : this.softAV[e]!;
         if (sa !== -1) {
           const sb = horiz ? this.softBH[e]! : this.softBV[e]!;
@@ -537,7 +594,7 @@ export class Router {
       const j = (p - i) / nx;
       pts.push([xs[i]!, ys[j]!]);
     }
-    const points = mode === 2 ? simplify(pts) : this.straighten(simplify(pts), req);
+    const points = mode === 2 ? simplify(pts) : this.straighten(simplify(pts), req, walls);
     this.record(points);
     return { points, start, goal: bestGoal, clean: mode === 0 };
   }
@@ -583,7 +640,7 @@ export class Router {
   }
 
   /** Is this polyline legal for the request (no box interiors, margins only on own port lines, no shared track)? */
-  private legal(points: [number, number][], req: RouteRequest): boolean {
+  private legal(points: [number, number][], req: RouteRequest, walls: boolean): boolean {
     const { xs, ys } = this;
     const portLines: [number, number, number][] = []; // [box, axis, coordinate]
     for (const p of req.starts) portLines.push([req.src, p.dir < 2 ? 0 : 1, p.dir < 2 ? p.y : p.x]);
@@ -591,6 +648,7 @@ export class Router {
     const own = (b: number, axis: number, c: number) => portLines.some(([pb, pa, pc]) => pb === b && pa === axis && pc === c);
     return this.walk(points, (e, horiz, p) => {
       if ((horiz ? this.hardH[e] : this.hardV[e]) !== -1) return false;
+      if (walls && (horiz ? this.keepH[e] : this.keepV[e])) return false;
       const c = horiz ? ys[Math.floor(p / this.nx)]! : xs[p % this.nx]!;
       const axis = horiz ? 0 : 1;
       const sa = horiz ? this.softAH[e]! : this.softAV[e]!;
@@ -608,7 +666,7 @@ export class Router {
    * (two bends fewer), when the result is still legal. The first and last segments (the port stubs) keep their
    * direction and at least MARGIN + 4 px of length.
    */
-  private straighten(pts: [number, number][], req: RouteRequest): [number, number][] {
+  private straighten(pts: [number, number][], req: RouteRequest, walls: boolean): [number, number][] {
     let cur = pts;
     for (let guard = 0; guard < 40; guard++) {
       let improved = false;
@@ -631,7 +689,7 @@ export class Router {
           const next = simplify(moved);
           if (next.length >= cur.length || next.length < 2 || !orthogonal(next)) continue;
           if (!stubOK(next, cur)) continue;
-          if (!this.legal(next, req)) continue;
+          if (!this.legal(next, req, walls)) continue;
           cur = next;
           improved = true;
           break;

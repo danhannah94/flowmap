@@ -1,0 +1,16 @@
+flowchart LR
+
+  subgraph flow [OAuth]
+    client["Client app"]
+    auth["Authorization server"]
+    rs["Resource server"]
+  end
+
+  client -->|1 authorize| auth
+  auth -->|2 auth code| client
+  client ==>|3 token request| auth
+  auth -.->|4 access token| client
+  client -->|5 GET resource| rs
+  rs -->|6 introspect| auth
+  auth -->|7 active| rs
+  rs -->|8 data| client

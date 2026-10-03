@@ -1,0 +1,22 @@
+flowchart TB
+
+  subgraph cloud [Cloud]
+    edge["Edge proxy"]
+    subgraph net [Network with a fairly long label]
+      gw["Gateway"]
+      subgraph sub [Inner subnet label that is long]
+        svc["Service"]
+        worker["Worker"]
+      end
+    end
+  end
+
+  subgraph ops [Operations]
+    mon["Monitor"]
+  end
+
+  edge --> gw
+  edge --> svc
+  gw --> worker
+  mon --> svc
+  svc --> worker
