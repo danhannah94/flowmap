@@ -11,15 +11,26 @@ cloud calls.
 The full contract is in [`docs/design.md`](docs/design.md), with rulings on open questions in
 [`docs/rulings.md`](docs/rulings.md).
 
-## Install, build, run
+## Install and run
 
-You need Node 22 or newer and pnpm.
+You need Node 22 or newer. The package is published to npm as `@danhannah94/flowmap` (the command it installs is
+`flowmap`), so there is nothing to install first:
 
 ```sh
-pnpm install && pnpm build
-pnpm exec flowmap serve <dir>            # the editor for every .mmd under <dir>, recursively, on http://127.0.0.1:4870
-pnpm exec flowmap serve <dir> --port 5000
+npx @danhannah94/flowmap serve <dir>            # the editor for every .mmd under <dir>, recursively, on http://127.0.0.1:4870
+npx @danhannah94/flowmap serve <dir> --port 5000
+npx @danhannah94/flowmap validate <file.mmd>
 ```
+
+Or install it once and use the shorter command:
+
+```sh
+npm install --global @danhannah94/flowmap
+flowmap serve <dir>
+```
+
+The examples below say `flowmap` for brevity; with `npx` that is `npx @danhannah94/flowmap`, and in a clone of this
+repository it is `pnpm exec flowmap` (after `pnpm install && pnpm build`).
 
 Open the address it prints, pick a diagram (or a folder to browse into, or start one with New diagram: a Flowchart,
 or Swimlanes with a lane per role), and edit. `/?file=<path>.mmd` opens one directly (`<path>` may include folders,
@@ -35,12 +46,31 @@ The other commands (each takes the path to a `.mmd`; its config and layout files
 | `flowmap export <file.mmd> --format svg\|png [--theme light\|dark] [--out <path>]` | Writes a picture to `exports/<name>.svg` or `.png` beside the `.mmd` (light theme by default). |
 | `flowmap serve <dir> [--port 4870]` | Runs the editor. |
 
-PNG export renders in headless Chromium through Playwright. If it says the browser is missing, run
-`pnpm exec playwright install chromium` once.
+PNG export renders in headless Chromium through Playwright, which downloads its browser separately. If the browser
+isn't installed, `flowmap export --format png` (and the editor's PNG button) stops with a message giving the exact
+command to run once, for example `npx playwright@1.63.0 install chromium-headless-shell` (add `--with-deps` on
+Linux). SVG export, the editor and every other command work without it.
 
-Development: `pnpm test` runs the unit tests (Vitest), `pnpm typecheck` checks types, `pnpm test:ui` builds and runs
-the browser tests (Playwright), and `pnpm dev:ui` serves the UI with hot reload, proxying `/api` to a running
-`flowmap serve` (set `FLOWMAP_API` if it isn't on the default port).
+## Contributing
+
+Clone the repository and set up (Node 22 or newer, and pnpm 9 — `corepack enable` picks the right version):
+
+```sh
+pnpm install
+pnpm exec playwright install chromium-headless-shell   # once; PNG export and the browser tests need it
+pnpm build
+```
+
+| Command | What it runs |
+|---|---|
+| `pnpm typecheck` | TypeScript, no emit. |
+| `pnpm test` | The unit and server tests (Vitest), including the real CLI against the fixtures. Needs the headless shell for the PNG export test. |
+| `pnpm test:ui` | Builds, then runs the browser tests (Playwright) against a throwaway copy of the fixtures. Set `FLOWMAP_E2E_PORT` if the default port (4987) is taken. |
+| `pnpm dev:ui` | Serves the UI with hot reload, proxying `/api` to a running `flowmap serve` (set `FLOWMAP_API` if it isn't on the default port). |
+
+GitHub Actions runs `pnpm typecheck`, `pnpm test` and `pnpm test:ui` on every push to `main` and every pull request;
+please make sure they pass locally first. Pushing a tag `v<version>` that matches `package.json` publishes that version
+to npm (maintainers only).
 
 ## Folders
 
