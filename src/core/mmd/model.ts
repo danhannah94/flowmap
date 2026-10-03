@@ -5,7 +5,7 @@
 // The structure mirrors canonical form: unlaned declarations, then lanes (each holding its own declarations), then
 // edges, then pass-through lines. Every order below is the order canonical form writes.
 
-import type { Direction, ShapeKind } from '../types';
+import type { Direction, EdgeStyle, ShapeKind } from '../types';
 
 /** A comment line as written, trimmed (`%% note`, `%%{init: …}%%`). Indentation is decided by the formatter. */
 export type Comment = string;
@@ -59,6 +59,8 @@ export interface Edge {
   target: string;
   /** Decoded label, or null for none (an empty label is none, §3.1). */
   label: string | null;
+  /** A18: the arrow form (`-->` solid, `-.->` dashed, `==>` thick, `<-->` bidirectional). Absent means `solid`. */
+  style?: EdgeStyle;
   /** Comment block that travels with this edge (§3.3). */
   comments: Comment[];
   /** 1-based source line the edge was expanded from, when parsed from text. */

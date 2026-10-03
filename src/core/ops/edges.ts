@@ -2,17 +2,25 @@
 // edge's endpoints reports its new id, and every operation that changes the edge list re-keys the layout file's edge
 // entries by position (§8.2 "Keeping the layout file in step").
 import { updateEdge, type EdgePatch } from '../layoutfile';
-import { SIDES, type Side } from '../types';
+import { EDGE_STYLES, SIDES, type EdgeStyle, type Side } from '../types';
 import { refuse, run, type Files, type OpResult } from './context';
 
 /** The sides a connection writes (UI38). Omitted or null: the layout chooses (the click path, UI15, sets none). */
 export interface ConnectSides {
   source_side?: Side | null;
   target_side?: Side | null;
+  /** A18: the new line's style; omitted means `solid`. */
+  style?: EdgeStyle;
 }
 
 function checkSide(side: unknown, what: string): void {
   if (side !== undefined && side !== null && !(SIDES as readonly unknown[]).includes(side)) refuse(`A ${what} is top, right, bottom or left, not "${String(side)}"`);
+}
+
+function checkStyle(style: unknown): void {
+  if (style !== undefined && !(EDGE_STYLES as readonly unknown[]).includes(style)) {
+    refuse(`A line style is ${EDGE_STYLES.join(', ')}, not "${String(style)}"`);
+  }
 }
 
 /**
@@ -26,7 +34,8 @@ export function connect(files: Files, source: string, target: string, sides: Con
     ctx.requireNode(target);
     checkSide(sides.source_side, 'source side');
     checkSide(sides.target_side, 'target side');
-    ctx.d.edges.push({ source, target, label: null, comments: [] });
+    checkStyle(sides.style);
+    ctx.d.edges.push({ source, target, label: null, ...(sides.style && sides.style !== 'solid' ? { style: sides.style } : {}), comments: [] });
     ctx.rekeyEdgeEntries(); // appending renumbers nothing, but keep the rule in one place
     const edgeId = ctx.edgeIds().at(-1)!;
     const patch: EdgePatch = {};
@@ -78,6 +87,23 @@ export function setEdgeLabel(files: Files, edgeId: string, label: string | null)
     const i = ctx.edgeIndex(edgeId);
     if (label !== null && /[\r\n]/.test(label)) refuse('An edge label must be a single line');
     ctx.d.edges[i]!.label = label === null || label.trim() === '' ? null : label;
+    return {};
+  });
+}
+
+/**
+ * A18 / UI44: set the style of one or more lines (`solid`, `dashed`, `thick`, `bidirectional`). It only changes the
+ * arrow written in the `.mmd` (`-->`, `-.->`, `==>`, `<-->`): ids, labels, comments, bend points and sides stay.
+ */
+export function setEdgeStyle(files: Files, edgeIds: string | readonly string[], style: EdgeStyle): OpResult {
+  return run(files, (ctx) => {
+    checkStyle(style);
+    if (style === undefined) refuse('A line style is needed');
+    for (const id of typeof edgeIds === 'string' ? [edgeIds] : edgeIds) {
+      const edge = ctx.d.edges[ctx.edgeIndex(id)]!;
+      if (style === 'solid') delete edge.style;
+      else edge.style = style;
+    }
     return {};
   });
 }

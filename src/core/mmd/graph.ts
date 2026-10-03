@@ -1,7 +1,7 @@
 // The model as the layout, renderer and UI see it (types.ts `Graph`): resolved lanes in display order, never-declared
 // nodes filled in, and derived edge ids.
 
-import { UNASSIGNED, type Graph, type GraphLane, type GraphNode } from '../types';
+import { UNASSIGNED, type Graph, type GraphEdge, type GraphLane, type GraphNode } from '../types';
 import type { Diagram } from './model';
 import { declaredNodes, edgeIds, undeclaredNodes } from './model';
 
@@ -35,7 +35,10 @@ export function toGraph(d: Diagram, laneOrder: readonly string[] = []): Graph {
   if (nodes.some((node) => node.lane === UNASSIGNED)) lanes.push({ id: UNASSIGNED, label: UNASSIGNED_LABEL });
 
   const ids = edgeIds(d.edges);
-  const edges = d.edges.map((edge, k) => ({ id: ids[k]!, source: edge.source, target: edge.target, label: edge.label }));
+  const edges = d.edges.map((edge, k): GraphEdge => ({
+    id: ids[k]!, source: edge.source, target: edge.target, label: edge.label,
+    ...(edge.style && edge.style !== 'solid' ? { style: edge.style } : {}),
+  }));
 
   return { direction: d.direction, lanes, nodes, edges };
 }

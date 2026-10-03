@@ -92,7 +92,7 @@ test('a broken .mmd shows its errors, makes the diagram read-only, and is never 
   const d = makeDiagram(info);
   await open(page, d);
   await node(page, 'p01').click();
-  const broken = PR.mmd.replace('  p01 --> p02\n', '  p01 --> p02\n  p02 ==> p03\n  this is not mermaid\n');
+  const broken = PR.mmd.replace('  p01 --> p02\n', '  p01 --> p02\n  p02 === p03\n  this is not mermaid\n');
   d.write({ mmd: broken });
   await expect(page.locator('[data-testid="errors"] [data-code="E-edge"]')).toBeVisible({ timeout: 1000 });
   await expect(page.locator('[data-testid="errors"] [data-code="E-syntax"]')).toBeVisible();

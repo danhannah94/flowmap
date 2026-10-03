@@ -1434,7 +1434,7 @@
     {
      "code": "E-edge",
      "line": 4,
-     "message": "arrow not supported: \"-.-> b\""
+     "message": "arrow not supported"
     }
    ],
    "warnings": []

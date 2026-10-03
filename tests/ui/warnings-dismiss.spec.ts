@@ -42,7 +42,7 @@ test('Dismiss all warnings clears every warning row but never touches an error',
   // A .mmd error alongside RICH's warnings: the error must survive "dismiss all". With an .mmd error present from
   // the start there's no prior valid layout to fall back on, so the canvas draws no nodes (UI31); check through
   // the banner only, as the "broken from the start" case does elsewhere in the suite.
-  const mmd = RICH.mmd.replace('r01 --> m01\n', 'r01 --> m01\nm01 -.-> m02\n');
+  const mmd = RICH.mmd.replace('r01 --> m01\n', 'r01 --> m01\nm01 --- m02\n');
   const d = makeDiagram(info, { ...RICH, mmd });
   await page.goto(`/?file=${encodeURIComponent(d.file)}`);
   await expect(row(page, 'E-edge')).toBeVisible();

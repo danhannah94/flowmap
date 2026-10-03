@@ -99,7 +99,7 @@ describe('§3.1 statements and semicolons', () => {
 
   it('reports every error, not just the first', () => {
     const text = lr(
-      '  a((circle))', '  b -.-> c', '  d["x"]', '  d["y"]', '  bad line here', '  end', '  subgraph s', '    subgraph t',
+      '  a((circle))', '  b --- c', '  d["x"]', '  d["y"]', '  bad line here', '  end', '  subgraph s', '    subgraph t',
       '    end',
     );
     expect(errors(text)).toEqual([
@@ -341,9 +341,9 @@ describe('§3.1 edges', () => {
   });
 
   it.each([
-    'a --- b', 'a -.-> b', 'a -.- b', 'a ==> b', 'a === b', 'a --o b', 'a --x b', 'a <--> b', 'a <-.-> b', 'a ~~~ b',
-    'a o--o b', 'a x--x b', 'a ---> b', 'a -->> b', 'a -- text --- b', 'a -. text .-> b', 'a == text ==> b',
-    'a---b', 'a-.->b', 'a==>b',
+    'a --- b', 'a -.- b', 'a === b', 'a --o b', 'a --x b', 'a <-.-> b', 'a <==> b', 'a ~~~ b',
+    'a o--o b', 'a x--x b', 'a ---> b', 'a -->> b', 'a -- text --- b', 'a -. text .- b', 'a == text === b',
+    'a---b', 'a-..->b', 'a===>b', 'a -.->> b', 'a ==>> b', 'a <--->b', 'a <-- text --- b', 'a <-->> b',
   ])('%s is E-edge', (line) => {
     expect(errors(lr('  a["A"]', '  b["B"]', `  ${line}`))).toEqual([['E-edge', 4]]);
   });

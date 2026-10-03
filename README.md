@@ -176,6 +176,25 @@ duplicates the selection in place (40 px along and across, lines included) witho
 block, press Connect and click the target. Select a line and drag either end to reconnect it. Double-click a line to
 set or clear its label.
 
+**Line styles** (amendment A18). A line is one of four kinds, so a diagram can tell a synchronous call from an async or
+event flow, mark the critical path, and show a two-way link. In the `.mmd`:
+
+| Style | Writes | Drawn as | Typical use |
+|---|---|---|---|
+| solid | `a --> b` | a plain line, one arrowhead | a normal step |
+| dashed | `a -.-> b` | a dashed line | async, event, optional |
+| thick | `a ==> b` | a line twice as wide | the critical path |
+| both ways | `a <--> b` | arrowheads at both ends | a two-way link |
+
+A label goes after the arrow as for `-->` (`a -.->|event| b`, `a ==>|"quoted, label"| b`), and the long form Mermaid
+allows works too (`a -. event .-> b`, `a == critical ==> b`, `a <-- sync --> b`); `flowmap fmt` writes the `|label|`
+form. Every other arrow (`---`, `-.-`, `<-.->`, `<==>`, `--x`, ...) is still `E-edge`. Style never changes where a line
+is routed. In the editor, select a line (including one you have just connected) and pick a style from the bar at the top
+of the canvas, or right-click it and choose Line style; several selected lines change together, and copy, paste and
+duplicate keep a line's style. `flowmap layout --json` adds `"style": "dashed" | "thick" | "bidirectional"` to such
+lines (solid lines have no `style`), and the SVG export draws them the same way (`stroke-dasharray`, a wider stroke, a
+head at each end).
+
 **Linking to another diagram** (amendment A15). A block can link straight to another diagram — handy for "hand-off"
 steps in a set of stage diagrams ("Hand-off to 2 · Complete + save"). Select a block and use the inspector's "Links
 to" field (or its context menu's "Link to diagram…") to pick one of the diagrams in the folder, or type its path:

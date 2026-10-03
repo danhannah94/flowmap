@@ -13,7 +13,7 @@ export {
   PASTE_STEP, copyFragment, duplicateNodes, fragmentBounds, fragmentToMermaid, isFragment, pasteFragment,
   type Fragment, type FragmentEdge, type FragmentNode, type PastedBlock, type PastePlacement,
 } from './fragment';
-export { connect, reconnect, setEdgeLabel, type ConnectSides } from './edges';
+export { connect, reconnect, setEdgeLabel, setEdgeStyle, type ConnectSides } from './edges';
 export {
   STUB, addBend, dragBend, dragSegment, makeManual, removeBend, resetLabelAt, resetLine, setLabelAt,
 } from './lines';

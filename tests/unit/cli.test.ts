@@ -460,3 +460,75 @@ describe('R1: pnpm exec flowmap', () => {
     expect(result.stdout).toContain('no problems found');
   }, 30_000);
 });
+
+// ---- A18: dashed, thick and bidirectional edges round-trip through every command ------------------------------------
+
+describe('A18 edge styles: validate, fmt, layout and export', () => {
+  const dir = join(ROOT, 'tests', 'golden', 'edge-styles');
+  const mixed = join(dir, 'mixed.mmd');
+  const canonical = readFileSync(join(dir, 'mixed.canonical.mmd'), 'utf8');
+
+  it('validate: clean, exit 0', () => {
+    for (const name of ['dashed', 'thick', 'bidirectional', 'mixed']) {
+      const { stdout, status } = run(['validate', join(dir, `${name}.mmd`), '--json']);
+      expect(status).toBe(0);
+      expect(JSON.parse(stdout)).toEqual({ errors: [], warnings: [] });
+    }
+  });
+
+  it('fmt --stdout writes the canonical arrows (text-label forms become pipe labels)', () => {
+    const { stdout, status } = run(['fmt', mixed, '--stdout']);
+    expect(status).toBe(0);
+    expect(stdout).toBe(canonical);
+    expect(stdout).toContain('api ==>|critical path| model');
+    expect(stdout).toContain('model <--> cache');
+    expect(stdout).toContain('api -.->|audit records| audit');
+  });
+
+  it('fmt --check: the canonical file passes, the hand-written one does not; fmt is idempotent', () => {
+    expect(run(['fmt', join(dir, 'mixed.canonical.mmd'), '--check']).status).toBe(0);
+    expect(run(['fmt', mixed, '--check']).status).toBe(1);
+    const tmp = tmpDir('a18-fmt');
+    const target = join(tmp, 'm.mmd');
+    writeFileSync(target, readFileSync(mixed, 'utf8'));
+    run(['fmt', target]);
+    expect(readFileSync(target, 'utf8')).toBe(canonical);
+    run(['fmt', target]);
+    expect(readFileSync(target, 'utf8')).toBe(canonical);
+  });
+
+  it('layout --json carries style on the non-solid edges only', () => {
+    const { stdout, status } = run(['layout', mixed, '--json']);
+    expect(status).toBe(0);
+    const edges = (JSON.parse(stdout) as { edges: { id: string; style?: string }[] }).edges;
+    expect(Object.fromEntries(edges.map((e) => [e.id, e.style ?? null]))).toEqual({
+      'client->api': null,
+      'api->model': 'thick',
+      'model->cache': 'bidirectional',
+      'api->audit': 'dashed',
+      'model->audit': 'dashed',
+      'cache->audit': 'bidirectional',
+    });
+  });
+
+  it('export --format svg writes exactly the golden SVG', () => {
+    const tmp = tmpDir('a18-export');
+    for (const name of ['dashed', 'thick', 'bidirectional', 'mixed']) {
+      const out = join(tmp, `${name}.svg`);
+      const { status } = run(['export', join(dir, `${name}.mmd`), '--format', 'svg', '--out', out]);
+      expect(status).toBe(0);
+      expect(`${readFileSync(out, 'utf8')}\n`).toBe(readFileSync(join(dir, `${name}.svg`), 'utf8'));
+    }
+  });
+
+  it('other arrows are still E-edge (<-.->, <==>, -.-, ===)', () => {
+    const tmp = tmpDir('a18-edge');
+    for (const arrow of ['<-.->', '<==>', '-.-', '===']) {
+      const target = join(tmp, 'e.mmd');
+      writeFileSync(target, `flowchart LR\n  a["A"]\n  b["B"]\n  a ${arrow} b\n`);
+      const { stdout, status } = run(['validate', target, '--json']);
+      expect(status).toBe(1);
+      expect(JSON.parse(stdout).errors).toContainEqual(expect.objectContaining({ code: 'E-edge', line: 4 }));
+    }
+  });
+});

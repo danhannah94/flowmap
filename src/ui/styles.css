@@ -590,6 +590,14 @@ a.fm-home:hover {
   fill: var(--edge);
 }
 
+.fm-edge[data-edge-style='dashed'] .fm-edge-line {
+  stroke-dasharray: 6 4;
+}
+
+.fm-edge[data-edge-style='thick'] .fm-edge-line {
+  stroke-width: 3;
+}
+
 .fm-edge:hover .fm-edge-line {
   stroke: color-mix(in srgb, var(--edge) 55%, var(--title));
 }
@@ -605,6 +613,10 @@ a.fm-home:hover {
 
 .fm-edge[data-selected='true'] .fm-edge-arrow {
   fill: var(--accent);
+}
+
+.fm-edge[data-edge-style='thick'][data-selected='true'] .fm-edge-line {
+  stroke-width: 3.75;
 }
 
 .fm-edge-label {

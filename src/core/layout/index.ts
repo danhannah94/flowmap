@@ -466,6 +466,7 @@ export function layoutDiagram(input: LayoutInput): LayoutOutput {
       const r = routed.get(gi);
       return {
         id: ge.id, source: ge.source, target: ge.target, label: ge.label,
+        ...(ge.style && ge.style !== 'solid' ? { style: ge.style } : {}),
         points: r ? r.points.map(([x, y]) => P(x, y)) : [],
         label_pos: r && r.labelPos ? P(r.labelPos[0], r.labelPos[1]) : null,
         manual: r ? r.manual : false,
