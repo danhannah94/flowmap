@@ -6,6 +6,9 @@
 //   source, press connect, click the target (no sides).
 // - UI16 / UI38 Reconnect: with an edge selected, drag its `data-edge-end="source|target"` onto a block. On a connection
 //   point that end's side is written; on another point of the block it is already attached to, only the side changes.
+// - A22: a drop right at a side's outline (not only on its midline port) attaches there and writes the end's offset
+//   (`target_at` / `source_at`), snapped to 0.25, 0.5 and 0.75 unless Alt is held; so dragging a line's end along the
+//   side it is on moves it along that side. A drop on the block's body is still "elsewhere on the block".
 // - UI17 Edge label: double-click an edge (or press Enter with one selected) to edit its label in `label-editor`.
 //
 // The preview is drawn orthogonally, bending the way the final line will (lineGeometry.ts): exactly L11 when a manual
@@ -14,9 +17,9 @@
 // Every edit is one core operation through `store.apply` (one undo step).
 import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { nodePort } from '../../core/layout';
+import { edgeEndPort, nodePort } from '../../core/layout';
 import { edgeLabelSize } from '../../core/measure';
-import { connect, reconnect, setEdgeLabel } from '../../core/ops';
+import { connect, reconnect, setEdgeLabel, type ConnectSides } from '../../core/ops';
 import type { LayoutResult, Side } from '../../core/types';
 import { overlays } from '../chrome/Panels';
 import { editable } from '../commands/types';
@@ -26,7 +29,10 @@ import { edgePoints, roundedPath, type LayoutNode } from './geometry';
 import {
   extendsSelection, hitTest, registerDoubleClick, registerGesture, type Gesture, type GestureContext, type GestureFactory,
 } from './gestures';
-import { connectorPath, facingSide, lineModel, manualPath, nearestPort, PORT_SNAP_PX, portSnapRadius, type XY } from './lineGeometry';
+import {
+  connectorPath, facingSide, lineModel, manualPath, nearestPort, PORT_SNAP_PX, portSnapRadius, SIDE_SNAP_PX, sideSnapRadius,
+  type XY,
+} from './lineGeometry';
 import { connectTarget } from './ports';
 import { toScreen, toWorld, type Point } from './viewport';
 import '../blocks.css';
@@ -104,12 +110,20 @@ export function nodeAt(layout: LayoutResult, p: Point, tolerance = DROP_TOLERANC
 /**
  * Where a dragged line end would land (UI38): the block under the pointer (a connection point just outside its box
  * counts), its connection point nearest the pointer, and whether the pointer is on it (within PORT_SNAP_PX on screen).
+ * (A22) Right at a side's outline (SIDE_ON_PX), the point along it the pointer is level with, snapped to 0.25, 0.5 and
+ * 0.75 unless Alt is held (`free`).
  */
-function dropAt(layout: LayoutResult, p: Point, zoom: number, exclude: string | null) {
+function dropAt(layout: LayoutResult, p: Point, zoom: number, exclude: string | null, free = false) {
   const over = nodeAt(layout, p, Math.max(DROP_TOLERANCE, PORT_SNAP_PX / zoom));
   if (!over || over.id === exclude) return null;
-  const port = nearestPort(over, p, portSnapRadius(over, zoom));
+  const port = nearestPort(over, p, portSnapRadius(over, zoom), sideSnapRadius(over, zoom), free ? 0 : SIDE_SNAP_PX / zoom);
   return { node: over, port };
+}
+
+/** What the connection points on the block under the pointer show (ports.tsx). */
+function showTarget(drop: NonNullable<ReturnType<typeof dropAt>>): void {
+  const { node, port } = drop;
+  connectTarget.set({ node: node.id, nearest: port.side, active: port.on, frac: port.on ? port.frac : null });
 }
 
 const xy = (p: Point): XY => [p.x, p.y];
@@ -117,7 +131,7 @@ const xy = (p: Point): XY => [p.x, p.y];
 // ---------------------------------------------------------------------------------------------------------------
 // UI15 / UI38: connect
 
-function finishConnect(store: Store, source: string, target: string, sides?: { source_side?: Side; target_side?: Side }): void {
+function finishConnect(store: Store, source: string, target: string, sides?: ConnectSides): void {
   disarmConnect(store);
   const r = store.apply(connect, source, target, sides ?? {});
   if (r.ok) store.select({ edges: [r.edgeId] });
@@ -140,17 +154,18 @@ function handleDrag(store: Store, ctx: GestureContext, e: PointerEvent, id: stri
       if (!active && !moved(startLocal, ctx.local(ev))) return;
       active = true;
       const p = ctx.world(ev);
-      const drop = dropAt(layout, p, zoom(), id);
+      const drop = dropAt(layout, p, zoom(), id, ev.altKey);
       if (!drop) {
         connectTarget.set(null);
         setPreview({ points: connectorPath(a, side, xy(p), null), anchor: a, snapped: false, target: null, edgeId: null });
         return;
       }
       const { node: over, port } = drop;
-      // On a connection point: that side. Elsewhere on the block the layout chooses; show the side facing the line.
+      // On a connection point: that side, at that point along it (A22). Elsewhere on the block the layout chooses; show
+      // the side facing the line.
       const sb = port.on ? port.side : facingSide(layout.direction, over, a);
-      const b = nodePort(over, sb) as XY;
-      connectTarget.set({ node: over.id, nearest: port.side, active: port.on });
+      const b = port.on ? port.at : (nodePort(over, sb) as XY);
+      showTarget(drop);
       setPreview({ points: connectorPath(a, side, b, sb), anchor: a, snapped: true, target: over.id, edgeId: null });
     },
     up(ev) {
@@ -160,9 +175,11 @@ function handleDrag(store: Store, ctx: GestureContext, e: PointerEvent, id: stri
         store.select({ nodes: [id] }, extendsSelection(ev) ? 'toggle' : 'replace');
         return;
       }
-      const drop = dropAt(store.layout ?? layout, ctx.world(ev), zoom(), id);
+      const drop = dropAt(store.layout ?? layout, ctx.world(ev), zoom(), id, ev.altKey);
       if (!drop) return; // dropped on nothing, or back on its own block: cancelled
-      finishConnect(store, id, drop.node.id, drop.port.on ? { source_side: side, target_side: drop.port.side } : { source_side: side });
+      finishConnect(store, id, drop.node.id, drop.port.on
+        ? { source_side: side, target_side: drop.port.side, target_at: drop.port.frac }
+        : { source_side: side });
     },
     cancel() {
       setPreview(null);
@@ -230,29 +247,32 @@ registerGesture('edge-end', (hit, e, ctx) => {
   const other = end === 'target' ? 'source' : 'target';
   const fixedNode = byId(edge[other]);
   if (!fixedNode) return null;
-  // The end that stays put, at the port of the side it uses.
+  // The end that stays put, at the port of the side it uses (A22: at its offset along it).
   const fixedSide: Side = other === 'source' ? edge.source_side : edge.target_side;
-  const fixed = nodePort(fixedNode, fixedSide) as XY;
+  const fixed = edgeEndPort(fixedNode, edge, other) as XY;
   const startLocal = ctx.local(e);
   const blocked = store.readOnlyReason();
   const zoom = () => store.getState().viewport.zoom;
   let active = false;
 
-  /** The line as it would be with the moving end on `over`, at side `side` (null: elsewhere on the block). */
-  const pathTo = (over: LayoutNode, side: Side | null): XY[] => {
+  /**
+   * The line as it would be with the moving end on `over`, at side `side` (null: elsewhere on the block) and (A22) at
+   * `frac` along it.
+   */
+  const pathTo = (over: LayoutNode, side: Side | null, frac: number): XY[] => {
     if (model?.manual && over.id === edge[end]) {
       // Same block, a manual line: only this end's side changes and the bend points stay, so this is exactly L11.
       const bends = model.bends;
       const near = end === 'source' ? bends[0]! : bends[bends.length - 1]!;
       const s = side ?? facingSide(layout.direction, over, near);
-      const p = nodePort(over, s) as XY;
+      const p = nodePort(over, s, side ? frac : undefined) as XY;
       return end === 'source'
         ? manualPath(p, s, bends, fixed, fixedSide, layout.direction)
         : manualPath(fixed, fixedSide, bends, p, s, layout.direction);
     }
     // Otherwise the points go (another block) or the line is automatic: routed by the layout.
     const s = side ?? facingSide(layout.direction, over, fixed);
-    const p = nodePort(over, s) as XY;
+    const p = nodePort(over, s, side ? frac : undefined) as XY;
     return end === 'target' ? connectorPath(fixed, fixedSide, p, s) : connectorPath(p, s, fixed, fixedSide);
   };
 
@@ -261,16 +281,16 @@ registerGesture('edge-end', (hit, e, ctx) => {
       if (blocked || (!active && !moved(startLocal, ctx.local(ev)))) return;
       active = true;
       const p = ctx.world(ev);
-      const drop = dropAt(layout, p, zoom(), null);
+      const drop = dropAt(layout, p, zoom(), null, ev.altKey);
       if (!drop) {
         connectTarget.set(null);
         const free = connectorPath(fixed, fixedSide, xy(p), null);
         setPreview({ points: end === 'target' ? free : [...free].reverse(), anchor: fixed, snapped: false, target: null, edgeId: edge.id });
         return;
       }
-      connectTarget.set({ node: drop.node.id, nearest: drop.port.side, active: drop.port.on });
+      showTarget(drop);
       setPreview({
-        points: pathTo(drop.node, drop.port.on ? drop.port.side : null),
+        points: pathTo(drop.node, drop.port.on ? drop.port.side : null, drop.port.frac),
         anchor: fixed, snapped: true, target: drop.node.id, edgeId: edge.id,
       });
     },
@@ -280,10 +300,11 @@ registerGesture('edge-end', (hit, e, ctx) => {
         store.select({ edges: [hit.id] }, extendsSelection(ev) ? 'toggle' : 'replace');
         return;
       }
-      const drop = dropAt(store.layout ?? layout, ctx.world(ev), zoom(), null);
+      const drop = dropAt(store.layout ?? layout, ctx.world(ev), zoom(), null, ev.altKey);
       if (!drop) return; // nowhere: snaps back
       const side = drop.port.on ? drop.port.side : null;
-      const r = store.apply(reconnect, edge.id, end, drop.node.id, side);
+      // A22: dropped along a side, the end attaches there (dragging an end along the side it is on moves it).
+      const r = store.apply(reconnect, edge.id, end, drop.node.id, side, side ? drop.port.frac : null);
       if (r.ok) store.select({ edges: [r.edgeId] });
     },
     cancel() {

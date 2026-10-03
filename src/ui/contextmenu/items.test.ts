@@ -12,7 +12,7 @@ const UI40: Record<MenuOn, string[]> = {
   line: ['edit-label', 'add-bend', 'remove-bend', 'reset-line', 'reset-label', 'delete'],
   note: ['edit-note', 'font-size', 'bold', 'color', 'delete'],
   title: ['edit-title', 'reset-position', 'hide-title'],
-  canvas: ['add-note', 'show-title', ...['step', 'decision', 'terminal', 'subprocess', 'database', 'io', 'document', 'delay'].map((k) => `add-${k}`)],
+  canvas: ['add-note', 'show-title', 'spread-ends', ...['step', 'decision', 'terminal', 'subprocess', 'database', 'io', 'document', 'delay'].map((k) => `add-${k}`)],
   lane: ['edit-label', 'rename-id', 'move-up', 'move-down', 'delete'],
 };
 
@@ -119,11 +119,11 @@ describe('context menu items (UI40)', () => {
     expect(names(storeFor({ ...FILES, layout: JSON.stringify(layout) }), { kind: 'title' })).toEqual(['edit-title', 'hide-title']);
   });
 
-  it('canvas: add-note and a block of each shape; show-title only while the title is hidden', () => {
+  it('canvas: add-note, spread-ends (A22) and a block of each shape; show-title only while the title is hidden', () => {
     const shapes = UI40.canvas.filter((n) => n.startsWith('add-') && n !== 'add-note');
-    expect(names(storeFor(FILES), { kind: 'canvas' })).toEqual(['add-note', ...shapes]);
+    expect(names(storeFor(FILES), { kind: 'canvas' })).toEqual(['add-note', 'spread-ends', ...shapes]);
     const hidden = storeFor({ ...FILES, config: CONFIG.replace('title: Menus\n', 'title: Menus\nshow_title: false\n') });
-    expect(names(hidden, { kind: 'canvas' })).toEqual(['add-note', 'show-title', ...shapes]);
+    expect(names(hidden, { kind: 'canvas' })).toEqual(['add-note', 'show-title', 'spread-ends', ...shapes]);
   });
 
   it('lane header: rename, id, move up or down where possible, delete', () => {

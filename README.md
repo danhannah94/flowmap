@@ -146,6 +146,13 @@ duplicates the selection in place (40 px along and across, lines included) witho
 block, press Connect and click the target. Select a line and drag either end to reconnect it. Double-click a line to
 set or clear its label.
 
+**Several lines on one side** (amendment A22). Drop a line's end anywhere along a block's outline, not only on the dot
+at the middle of a side: it attaches there (snapping at a quarter, half and three quarters of the side; hold Alt for
+a free position) and the layout file stores where (`source_at` / `target_at`). Drag a selected line's end along the
+side it is on to move it. "Spread line ends" in the canvas's right-click menu spreads every line end that shares a
+side evenly along it, for diagrams where two blocks exchange several messages; it is off by default, so existing
+diagrams don't change.
+
 **Linking to another diagram** (amendment A15). A block can link straight to another diagram — handy for "hand-off"
 steps in a set of stage diagrams ("Hand-off to 2 · Complete + save"). Select a block and use the inspector's "Links
 to" field (or its context menu's "Link to diagram…") to pick one of the diagrams in the folder, or type its path:

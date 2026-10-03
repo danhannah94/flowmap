@@ -18,11 +18,11 @@ export interface LayoutParse {
   problems: Problems;
 }
 
-const TOP_KEYS = new Set(['version', 'nodes', 'lanes', 'lane_length', 'edges', 'notes', 'title', 'hints']);
+const TOP_KEYS = new Set(['version', 'nodes', 'lanes', 'lane_length', 'spread_ends', 'edges', 'notes', 'title', 'hints']);
 const PIN_KEYS = ['lane', 'along', 'across'] as const;
 const SIZE_KEYS = ['width', 'height'] as const;
 const NODE_KEYS = new Set<string>([...PIN_KEYS, ...SIZE_KEYS]);
-const EDGE_KEYS = new Set(['source_side', 'target_side', 'points', 'label_at']);
+const EDGE_KEYS = new Set(['source_side', 'source_at', 'target_side', 'target_at', 'points', 'label_at']);
 const XY_KEYS = new Set(['x', 'y']);
 const LANE_KEYS = new Set(['size']);
 
@@ -61,6 +61,8 @@ export const isSide = (v: unknown): v is Side => typeof v === 'string' && (SIDES
 /** `label_at`: a number from 0 to 1 with at most two decimals. */
 export const isLabelAt = (v: unknown): v is number =>
   typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1 && Number(v.toFixed(2)) === v;
+/** A22 `source_at` / `target_at`: like `label_at`, a number from 0 to 1 with at most two decimals. */
+export const isSideAt = isLabelAt;
 
 const keyList = (keys: string[]) => keys.map((k) => `"${k}"`).join(', ');
 const unknownKeys = (o: Record<string, unknown>, allowed: Set<string>) => Object.keys(o).filter((k) => !allowed.has(k));
@@ -102,13 +104,19 @@ function readNodeEntry(v: unknown): { entry?: LayoutNodeEntry; bad: string[] } {
 }
 
 function readEdgeEntry(v: unknown): { entry?: LayoutEdgeEntry; bad: string[] } {
-  if (!isObject(v)) return { bad: ['must be an object with any of source_side, target_side, points, label_at'] };
+  if (!isObject(v)) return { bad: ['must be an object with any of source_side, source_at, target_side, target_at, points, label_at'] };
   if (Object.keys(v).length === 0) return { bad: ['is empty'] };
   const bad: string[] = [];
   const extra = unknownKeys(v, EDGE_KEYS);
   if (extra.length) bad.push(`unknown key${extra.length > 1 ? 's' : ''} ${keyList(extra)}`);
   for (const k of ['source_side', 'target_side'] as const) {
     if (k in v && !isSide(v[k])) bad.push(`"${k}" must be top, right, bottom or left`);
+  }
+  // A22: an end's offset along its side, only together with that side.
+  for (const [k, side] of [['source_at', 'source_side'], ['target_at', 'target_side']] as const) {
+    if (!(k in v)) continue;
+    if (!isSideAt(v[k])) bad.push(`"${k}" must be a number from 0 to 1 with at most two decimals`);
+    else if (!(side in v)) bad.push(`"${k}" needs "${side}" (an offset is along a side)`);
   }
   const points: Pin[] = [];
   if ('points' in v) {
@@ -128,7 +136,9 @@ function readEdgeEntry(v: unknown): { entry?: LayoutEdgeEntry; bad: string[] } {
   if (bad.length) return { bad };
   const entry: LayoutEdgeEntry = {};
   if ('source_side' in v) entry.source_side = v.source_side as Side;
+  if ('source_at' in v) entry.source_at = n0(v.source_at as number);
   if ('target_side' in v) entry.target_side = v.target_side as Side;
+  if ('target_at' in v) entry.target_at = n0(v.target_at as number);
   if ('points' in v) entry.points = points;
   if ('label_at' in v) entry.label_at = n0(v.label_at as number);
   return { entry, bad };
@@ -187,7 +197,8 @@ const hasPinKey = (v: unknown) => !isObject(v) || PIN_KEYS.some((k) => k in v);
  * hold anything and passes through untouched), an empty entry, or a value of the wrong type or range. Every bad
  * entry is reported. An empty `lanes`, `edges` or `notes` map is accepted and dropped (the writer never writes one).
  * (A8) `lanes` maps a lane id to `{size}`; an entry for a lane that doesn't exist is not a problem here (the UI's next
- * write drops it). (A13) `lane_length` is one integer of at least 100.
+ * write drops it). (A13) `lane_length` is one integer of at least 100. (A22) `spread_ends` is a boolean, and an edge
+ * entry's `source_at` / `target_at` is a number from 0 to 1 with at most two decimals, only beside its side.
  */
 export function parseLayoutFile(text: string | null): LayoutParse {
   const problems: Problems = { errors: [], warnings: [] };
@@ -229,6 +240,11 @@ export function parseLayoutFile(text: string | null): LayoutParse {
     if (isLaneLengthValue(js.lane_length)) laneLength = js.lane_length + 0;
     else problems.errors.push(err(`Layout file "lane_length" must be an integer of at least ${MIN_LANE_LENGTH}`));
   }
+  let spreadEnds: boolean | undefined;
+  if ('spread_ends' in js) {
+    if (typeof js.spread_ends === 'boolean') spreadEnds = js.spread_ends;
+    else problems.errors.push(err('Layout file "spread_ends" must be true or false'));
+  }
   let title: XY | undefined;
   if ('title' in js) {
     const r = readXY(js.title);
@@ -239,6 +255,7 @@ export function parseLayoutFile(text: string | null): LayoutParse {
   const file: LayoutFile = { version: 1, nodes: nodes ?? {} };
   if (lanes && Object.keys(lanes).length) file.lanes = lanes;
   if (laneLength !== undefined) file.lane_length = laneLength;
+  if (spreadEnds !== undefined) file.spread_ends = spreadEnds;
   if (edges && Object.keys(edges).length) file.edges = edges;
   if (notes && Object.keys(notes).length) file.notes = notes;
   if (title) file.title = title;

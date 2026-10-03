@@ -96,6 +96,23 @@ export function expectedPort(kind: ShapeKind, b: Box, side: Side): [number, numb
   return [b.x + b.width - inset, cy];
 }
 
+/**
+ * A22: whether `p` is at the port at fraction `at` along a side, written independently of the layout: on the line
+ * across the side at `floor(at × size)` from its start (exactly, within 2 px), and between the box edge and the
+ * deepest the outline can be there (20 px; half the box for a diamond's face). With `at` undefined, the midline port
+ * (`expectedPort`, within 2 px).
+ */
+export function atPortAt(kind: ShapeKind, b: Box, side: Side, p: readonly number[], at: number | undefined): boolean {
+  if (at === undefined) return dist(p, expectedPort(kind, b, side)) <= 2;
+  const vertical = side === 'top' || side === 'bottom';
+  const len = vertical ? b.width : b.height;
+  const along = (vertical ? b.x : b.y) + Math.floor((Math.round(at * 100) * len) / 100);
+  if (Math.abs((vertical ? p[0]! : p[1]!) - along) > 2) return false;
+  const deepest = kind === 'decision' ? (vertical ? b.height : b.width) / 2 : 20;
+  const depth = side === 'top' ? p[1]! - b.y : side === 'bottom' ? b.y + b.height - p[1]! : side === 'left' ? p[0]! - b.x : b.x + b.width - p[0]!;
+  return depth >= -2 && depth <= deepest + 2;
+}
+
 const dist = (p: readonly number[], q: readonly number[]) => Math.hypot(p[0]! - q[0]!, p[1]! - q[1]!);
 
 /** A polyline without zero-length segments and with straight runs merged (the checker's own, independent version). */
@@ -290,25 +307,34 @@ export function checkLayout(graph: Graph, pins: Record<string, Pin>, res: Layout
       if (ax !== bx && ay !== by) v.push(`L6 edge ${e.id} segment ${k} is diagonal`);
     }
     const last = pts[pts.length - 1]!;
-    const atAnyPort = (p: readonly number[], n: typeof s) => SIDES.some((side) => dist(p, expectedPort(n.kind, n, side)) <= 2);
+    // A22: an end may also be at its own offset port (`source_at` / `target_at`).
+    const atAnyPort = (p: readonly number[], n: typeof s) => SIDES.some((side) => dist(p, expectedPort(n.kind, n, side)) <= 2) ||
+      (n.id === s.id && dist(p, pts[0]!) === 0 && atPortAt(n.kind, n, e.source_side, p, e.source_at)) ||
+      (n.id === t.id && dist(p, pts[pts.length - 1]!) === 0 && atPortAt(n.kind, n, e.target_side, p, e.target_at));
     if (distToBoundary(pts[0]![0], pts[0]![1], s) > 2 && !atAnyPort(pts[0]!, s)) v.push(`L6 edge ${e.id} doesn't start on ${s.id}'s boundary or a port`);
     if (distToBoundary(last[0], last[1], t) > 2 && !atAnyPort(last, t)) v.push(`L6 edge ${e.id} doesn't end on ${t.id}'s boundary or a port`);
     // v1.1: the reported sides; a set side is used as set, and its end is at that side's port (L12).
     const entry = Object.hasOwn(entries, ge.id) ? entries[ge.id]! : undefined;
     const manual = applied.has(ge.id);
     if (e.manual !== manual) v.push(`edge ${e.id} manual=${e.manual}, expected ${manual}`);
-    for (const [end, node, p, side, set] of [
-      ['source', s, pts[0]!, e.source_side, entry?.source_side],
-      ['target', t, last, e.target_side, entry?.target_side],
+    for (const [end, node, p, side, set, setAt, at] of [
+      ['source', s, pts[0]!, e.source_side, entry?.source_side, entry?.source_at, e.source_at],
+      ['target', t, last, e.target_side, entry?.target_side, entry?.target_at, e.target_at],
     ] as const) {
       if (!SIDES.includes(side)) {
         v.push(`edge ${e.id} ${end}_side is ${String(side)}`);
         continue;
       }
       if (set && side !== set) v.push(`L12 edge ${e.id} ${end}_side ${side}, the file sets ${set}`);
+      // A22: a stored offset is reported as stored; without `spread_ends` nothing else is.
+      if (set && setAt !== undefined && at !== setAt) v.push(`A22 edge ${e.id} ${end}_at ${String(at)}, the file sets ${setAt}`);
+      if (setAt === undefined && at !== undefined && !opts.file?.spread_ends) v.push(`A22 edge ${e.id} reports ${end}_at ${at} unasked`);
+      if (at !== undefined && !(at >= 0 && at <= 1 && Number(at.toFixed(2)) === at)) v.push(`A22 edge ${e.id} ${end}_at ${at} isn't a two-decimal fraction`);
       const port = expectedPort(node.kind, node, side);
       if (set || manual) {
-        if (dist(p, port) > 2) v.push(`L12 edge ${e.id} ${end} at ${p.join(',')}, not at ${node.id}'s ${side} port ${port.join(',')}`);
+        if (!atPortAt(node.kind, node, side, p, at)) {
+          v.push(`L12 edge ${e.id} ${end} at ${p.join(',')}, not at ${node.id}'s ${side} port${at === undefined ? ` ${port.join(',')}` : ` at ${at}`}`);
+        }
       } else {
         // The side used: the end is on that side of the box (or at its port).
         const onSide = side === 'top' || side === 'bottom'
@@ -624,6 +650,13 @@ export interface RandomShapingOptions {
   manualCount?: number;
   /** Largest `along` used for pins and bend points. */
   alongMax?: number;
+  /**
+   * A22: fraction of set sides that also get an offset along the side (default 0: no random draws are spent on them,
+   * so seeds without it give the same files as before).
+   */
+  offsets?: number;
+  /** A22: write `spread_ends: true`. */
+  spread?: boolean;
 }
 
 /**
@@ -668,6 +701,10 @@ export function randomShaping(seed: number, graph: Graph, opts: RandomShapingOpt
       const roll = r();
       if (roll < 0.7) entry.source_side = pick(SIDES);
       if (roll > 0.3) entry.target_side = pick(SIDES);
+      if (opts.offsets) {
+        if (entry.source_side && r() < opts.offsets) entry.source_at = pick([0, 0.1, 0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, int(0, 100) / 100]);
+        if (entry.target_side && r() < opts.offsets) entry.target_at = pick([0, 0.1, 0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, int(0, 100) / 100]);
+      }
     }
     const isManual = opts.manualCount !== undefined ? manualIds.has(e.id) : r() < (opts.manual ?? 0.15);
     if (isManual && display.length) {
@@ -700,6 +737,7 @@ export function randomShaping(seed: number, graph: Graph, opts: RandomShapingOpt
   const titleRoll = r();
   const title = titleRoll < 0.2 ? null : `Process ${pick(WORDS)} ${pick(WORDS)}`;
   const file: LayoutFile = { version: 1, nodes };
+  if (opts.spread) file.spread_ends = true;
   if (Object.keys(edges).length) file.edges = edges;
   if (Object.keys(notePos).length) file.notes = notePos;
   if (titleRoll > 0.6) file.title = { x: int(-200, 400), y: int(-150, 40) };

@@ -213,39 +213,55 @@ export function shapeGeometry(kind: ShapeKind, box: Box): ShapeGeometry {
 
 // --- ports (v1.1 §6 L12) -------------------------------------------------------------------------
 
-/** A port is never deeper inside the box than this (§6 L12). */
+/** A port is never deeper inside the box than this (§6 L12), except a diamond's ports off its vertices (A22). */
 export const PORT_MAX_INSET = 20;
 
+/** The default position of a port along its side (§6 L12: the midline). */
+export const MID_AT = 0.5;
+
 /**
- * How far inside the box a side's port is: where the drawn outline crosses the side's midline (the centre line
- * `floor(size / 2)`, as UI39 counts centre lines). 0 on a straight side and at a diamond's vertex; the parallelogram's
- * slanted sides (half the skew), the document's wavy bottom (the wave's amplitude) and round ends narrower than
- * their radius sit inside. Rounded to a whole pixel, at most PORT_MAX_INSET.
+ * Where along a side of length `len` the port at fraction `at` sits, in whole pixels from the side's start (its left
+ * end for top and bottom, its top end for left and right): `floor(at × len)`, computed in hundredths so that a
+ * two-decimal `at` (A22) lands on the same pixel everywhere. 0.5 gives the midline, `floor(len / 2)` (R11.6).
  */
-export function portInset(kind: ShapeKind, width: number, height: number, side: Side): number {
+export function alongSide(len: number, at: number = MID_AT): number {
+  const h = Math.round(Math.min(1, Math.max(0, at)) * 100);
+  return Math.floor((h * len) / 100);
+}
+
+/**
+ * How far inside the box a side's port is: where the drawn outline crosses the line across the side at `alongSide`
+ * (by default the side's midline, the centre line `floor(size / 2)`, as UI39 counts centre lines). 0 on a straight
+ * side and at a diamond's vertex; the parallelogram's slanted sides (half the skew), the document's wavy bottom (the
+ * wave's amplitude) and round ends narrower than their radius sit inside. Rounded to a whole pixel, at most
+ * PORT_MAX_INSET; (A22) a diamond's port off its vertex is on its face, however deep that is.
+ */
+export function portInset(kind: ShapeKind, width: number, height: number, side: Side, at: number = MID_AT): number {
+  const len = side === 'top' || side === 'bottom' ? width : height;
+  const t = alongSide(len, at);
   // A diamond's port is its vertex, even when an odd size puts the vertex half a pixel off the whole-pixel midline
   // (where the face would already be a few pixels in on a wide, flat diamond).
-  if (kind === 'decision') return 0;
-  const t = side === 'top' || side === 'bottom' ? Math.floor(width / 2) : Math.floor(height / 2);
+  if (kind === 'decision') return t === alongSide(len) ? 0 : Math.max(0, Math.round(outlineInset(kind, width, height, side, t)));
   return Math.min(PORT_MAX_INSET, Math.max(0, Math.round(outlineInset(kind, width, height, side, t))));
 }
 
 /**
  * The port of one side of a block (§6 L12), in the box's coordinates: on the side's midline, on the drawn outline.
- * Diamonds have theirs at their four vertices. Integers when the box is.
+ * Diamonds have theirs at their four vertices. (A22) With `at`, the port at that fraction along the side instead, also
+ * on the drawn outline. Integers when the box is.
  */
-export function portPoint(kind: ShapeKind, box: Box, side: Side): [number, number] {
-  const inset = portInset(kind, box.width, box.height, side);
-  const cx = box.x + Math.floor(box.width / 2);
-  const cy = box.y + Math.floor(box.height / 2);
+export function portPoint(kind: ShapeKind, box: Box, side: Side, at: number = MID_AT): [number, number] {
+  const inset = portInset(kind, box.width, box.height, side, at);
+  const px = box.x + alongSide(box.width, at);
+  const py = box.y + alongSide(box.height, at);
   switch (side) {
     case 'top':
-      return [cx, box.y + inset];
+      return [px, box.y + inset];
     case 'bottom':
-      return [cx, box.y + box.height - inset];
+      return [px, box.y + box.height - inset];
     case 'left':
-      return [box.x + inset, cy];
+      return [box.x + inset, py];
     case 'right':
-      return [box.x + box.width - inset, cy];
+      return [box.x + box.width - inset, py];
   }
 }

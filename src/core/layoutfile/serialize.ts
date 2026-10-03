@@ -19,7 +19,9 @@ const pointText = (p: Pin) => `{ "lane": ${q(p.lane)}, "along": ${num(p.along)},
 function edgeLine(e: LayoutEdgeEntry): string {
   const parts: string[] = [];
   if (e.source_side !== undefined) parts.push(`"source_side": ${q(e.source_side)}`);
+  if (e.source_at !== undefined) parts.push(`"source_at": ${num(e.source_at)}`);
   if (e.target_side !== undefined) parts.push(`"target_side": ${q(e.target_side)}`);
+  if (e.target_at !== undefined) parts.push(`"target_at": ${num(e.target_at)}`);
   if (e.points !== undefined) parts.push(`"points": [${e.points.map(pointText).join(', ')}]`);
   if (e.label_at !== undefined) parts.push(`"label_at": ${num(e.label_at)}`);
   return `{ ${parts.join(', ')} }`;
@@ -36,15 +38,17 @@ function section<T>(entries: Record<string, T>, line: (v: T) => string): string 
 }
 
 /**
- * The file text: 2-space JSON with keys in a fixed order (`version`, `nodes`, `lanes`, `lane_length`, `edges`,
- * `notes`, `title`, `hints`), one line per entry in file order, each entry's keys in a fixed order (`lane`, `along`, `across`, `width`,
- * `height`; `size`; `source_side`, `target_side`, `points`, `label_at`; `x`, `y`), ending with a newline. Empty
- * `lanes`, `edges` and `notes` maps are left out. A v1.0 file written by v1.0 comes out byte-identical.
+ * The file text: 2-space JSON with keys in a fixed order (`version`, `nodes`, `lanes`, `lane_length`, `spread_ends`,
+ * `edges`, `notes`, `title`, `hints`), one line per entry in file order, each entry's keys in a fixed order (`lane`,
+ * `along`, `across`, `width`, `height`; `size`; `source_side`, `source_at`, `target_side`, `target_at`, `points`,
+ * `label_at`; `x`, `y`), ending with a newline. Empty `lanes`, `edges` and `notes` maps are left out. A v1.0 file
+ * written by v1.0 comes out byte-identical.
  */
 export function serializeLayoutFile(file: LayoutFile): string {
   let out = `{\n  "version": 1,\n  "nodes": ${section(file.nodes, nodeLine)}`;
   if (file.lanes && Object.keys(file.lanes).length) out += `,\n  "lanes": ${section(file.lanes, laneLine)}`;
   if (file.lane_length !== undefined) out += `,\n  "lane_length": ${num(file.lane_length)}`;
+  if (file.spread_ends !== undefined) out += `,\n  "spread_ends": ${file.spread_ends ? 'true' : 'false'}`;
   if (file.edges && Object.keys(file.edges).length) out += `,\n  "edges": ${section(file.edges, edgeLine)}`;
   if (file.notes && Object.keys(file.notes).length) out += `,\n  "notes": ${section(file.notes, xyText)}`;
   if (file.title) out += `,\n  "title": ${xyText(file.title)}`;

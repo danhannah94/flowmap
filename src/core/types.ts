@@ -105,7 +105,15 @@ export function sizeOf(entry: LayoutNodeEntry | undefined): Size | null {
 /** One `edges` entry of the layout file (§5 v1.1), keyed by edge id; never empty. */
 export interface LayoutEdgeEntry {
   source_side?: Side;
+  /**
+   * A22: where along `source_side` the line leaves, as a fraction of the side's length from its start (the left end of
+   * a top or bottom side, the top end of a left or right side), 0 to 1 with at most two decimals. Absent: the side's
+   * midline port (0.5). Only with `source_side`.
+   */
+  source_at?: number;
   target_side?: Side;
+  /** A22: where along `target_side` the line arrives, as `source_at`. Only with `target_side`. */
+  target_at?: number;
   /** Bend points from source to target, lane-relative like pins (`lane` may be `_unassigned`). Present = manual. */
   points?: Pin[];
   /** Where the label's centre sits along the drawn line, 0 to 1 (at most two decimals). */
@@ -133,6 +141,11 @@ export interface LayoutFile {
    * as a minimum. Absent when not set.
    */
   lane_length?: number;
+  /**
+   * A22: spread the line ends that share a side evenly along it (`true`), instead of meeting at the side's midline
+   * port. Absent (or `false`) by default; the UI writes the default by removing the key.
+   */
+  spread_ends?: boolean;
   /** v1.1: absent when the file has none (an empty map is never written). */
   edges?: Record<string, LayoutEdgeEntry>;
   /** v1.1: note positions by note id. */
@@ -175,6 +188,13 @@ export interface LayoutResultEdge {
   /** v1.1: the sides actually used, stored or chosen by the layout. */
   source_side: Side;
   target_side: Side;
+  /**
+   * A22: where along its side an end is attached, when the layout file says: its stored `source_at`, or (with
+   * `spread_ends`) its spread position when that isn't 0.5. Absent otherwise (the midline port, or an automatic end
+   * spread on its side as v1.1 does).
+   */
+  source_at?: number;
+  target_at?: number;
 }
 
 /** A note or title box in diagram coordinates (x and y may be negative). */
