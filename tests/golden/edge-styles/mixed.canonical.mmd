@@ -1,0 +1,23 @@
+flowchart LR
+%% Every edge style in one diagram; the text-label forms normalise to the pipe form.
+
+  subgraph edge [Edge]
+    client(["Client"])
+    api["Stream service"]
+  end
+
+  subgraph core [Core]
+    model["Model gateway"]
+    cache[("Cache")]
+  end
+
+  subgraph store [Storage]
+    audit[("Audit store")]
+  end
+
+  client --> api
+  api ==>|critical path| model
+  model <--> cache
+  api -.->|audit records| audit
+  model -.->|flush| audit
+  cache <-->|replicate| audit

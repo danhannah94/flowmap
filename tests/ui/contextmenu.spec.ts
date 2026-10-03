@@ -33,7 +33,7 @@ const MENUS: Files = {
 
 // A15 adds 'link' ("Link to diagram…") as an always-shown block item.
 const UI40_BLOCK = ['edit-label', 'rename-id', 'shape', 'colors', 'link', 'duplicate', 'unpin', 'reset-size', 'reset-colors', 'delete'];
-const UI40_LINE = ['edit-label', 'add-bend', 'remove-bend', 'reset-line', 'reset-label', 'delete'];
+const UI40_LINE = ['edit-label', 'line-style', 'add-bend', 'remove-bend', 'reset-line', 'reset-label', 'delete'];
 const SHAPES = ['step', 'decision', 'terminal', 'subprocess', 'database', 'io', 'document', 'delay'];
 
 const menu = (page: Page) => page.getByTestId('context-menu');

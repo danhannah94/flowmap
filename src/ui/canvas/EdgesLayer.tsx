@@ -17,6 +17,7 @@ import { LineHandles, shaping, type Shaping } from './lineHandles';
 import type { Point } from './viewport';
 
 const ARROW = 9; // arrowhead length (px)
+const ARROW_THICK = 12; // a thick line's heads are bigger, to match its stroke (A18)
 
 /** Stop the line short of the end so the arrowhead's tip lands exactly on the end point. */
 function trimEnd(pts: Point[], by: number): Point[] {
@@ -78,14 +79,24 @@ const EdgeView = memo(function EdgeView({ edge, source, target, selected, mode, 
     [shape?.points, edge, source, target],
   );
   const pts = shapedPts ?? drawnPts;
-  const line = useMemo(() => roundedPath(trimEnd(pts, ARROW)), [pts]);
+  const style = edge.style ?? 'solid';
+  const arrowLen = style === 'thick' ? ARROW_THICK : ARROW;
+  const both = style === 'bidirectional';
+  const line = useMemo(() => {
+    const short = trimEnd(pts, arrowLen);
+    // A18: a two-way line stops short at the start as well, so the head there lands exactly on the start point.
+    return roundedPath(both ? trimEnd([...short].reverse(), arrowLen).reverse() : short);
+  }, [pts, arrowLen, both]);
   // A selected line is drawn above the blocks: near its ends its bare stroke steps aside for the blocks' connection
   // handles, so the handle on the side it leaves from can still start a line.
   const hit = useMemo(() => roundedPath(selected ? trimEnds(pts, HANDLE_REACH) : pts), [pts, selected]);
   const ghost = useMemo(() => (shape?.ghost ? roundedPath(drawnPts) : null), [shape?.ghost, drawnPts]);
   const end = pts[pts.length - 1];
   const before = pts[pts.length - 2];
-  const arrow = end && before ? arrowHead(before, end) : '';
+  const first = pts[0];
+  const second = pts[1];
+  const arrow = end && before ? arrowHead(before, end, arrowLen) : '';
+  const startArrow = both && first && second ? arrowHead(second, first, arrowLen) : '';
   const lines = edge.label ? edgeLabelLines(edge.label) : [];
   const size = edge.label ? edgeLabelSize(edge.label) : null;
   const labelPos: XY | null = shape?.label ?? edge.label_pos;
@@ -97,6 +108,7 @@ const EdgeView = memo(function EdgeView({ edge, source, target, selected, mode, 
       data-source={edge.source}
       data-target={edge.target}
       data-selected={selected ? 'true' : 'false'}
+      data-edge-style={style}
       data-manual={edge.manual ? 'true' : 'false'}
       data-points={dataPoints}
       transform={mode === 'moving' ? `translate(${dx} ${dy})` : undefined}
@@ -105,6 +117,7 @@ const EdgeView = memo(function EdgeView({ edge, source, target, selected, mode, 
       {ghost ? <path className="fm-edge-ghost" d={ghost} /> : null}
       <path className="fm-edge-line" d={line} />
       <path className="fm-edge-arrow" d={arrow} />
+      {startArrow ? <path className="fm-edge-arrow fm-edge-arrow-start" d={startArrow} /> : null}
       {edge.label && labelPos && size ? (
         <g className="fm-edge-label" data-role="edge-label" data-dragging={shape?.label ? 'true' : undefined}>
           <rect
@@ -141,13 +154,13 @@ function SelectedHandles({ edge, shape }: { edge: LayoutEdge; shape: Shaping | n
   return <LineHandles model={model} zoom={zoom} shape={shape} />;
 }
 
-function arrowHead(from: Point, tip: Point): string {
+function arrowHead(from: Point, tip: Point, length = ARROW): string {
   const len = Math.hypot(tip.x - from.x, tip.y - from.y) || 1;
   const ux = (tip.x - from.x) / len;
   const uy = (tip.y - from.y) / len;
-  const bx = tip.x - ux * ARROW;
-  const by = tip.y - uy * ARROW;
-  const w = 4.5;
+  const bx = tip.x - ux * length;
+  const by = tip.y - uy * length;
+  const w = (length / ARROW) * 4.5;
   const f = (n: number) => Math.round(n * 100) / 100;
   return `M${f(tip.x)},${f(tip.y)}L${f(bx - uy * w)},${f(by + ux * w)}L${f(bx + uy * w)},${f(by - ux * w)}Z`;
 }

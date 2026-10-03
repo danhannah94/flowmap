@@ -8,6 +8,14 @@ export const SHAPE_KINDS = [
 ] as const;
 export type ShapeKind = (typeof SHAPE_KINDS)[number];
 
+/**
+ * Amendment A18: how an edge is drawn. `solid` is `-->` (the default and the only style older files have), `dashed` is
+ * `-.->` (async, event, optional), `thick` is `==>` (critical path), `bidirectional` is `<-->` (arrowheads at both
+ * ends). The style never changes where a line goes: the layout and router treat every style like `-->`.
+ */
+export const EDGE_STYLES = ['solid', 'dashed', 'thick', 'bidirectional'] as const;
+export type EdgeStyle = (typeof EDGE_STYLES)[number];
+
 export const UNASSIGNED = '_unassigned';
 
 /**
@@ -59,6 +67,8 @@ export interface GraphEdge {
   source: string;
   target: string;
   label: string | null;
+  /** A18: absent means `solid`. */
+  style?: EdgeStyle;
 }
 
 /** One pin from the .layout.json file (§5). Bend points (v1.1) have the same form. */
@@ -169,6 +179,8 @@ export interface LayoutInput {
 
 export interface LayoutResultEdge {
   id: string; source: string; target: string; label: string | null;
+  /** A18: how the line is drawn; left out when `solid`, so a diagram that uses only `-->` has the same output as before. */
+  style?: EdgeStyle;
   points: [number, number][]; label_pos: [number, number] | null;
   /** v1.1: drawn through its bend points (§6 L11). */
   manual: boolean;

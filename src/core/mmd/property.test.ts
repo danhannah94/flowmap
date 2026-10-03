@@ -3,7 +3,7 @@
 // Checked: the parse has no errors and matches that meaning; formatting is idempotent; and the canonical text
 // parses back to the same model.
 import { performance } from 'node:perf_hooks';
-import { SHAPE_KINDS, type ShapeKind } from '../types';
+import { SHAPE_KINDS, type EdgeStyle, type ShapeKind } from '../types';
 import type { Diagram } from './model';
 import { declaredNodes, format, parse, toGraph } from './index';
 import { encodeLabel, normaliseUnquoted, UNQUOTED_FORBIDDEN } from './syntax';
@@ -81,7 +81,7 @@ interface Expected {
   lanes: { id: string; label: string }[];
   /** Declared nodes in canonical order (unlaned, then by lane), each in order of first declaration. */
   nodes: SpecNode[];
-  edges: { source: string; target: string; label: string | null }[];
+  edges: { source: string; target: string; label: string | null; style: EdgeStyle }[];
   passThrough: string[];
   comments: string[];
 }
@@ -107,15 +107,24 @@ function writeDecl(r: Rng, node: SpecNode): string {
   return `${node.id}${open}${body}${close}${node.className ? `:::${node.className}` : ''}`;
 }
 
-function writeArrow(r: Rng, label: string | null): string {
+// A18: the bare arrow of each style, and the pieces of its text-label form (`-- label -->`, `-. label .->`, ...).
+const BARE: Record<EdgeStyle, string> = { solid: '-->', dashed: '-.->', thick: '==>', bidirectional: '<-->' };
+const TEXT_FORM: Record<EdgeStyle, [string, string]> = {
+  solid: ['--', '-->'], dashed: ['-.', '.->'], thick: ['==', '==>'], bidirectional: ['<--', '-->'],
+};
+
+function writeArrow(r: Rng, label: string | null, style: EdgeStyle = 'solid'): string {
   const ws = () => r.pick(['', ' ', '  ']);
-  if (label === null) return r.pick([`${ws()}-->${ws()}`, ' -->|| ', ' -- --> ', `${ws()}-->${ws()}`]);
+  const bareArrow = BARE[style];
+  const [open, close] = TEXT_FORM[style];
+  if (label === null) return r.pick([`${ws()}${bareArrow}${ws()}`, ` ${bareArrow}|| `, ` ${open} ${close} `, `${ws()}${bareArrow}${ws()}`]);
   const bare = unquotedForm(label);
-  const forms: string[] = [`${ws()}-->${ws()}|${quoted(r, label)}|${ws()}`];
-  if (bare !== undefined) forms.push(`${ws()}-->${ws()}|${pad(r, bare)}|${ws()}`);
-  // `-- label -->` runs to the first `--`, so the written label can't contain one.
+  const forms: string[] = [`${ws()}${bareArrow}${ws()}|${quoted(r, label)}|${ws()}`];
+  if (bare !== undefined) forms.push(`${ws()}${bareArrow}${ws()}|${pad(r, bare)}|${ws()}`);
+  // The text form runs to the first closing run (`--`, `.->`, `==`), so the written label can't contain one.
   const text = bare !== undefined && r.chance(0.5) ? bare : quoted(r, label);
-  if (!text.includes('--') && !text.endsWith('-')) forms.push(` -- ${text} --> `);
+  const stop = style === 'dashed' ? '.->' : style === 'thick' ? '==' : '--';
+  if (!text.includes(stop) && !text.endsWith('-') && !text.endsWith('=')) forms.push(` ${open} ${text} ${close} `);
   return r.pick(forms);
 }
 
@@ -177,6 +186,7 @@ function generate(seed: number, nodeCount?: number): { text: string; expected: E
       Array.from({ length: r.chance(0.25) ? 2 : 1 }, () => r.pick(allIds)),
     );
     const labels = groups.slice(1).map(() => (r.chance(0.4) ? randomLabel(r) || null : null));
+    const styles = groups.slice(1).map(() => (r.chance(0.4) ? r.pick(['dashed', 'thick', 'bidirectional'] as const) : 'solid'));
     const shaped = new Map<string, SpecNode>();
     // The repeat goes first so that, if both land on one slot, the new declaration wins.
     for (const node of [repeat, declare]) {
@@ -194,8 +204,8 @@ function generate(seed: number, nodeCount?: number): { text: string; expected: E
     };
     let text = groups[0]!.map(ref).join(r.pick([' & ', '&', ' &  ']));
     labels.forEach((label, k) => {
-      text += writeArrow(r, label) + groups[k + 1]!.map(ref).join(' & ');
-      for (const source of groups[k]!) for (const target of groups[k + 1]!) edges.push({ source, target, label });
+      text += writeArrow(r, label, styles[k]) + groups[k + 1]!.map(ref).join(' & ');
+      for (const source of groups[k]!) for (const target of groups[k + 1]!) edges.push({ source, target, label, style: styles[k]! });
     });
     stmt(text.trim());
   };
@@ -296,7 +306,7 @@ function checkMeaning(d: Diagram, expected: Expected): void {
   expect(declaredNodes(d).map(({ node, lane }) => ({
     id: node.id, shape: node.shape, label: node.label, className: node.className, lane,
   }))).toEqual(expected.nodes);
-  expect(d.edges.map(({ source, target, label }) => ({ source, target, label }))).toEqual(expected.edges);
+  expect(d.edges.map(({ source, target, label, style }) => ({ source, target, label, style: style ?? 'solid' }))).toEqual(expected.edges);
   expect(d.passThrough.map((p) => p.text)).toEqual(expected.passThrough);
   expect(allComments(d).sort()).toEqual([...expected.comments].sort());
 }
@@ -335,6 +345,12 @@ describe('random diagrams (C2)', () => {
       if (/-->.*-->/.test(text)) seen.add('chain');
       if (text.includes(' -- ')) seen.add('text-label');
       if (text.includes('-->|')) seen.add('pipe-label');
+      for (const style of ['dashed', 'thick', 'bidirectional'] as const) {
+        if (expected.edges.some((e) => e.style === style)) seen.add(`style:${style}`);
+      }
+      if (/-\. .* \.->/.test(text)) seen.add('text-label:dashed');
+      if (/== .* ==>/.test(text)) seen.add('text-label:thick');
+      if (/<-- .* -->/.test(text)) seen.add('text-label:bidirectional');
       if (text.includes('#quot;')) seen.add('escape');
       if (text.includes('ghost')) seen.add('undeclared');
       if (expected.comments.length > 0) seen.add('comments');
@@ -342,7 +358,8 @@ describe('random diagrams (C2)', () => {
     }
     expect([...seen].sort()).toEqual([
       ...SHAPE_KINDS.map((s) => `shape:${s}`), 'chain', 'comments', 'escape', 'group', 'lanes', 'pass-through', 'pipe-label',
-      'text-label', 'undeclared', 'unlaned',
+      'style:bidirectional', 'style:dashed', 'style:thick', 'text-label', 'text-label:bidirectional',
+      'text-label:dashed', 'text-label:thick', 'undeclared', 'unlaned',
     ].sort());
   });
 });
@@ -396,7 +413,11 @@ describe('random models round-trip through canonical text', () => {
     const ids = [...declaredNodes(d).map((e) => e.node.id), 'ghost'];
     d.edges = Array.from({ length: r.int(8) }, () => {
       const text = label(r);
-      return { source: r.pick(ids), target: r.pick(ids), label: text === '' ? null : text, comments: comments(0.2) };
+      const style = r.pick(['solid', 'solid', 'dashed', 'thick', 'bidirectional'] as const);
+      return {
+        source: r.pick(ids), target: r.pick(ids), label: text === '' ? null : text,
+        ...(style === 'solid' ? {} : { style }), comments: comments(0.2),
+      };
     });
     return d;
   }

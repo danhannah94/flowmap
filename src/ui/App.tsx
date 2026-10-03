@@ -6,6 +6,7 @@ import { Palette } from './chrome/Palette';
 import './chrome/evidence'; // evidence and styles (UI24–UI27): inspector, styles panel, orphan deletes
 import './contextmenu'; // context menus (UI40)
 import './snap/SnapGuides'; // snap guides while dragging (UI39)
+import './edgestyle'; // line styles: picker bar and context-menu item (A18, UI44)
 import { ConfirmDialog, ErrorBanner, Notices, Overlays, SidePanels } from './chrome/Panels';
 import { TopBar } from './chrome/Toolbar';
 import { ZoomControls } from './chrome/ZoomControls';

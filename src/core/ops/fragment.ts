@@ -19,7 +19,7 @@ import {
   pinFromDrop, removeEdgeEntries, roundPx, setPins, setSizes, sizeOf, updateEdges, type EdgePatch,
 } from '../layoutfile';
 import { emptyDiagram, findNode, format, isIdForm, isReservedId, undeclaredNodes, type Lane, type NodeDecl } from '../mmd';
-import { SHAPE_KINDS, SIDES, UNASSIGNED, type Direction, type Pin, type ShapeKind, type Side, type Size, type XY } from '../types';
+import { EDGE_STYLES, SHAPE_KINDS, SIDES, UNASSIGNED, type Direction, type EdgeStyle, type Pin, type ShapeKind, type Side, type Size, type XY } from '../types';
 import { mentions, refuse, run, type Ctx, type Files, type OpResult } from './context';
 import { blockLaneAt, checkXY, storedCorner, viewOf, type LayoutArg, type View } from './frame';
 import { positionInLane } from './nodes';
@@ -57,6 +57,8 @@ export interface FragmentEdge {
   source: string;
   target: string;
   label: string | null;
+  /** A18: absent means `solid`. */
+  style?: EdgeStyle;
   source_side?: Side;
   target_side?: Side;
   label_at?: number;
@@ -126,6 +128,7 @@ function readFragment(ctx: Ctx, ids: readonly string[], layout: LayoutArg): Frag
   ctx.d.edges.forEach((edge, k) => {
     if (!inside.has(edge.source) || !inside.has(edge.target)) return;
     const out: FragmentEdge = { source: edge.source, target: edge.target, label: edge.label };
+    if (edge.style && edge.style !== 'solid') out.style = edge.style;
     const entry = ctx.layoutIn?.edges?.[edgeIdList[k]!];
     if (entry?.source_side) out.source_side = entry.source_side;
     if (entry?.target_side) out.target_side = entry.target_side;
@@ -234,7 +237,7 @@ export function pasteFragment(
       const source = idMap.get(e.source);
       const target = idMap.get(e.target);
       if (!source || !target) continue;
-      ctx.d.edges.push({ source, target, label: e.label, comments: [] });
+      ctx.d.edges.push({ source, target, label: e.label, ...(e.style && e.style !== 'solid' ? { style: e.style } : {}), comments: [] });
     }
     ctx.rekeyEdgeEntries();
     const newEdgeIds = ctx.edgeIds().slice(before);
@@ -345,7 +348,9 @@ export function fragmentToMermaid(fragment: Fragment): string {
     lanes.get(n.lane)!.nodes.push(decl);
   }
   d.lanes = [...lanes.values()].filter((l) => l.nodes.length > 0);
-  d.edges = fragment.edges.map((e) => ({ source: e.source, target: e.target, label: e.label, comments: [] }));
+  d.edges = fragment.edges.map((e) => ({
+    source: e.source, target: e.target, label: e.label, ...(e.style && e.style !== 'solid' ? { style: e.style } : {}), comments: [],
+  }));
   return format(d);
 }
 
@@ -376,6 +381,7 @@ export function isFragment(v: unknown): v is Fragment {
   for (const e of v.edges) {
     if (!isObj(e) || !isStr(e.source) || !isStr(e.target) || !ids.has(e.source) || !ids.has(e.target)) return false;
     if (e.label !== null && (!isStr(e.label) || /[\r\n]/.test(e.label))) return false;
+    if (e.style !== undefined && !(EDGE_STYLES as readonly unknown[]).includes(e.style)) return false;
     for (const k of ['source_side', 'target_side'] as const) {
       if (e[k] !== undefined && !(SIDES as readonly unknown[]).includes(e[k])) return false;
     }
