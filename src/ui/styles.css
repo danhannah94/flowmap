@@ -829,17 +829,16 @@ a.fm-home:hover {
   background: var(--accent-strong);
 }
 
-/* legend */
-.fm-legend {
+/* The diagram's legend (UI2), in world coordinates: each entry placed where the shared legend layout puts it
+   (core/legend.ts), so it wraps the way the export does. Its own class: `.fm-legend` is the controls legend (A14). */
+.fm-diagram-legend {
   position: absolute;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 26px;
   font: 400 12px/20px Inter, sans-serif;
   color: var(--legend-text);
 }
 
-.fm-legend-item {
+.fm-diagram-legend .fm-legend-item {
+  position: absolute;
   display: flex;
   align-items: center;
   gap: 8px;

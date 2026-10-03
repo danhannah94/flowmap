@@ -17,6 +17,7 @@ import { derive, originMove, sameFiles, withHints, type Derived } from './derive
 import { fitViewport, zoomAround, type Point, type Rect, type Viewport } from '../canvas/viewport';
 import { notesRowBottom, withAnnotations } from '../notes/geometry';
 import { viewportForOpen } from './viewportCache';
+import { legendLayout } from '../../core/legend';
 
 export type ThemeName = 'light' | 'dark';
 export type SaveStatus = 'saved' | 'saving' | 'error';
@@ -840,19 +841,19 @@ export const ZOOM_CONTROLS = { width: 136, height: 56 };
 export const TITLE_BAND = 64;
 export const LEGEND_GAP = 28;
 
-export function legendRows(count: number, width: number): number {
-  if (count === 0) return 0;
-  const perRow = Math.max(1, Math.floor(Math.max(width, 320) / 260));
-  return Math.ceil(count / perRow);
+/** How wide the legend may run before it wraps: the diagram's width (at least 320, as the export's minimum). */
+export function legendWidth(layout: LayoutResult): number {
+  return Math.max(layout.width, 320);
 }
 
 function contentBounds(shown: Derived | null): Rect | null {
   const layout = shown?.layout;
   if (!layout) return null;
-  const legend = shown!.doc.legend.length;
-  // The legend sits below the diagram and the default row of notes (as the canvas draws it, Decorations.tsx).
+  const legend = shown!.doc.legend;
+  // The legend sits below the diagram and the default row of notes, wrapped into rows (as the canvas draws it,
+  // Decorations.tsx, and as the export does).
   const below = Math.max(layout.height, notesRowBottom(shown));
-  const bottom = below + (legend ? LEGEND_GAP + legendRows(legend, layout.width) * 30 : 0);
+  const bottom = below + (legend.length ? LEGEND_GAP + legendLayout(legend, legendWidth(layout)).totalHeight : 0);
   // v1.1: notes and the title may be anywhere, including left of or above everything (UI41–UI43).
   return withAnnotations({ x: 0, y: -TITLE_BAND, width: Math.max(layout.width, 320), height: bottom + TITLE_BAND }, layout);
 }

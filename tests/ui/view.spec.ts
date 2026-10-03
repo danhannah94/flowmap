@@ -231,3 +231,28 @@ test('a 100-node diagram opens in under 2 s', async ({ page }, info) => {
   expect(frames.length).toBe(30);
   expect(perMove).toBeLessThan(40);
 });
+
+// UI2: a long legend wraps into rows under the diagram (as the export's does), so it stays in view after Fit; a diagram
+// with no legend entries draws no legend at all.
+test('a long legend wraps under the diagram and Fit brings all of it into view; no entries, no legend', async ({ page }, info) => {
+  const rules = Array.from({ length: 14 }, (_, i) => `  - match: {id: a}\n    legend: "Legend entry number ${i}"\n    style: {fill: "#ffeeaa"}`).join('\n');
+  const d = makeDiagram(info, { mmd: 'flowchart LR\n  a["A"] --> b["B"]\n', config: `version: 1\nstyles:\n${rules}\n`, layout: null });
+  await open(page, d);
+  const items = page.getByTestId('legend-item');
+  await expect(items).toHaveCount(14);
+  const canvas = (await page.getByTestId('canvas').boundingBox())!;
+  const boxes = await items.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON() as DOMRect));
+  const lanes = (await page.locator('[data-node-id="b"]').boundingBox())!;
+  // More than one row, and no entry runs past the diagram's right-hand side by more than one entry's width.
+  expect(new Set(boxes.map((b) => Math.round(b.top))).size).toBeGreaterThan(1);
+  for (const b of boxes) {
+    expect(b.left).toBeGreaterThanOrEqual(canvas.x);
+    expect(b.right).toBeLessThanOrEqual(canvas.x + canvas.width);
+    expect(b.bottom).toBeLessThanOrEqual(canvas.y + canvas.height);
+  }
+  expect(Math.max(...boxes.map((b) => b.right))).toBeLessThan(lanes.x + lanes.width + 400);
+
+  const empty = makeDiagram(info, { mmd: 'flowchart LR\n  a["A"] --> b["B"]\n', config: null, layout: null });
+  await open(page, empty);
+  await expect(page.getByTestId('legend')).toHaveCount(0);
+});

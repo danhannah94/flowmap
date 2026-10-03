@@ -5,6 +5,7 @@ import { isLaneFree, type Graph, type LayoutResult, type LayoutTextBox, type Leg
 import { shapeGeometry, type DecorationShape, type OutlineShape } from '../shapes';
 import { getTheme, resolveStyle, type ResolvedNodeStyle, type Theme, type ThemeName } from '../theme';
 import { GLYPH_GRID, GLYPH_STROKE } from '../preset/glyphs';
+import { LEGEND_SWATCH_H, LEGEND_SWATCH_W, legendLayout } from '../legend';
 import {
   BADGE_FONT, GROUP_FONT, ICON_CHIP, ICON_GLYPH, LABEL_FONT, TITLE_FONT, badgeBox, iconBox, noteLineHeight, noteLines, textArea, textWidth,
   textWidthAt, titleSize, wrapLabel,
@@ -39,11 +40,6 @@ const MARGIN = 24;
 /** The title's default place (§6): above the diagram's top-left corner, as the layout puts it (layout TITLE_GAP). */
 const TITLE_DEFAULT_Y = -(TITLE_FONT.lineHeight + 18);
 const LEGEND_GAP = 28;
-const LEGEND_ROW_HEIGHT = 20;
-const LEGEND_SWATCH_W = 26;
-const LEGEND_SWATCH_H = 16;
-const LEGEND_ITEM_GAP_X = 24;
-const LEGEND_ITEM_GAP_Y = 12;
 const EDGE_LABEL_PAD_X = 6;
 const MIN_CONTENT_WIDTH = 320;
 /** A19: where a group's label sits inside its box (left inset, and the baseline from the top), as the UI draws it. */
@@ -289,32 +285,9 @@ function renderEdge(edge: LayoutResult['edges'][number], theme: Theme): string {
   return parts.join('');
 }
 
-interface LegendPosition {
-  item: LegendItem;
-  x: number;
-  y: number;
-}
-
-function layoutLegend(legend: LegendItem[], maxWidth: number): { items: LegendPosition[]; totalHeight: number } {
-  const items: LegendPosition[] = [];
-  let x = 0;
-  let y = 0;
-  for (const item of legend) {
-    const itemWidth = LEGEND_SWATCH_W + 8 + textWidth(item.text);
-    if (x > 0 && x + itemWidth > maxWidth) {
-      x = 0;
-      y += LEGEND_ROW_HEIGHT + LEGEND_ITEM_GAP_Y;
-    }
-    items.push({ item, x, y });
-    x += itemWidth + LEGEND_ITEM_GAP_X;
-  }
-  const totalHeight = legend.length ? y + LEGEND_ROW_HEIGHT : 0;
-  return { items, totalHeight };
-}
-
 function renderLegend(legend: LegendItem[], theme: Theme, x: number, y: number, maxWidth: number): string {
   if (!legend.length) return '';
-  const { items } = layoutLegend(legend, maxWidth);
+  const { items } = legendLayout(legend, maxWidth);
   const parts: string[] = [`<g data-testid="legend" transform="translate(${num(x)}, ${num(y)})">`];
   for (const { item, x: ix, y: iy } of items) {
     const resolved = resolveStyle(item.style, theme);
@@ -395,9 +368,9 @@ export function renderSvg(options: RenderSvgOptions): string {
   const ox = MARGIN - minX;
   const oy = MARGIN - minY;
   const contentWidth = maxX - minX;
-  const legendLayout = layoutLegend(legend, contentWidth);
+  const legendBox = legendLayout(legend, contentWidth);
   const legendTop = oy + maxY + LEGEND_GAP;
-  const totalHeight = legend.length ? legendTop + legendLayout.totalHeight + MARGIN : oy + maxY + MARGIN;
+  const totalHeight = legend.length ? legendTop + legendBox.totalHeight + MARGIN : oy + maxY + MARGIN;
   const totalWidth = contentWidth + MARGIN * 2;
 
   const parts: string[] = [];
