@@ -10,7 +10,7 @@ import { checkLinks, linkTargetsByNode } from '../core/config';
 import { loadDocument } from '../core/document';
 import { format as formatMmd, parse as parseMmd } from '../core/mmd';
 import { renderSvg } from '../core/svg';
-import { serve } from '../server/index';
+import { ExportUnavailableError, serve } from '../server/index';
 import type { Problem } from '../core/types';
 
 const USAGE = `flowmap: a local flowchart tool
@@ -250,6 +250,25 @@ function interFontFaceCss(): string {
     .join('\n');
 }
 
+/** True when Playwright's launch failure means "the browser binary isn't installed" (as opposed to any other crash). */
+function isBrowserMissing(e: unknown): boolean {
+  const message = e instanceof Error ? e.message : String(e);
+  return /Executable doesn't exist|playwright install/i.test(message);
+}
+
+/** The message shown when PNG export can't find its headless browser. Names the exact Playwright version flowmap
+ *  bundles, so the browser downloaded matches the library (and works the same under `npx`, where there is no local
+ *  `playwright` to run). */
+function browserMissingMessage(): string {
+  const require = createRequire(import.meta.url);
+  const version = (require('playwright/package.json') as { version: string }).version;
+  return (
+    `PNG export needs Playwright's headless Chromium, which isn't installed. Install it once with: ` +
+    `npx playwright@${version} install chromium-headless-shell ` +
+    `(on Linux add --with-deps). SVG export and everything else work without it.`
+  );
+}
+
 /** Render an SVG string to a PNG buffer at 2x scale using Playwright's chromium (§7: "may use a headless browser"). */
 async function renderPng(svg: string): Promise<Buffer> {
   const { chromium } = await import('playwright');
@@ -258,7 +277,13 @@ async function renderPng(svg: string): Promise<Buffer> {
     `<!doctype html><html><head><meta charset="utf-8">` +
     `<style>${interFontFaceCss()}\nhtml,body{margin:0;padding:0;}</style>` +
     `</head><body>${svg}</body></html>`;
-  const browser = await chromium.launch();
+  let browser;
+  try {
+    browser = await chromium.launch();
+  } catch (e) {
+    if (isBrowserMissing(e)) throw new ExportUnavailableError(browserMissingMessage());
+    throw e;
+  }
   try {
     const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 2 });
     const page = await context.newPage();
@@ -332,6 +357,11 @@ async function cmdExport(argv: string[]): Promise<void> {
   } catch (e) {
     // §7: a `.mmd` error stops `export`: exit 1, no output.
     if (e instanceof ExportRefused) {
+      process.exitCode = 1;
+      return;
+    }
+    if (e instanceof ExportUnavailableError) {
+      process.stderr.write(`flowmap: ${e.message}\n`);
       process.exitCode = 1;
       return;
     }

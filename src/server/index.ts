@@ -38,6 +38,11 @@ export type Theme = 'light' | 'dark';
  *  `src/cli/` (SVG rendering, PNG via a headless browser); without one, `POST /api/export` returns 501. */
 export type ExportFn = (mmdPath: string, format: ExportFormat, theme: Theme) => Promise<string>;
 
+/** An `ExportFn` throws this when an export can't run because something the user must install is missing (the
+ *  headless browser for PNG). `POST /api/export` answers 503 with its message instead of a bare 500, so the editor
+ *  can show what to do. */
+export class ExportUnavailableError extends Error {}
+
 export interface ServeOptions {
   /** The directory to serve: every `.mmd` in it, plus its `.flow.yaml`/`.layout.json` siblings. */
   dir: string;
@@ -339,8 +344,13 @@ export async function serve(options: ServeOptions): Promise<ServeHandle> {
       return;
     }
     const mmdPath = join(dir, file);
-    const path = await exportFn(mmdPath, format, theme);
-    sendJson(res, 200, { path });
+    try {
+      const path = await exportFn(mmdPath, format, theme);
+      sendJson(res, 200, { path });
+    } catch (e) {
+      if (!(e instanceof ExportUnavailableError)) throw e;
+      sendJson(res, 503, { error: e.message });
+    }
   }
 
   async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {

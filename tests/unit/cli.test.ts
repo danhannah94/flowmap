@@ -389,6 +389,28 @@ describe('export --format png', () => {
   }, 30_000);
 });
 
+describe('export --format png without the headless browser', () => {
+  it('fails with a clear message naming the install command, and SVG export still works', () => {
+    const dir = tmpDir('export-png-missing');
+    // Point Playwright at an empty browser cache, so the headless shell is "not installed" on any machine.
+    const env = { ...process.env, PLAYWRIGHT_BROWSERS_PATH: join(dir, 'no-browsers') };
+    const mmd = join(FIXTURES, 'purchase-request', 'purchase-request.mmd');
+    const png = spawnSync('node', [CLI, 'export', mmd, '--format', 'png', '--out', join(dir, 'pr.png')], {
+      cwd: ROOT, encoding: 'utf8', env,
+    });
+    expect(png.status).toBe(1);
+    expect(png.stderr).toMatch(/^flowmap: PNG export needs Playwright's headless Chromium, which isn't installed\./);
+    expect(png.stderr).toMatch(/npx playwright@\d+\.\d+\.\d+ install chromium-headless-shell/);
+    expect(png.stderr).not.toContain('    at '); // a one-line message, not a stack trace
+    expect(png.stdout).toBe('');
+
+    const svg = spawnSync('node', [CLI, 'export', mmd, '--format', 'svg', '--out', join(dir, 'pr.svg')], {
+      cwd: ROOT, encoding: 'utf8', env,
+    });
+    expect(svg.status).toBe(0);
+  }, 30_000);
+});
+
 // ---- serve (§7): starts the server on loopback, serves the API and the UI, stops on SIGTERM ---------------------------
 
 describe('serve', () => {

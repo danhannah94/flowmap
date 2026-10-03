@@ -2,7 +2,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { serve, type ServeHandle } from './index.js';
+import { ExportUnavailableError, serve, type ServeHandle } from './index.js';
 import { makeTempDiagramDir, removeTempDir } from './test-support.js';
 
 describe('flowmap server: JSON API', () => {
@@ -502,5 +502,20 @@ describe('flowmap server: export endpoint', () => {
     expect(calls[0]?.format).toBe('png');
     expect(calls[0]?.theme).toBe('dark');
     expect(calls[0]?.mmdPath).toBe(join(dir, 'purchase-request.mmd'));
+  });
+
+  it('answers 503 with the message when the export function reports a missing install', async () => {
+    handle = await serve({
+      dir,
+      port: 0,
+      exportFn: async () => {
+        throw new ExportUnavailableError('install the browser first');
+      },
+    });
+    const res = await fetch(`http://127.0.0.1:${handle.port}/api/export?file=purchase-request.mmd&format=png&theme=light`, {
+      method: 'POST',
+    });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'install the browser first' });
   });
 });
