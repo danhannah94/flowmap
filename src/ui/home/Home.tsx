@@ -367,8 +367,8 @@ function DiagramRow({ file, onDelete, onMoveTo }: { file: string; onDelete: () =
           e.dataTransfer.effectAllowed = 'move';
         }}
       >
-        <span className="fm-diagram-name">{name}</span>
-        <span className="fm-diagram-file">{baseNameOf(file)}</span>
+        <span className="fm-diagram-name" title={name}>{name}</span>
+        <span className="fm-diagram-file" title={baseNameOf(file)}>{baseNameOf(file)}</span>
       </a>
       <RowMenu
         testid="diagram-menu"

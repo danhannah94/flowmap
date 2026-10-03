@@ -224,12 +224,12 @@ export function resolvePreset(ref: string | null, files: PresetFiles | undefined
     const pack = builtinPack(c.name);
     if (pack) return { pack, warnings: [] };
     const known = Object.keys(BUILTIN_PACKS).join(', ');
-    return { pack: null, warnings: [warn('W-preset-unknown', `Unknown preset "${ref}" (built-in presets: ${known}; a file path ends in .yaml)`)] };
+    return { pack: null, warnings: [warn('W-preset-unknown', `Unknown preset "${ref}" (built-in presets: ${known}; a value containing "/" or ending in .yaml, .yml or .json is a pack file path, relative to the diagram's folder)`)] };
   }
   if (!files || !Object.hasOwn(files, ref)) return { pack: null, warnings: [] };
   const text = files[ref];
   if (text === null || text === undefined) {
-    return { pack: null, warnings: [warn('W-preset-unknown', `Preset file "${ref}" could not be read (is the path relative to the diagram, inside the served folder?)`)] };
+    return { pack: null, warnings: [warn('W-preset-unknown', `Preset file "${ref}" could not be read (the path is relative to the diagram's folder and must stay inside the served folder; moving the diagram doesn't update it, so a moved diagram's pack path may need changing)`)] };
   }
   return parsePackText(text, ref);
 }

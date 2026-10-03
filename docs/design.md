@@ -729,7 +729,7 @@ Three rules apply to every operation below:
   e.g. `sales/stage-2`); `/?dir=<path>` opens the home page browsing that folder (A16).
 - **UI2 Render**: title, lanes (with labels), nodes drawn in their shape (the eight in section 3.1) and styled by the
   config rules, edges with arrowheads and labels, the legend. Positions are the layout function's.
-- **UI3 Navigate**: pan (drag the background), zoom (wheel or pinch), fit to screen.
+- **UI3 Navigate**: pan (Space+drag or the middle button, A11, and a trackpad's two-finger scroll, A14; a plain drag on the background draws a selection box since A11), zoom (wheel or pinch), fit to screen.
 - **UI4 Themes**: dark and light. Follows the system setting by default; a toggle overrides it. Colours given as
   `{light, dark}` in the config use the matching value.
 - **UI5 Speed**: opening a 100-node diagram renders in under 2 s on a recent Mac; dragging stays smooth.

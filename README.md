@@ -87,8 +87,9 @@ diagrams (New diagram) are created in the folder you're in.
 To move a diagram into a folder, drag its row onto the folder (or onto a breadcrumb segment, to move it up), or use
 **Move to…** in its own menu, which opens a small dialog to browse to the destination and confirm. Moving a diagram
 takes its `.mmd`, `.flow.yaml` and `.layout.json` (whichever exist) with it, plus anything else beside it sharing its
-base name; it doesn't rewrite `link:` references to it from other diagrams (a separate feature) that point at its old
-path.
+base name, and rewrites every other diagram's `link:` that pointed at its old path, so links keep working (the home
+screen says how many it updated). A relative `preset:` pack path in the moved diagram's own config is not rewritten:
+if the diagram moved to a different depth, update that path (the warnings list shows `W-preset-unknown` until you do).
 
 Opening a diagram inside a folder, then going back to the list (the flowmap logo, top left), returns you to that
 diagram's own folder, not always the root — and the editor's file name shows the full path, so you always know where

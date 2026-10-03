@@ -1364,13 +1364,15 @@ a.fm-home:hover {
   display: flex;
 }
 
+/* The right padding keeps the row's `···` menu button (absolute, 26 px wide, 10 px in) clear of the text. */
 .fm-diagram-row a {
   flex: 1;
+  min-width: 0;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 16px;
+  padding: 14px 46px 14px 16px;
   border-radius: 12px;
   background: var(--panel);
   border: 1px solid var(--border);
@@ -1384,12 +1386,25 @@ a.fm-home:hover {
   transform: translateY(-1px);
 }
 
+/* A long name or file name ends in an ellipsis rather than running under the menu button (the full name is the
+   row's title). */
+.fm-diagram-name,
+.fm-diagram-file {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .fm-diagram-name {
+  flex: 0 1 auto;
   font-weight: 600;
   font-size: 14px;
 }
 
 .fm-diagram-file {
+  flex: 0 1 auto;
+  max-width: 45%;
   color: var(--faint);
   font-size: 12px;
 }
