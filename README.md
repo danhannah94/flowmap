@@ -43,7 +43,7 @@ The other commands (each takes the path to a `.mmd`; its config and layout files
 | `flowmap validate <file.mmd> [--json]` | Checks all three files and lists errors and warnings with their codes and lines. Exits 1 on errors. |
 | `flowmap fmt <file.mmd> [--check] [--stdout]` | Rewrites the `.mmd` in canonical form. `--check` only reports; `--stdout` prints instead of writing. |
 | `flowmap layout <file.mmd> [--json]` | Prints the computed layout (every lane, block and line, in pixels). |
-| `flowmap export <file.mmd> --format svg\|png [--theme light\|dark] [--out <path>]` | Writes a picture to `exports/<name>.svg` or `.png` beside the `.mmd` (light theme by default). |
+| `flowmap export <file.mmd> --format svg\|png [--theme light\|dark] [--out <path>] [--root <dir>]` | Writes a picture to `exports/<name>.svg` or `.png` beside the `.mmd` (light theme by default). `--root` is the folder links are relative to (default: the `.mmd`'s own folder). |
 | `flowmap serve <dir> [--port 4870]` | Runs the editor. |
 
 PNG export renders in headless Chromium through Playwright, which downloads its browser separately. If the browser
@@ -300,8 +300,11 @@ it. Following a link uses the app's own navigation, so Back returns to the diagr
 come back too, if you got there by following a link). `flowmap validate` and the warnings list flag a link whose
 target doesn't exist (`W-link-missing`) or that climbs out of the served folder with a `..` segment
 (`W-link-traversal`, which the editor also refuses to follow); linking a block to its own diagram is fine. SVG
-export wraps a linked block in `<a href="<target>.svg">` so an exported set of diagrams stays clickable (PNG export
-is a flat image, so this doesn't apply there).
+export wraps a linked block in a link to the target's own SVG export, so an exported set of diagrams stays clickable:
+the link is relative from this export (`exports/` beside the diagram) to the target's (`exports/` beside it), e.g.
+`../services/exports/compute.svg`. The editor's export buttons know the served folder; from the command line, pass
+`--root <folder>` when the diagram is in a subfolder of the set (PNG export is a flat image, so none of this applies
+there).
 
 **Lanes.** Add a lane from the toolbar and name it. Double-click a lane's header to rename it. The header's menu
 (the `···` button that appears on hover) can also change the lane's id, move it up or down, or delete it. Drag a lane

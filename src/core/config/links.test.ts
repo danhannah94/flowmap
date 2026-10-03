@@ -2,8 +2,8 @@
 // normalisation and the traversal guard, the `W-link-missing`/`W-link-traversal` checks, and that `link` (unlike
 // `style`) still participates in style matching.
 import {
-  checkLinks, isWellFormedLinkTarget, linkHasTraversal, linkOf, linkTargetsByNode, linkTargetToMmdPath,
-  matchFields, movedLinkTarget, normalizeLinkTarget, parseConfig, renamedFolderLinkTarget, ruleMatches,
+  checkLinks, exportFileOf, exportLinkHref, isWellFormedLinkTarget, linkHasTraversal, linkOf, linkTargetsByNode,
+  linkTargetToMmdPath, matchFields, relativePath, movedLinkTarget, normalizeLinkTarget, parseConfig, renamedFolderLinkTarget, ruleMatches,
 } from './index';
 import type { FlowConfig } from './model';
 
@@ -170,5 +170,57 @@ describe('renamedFolderLinkTarget', () => {
 
   it('a link outside the folder entirely is untouched', () => {
     expect(renamedFolderLinkTarget('other/x', 'sales', 'sales-team')).toBeNull();
+  });
+});
+
+// §7.1 A15: an exported linked block's href is relative from the exporting diagram's export file to the target's, so
+// exports written in place (`<folder>/exports/<name>.svg`) link to each other across folders.
+describe('exportFileOf', () => {
+  it('puts a diagram\'s export in an exports folder beside it', () => {
+    expect(exportFileOf('overview', 'svg')).toBe('exports/overview.svg');
+    expect(exportFileOf('services/compute', 'svg')).toBe('services/exports/compute.svg');
+    expect(exportFileOf('a/b/c', 'png')).toBe('a/b/exports/c.png');
+  });
+});
+
+describe('relativePath', () => {
+  it.each([
+    ['', 'a.svg', 'a.svg'],
+    ['exports', 'exports/a.svg', 'a.svg'],
+    ['exports', 'services/exports/a.svg', '../services/exports/a.svg'],
+    ['services/exports', 'exports/a.svg', '../../exports/a.svg'],
+    ['a/exports', 'a/b/exports/c.svg', '../b/exports/c.svg'],
+    ['exports', 'exports/sub/x.svg', 'sub/x.svg'],
+  ])('from %s to %s is %s', (from, to, rel) => {
+    expect(relativePath(from, to)).toBe(rel);
+  });
+});
+
+describe('exportLinkHref', () => {
+  it('flat: two diagrams at the root link to each other by name, as before', () => {
+    expect(exportLinkHref('overview', 'detail')).toBe('detail.svg');
+  });
+  it('nested: from the root into a folder', () => {
+    expect(exportLinkHref('overview', 'services/compute')).toBe('../services/exports/compute.svg');
+    expect(exportLinkHref('overview', 'a/b/c')).toBe('../a/b/exports/c.svg');
+  });
+  it('same folder: by name', () => {
+    expect(exportLinkHref('services/compute', 'services/storage')).toBe('storage.svg');
+  });
+  it('sibling folder', () => {
+    expect(exportLinkHref('sales/stage-1', 'ops/handoff')).toBe('../../ops/exports/handoff.svg');
+  });
+  it('parent folder: from a folder up to the root, and up one level', () => {
+    expect(exportLinkHref('services/compute', 'overview')).toBe('../../exports/overview.svg');
+    expect(exportLinkHref('sales/legal/nda', 'sales/stage-2')).toBe('../../exports/stage-2.svg');
+  });
+  it('child folder of the exporting diagram\'s own folder', () => {
+    expect(exportLinkHref('sales/stage-2', 'sales/legal/nda')).toBe('../legal/exports/nda.svg');
+  });
+  it('a self-link points at its own export', () => {
+    expect(exportLinkHref('services/compute', 'services/compute')).toBe('compute.svg');
+  });
+  it('uses the given extension', () => {
+    expect(exportLinkHref('overview', 'services/compute', 'png')).toBe('../services/exports/compute.png');
   });
 });

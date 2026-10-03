@@ -330,10 +330,10 @@ describe('renderSvg: themes', () => {
 // --- A15: linked blocks (design.md §7.1) -------------------------------------------------------
 
 describe('renderSvg: links (A15)', () => {
-  it('wraps a linked block in <a href="<target>.svg">, leaving its <g> untouched', () => {
-    const svg = renderSvg({ title: TITLE, graph, layout, styles, legend, theme: 'light', links: { n1: 'other-diagram' } });
+  it('wraps a linked block in <a href> with the href it is given, leaving its <g> untouched', () => {
+    const svg = renderSvg({ title: TITLE, graph, layout, styles, legend, theme: 'light', linkHrefs: { n1: '../services/exports/other-diagram.svg' } });
     const root = parseXml(svg);
-    const a = findOne(root, (n) => n.tag === 'a' && n.attrs.href === 'other-diagram.svg');
+    const a = findOne(root, (n) => n.tag === 'a' && n.attrs.href === '../services/exports/other-diagram.svg');
     expect(a).toBeDefined();
     const g = a!.children.find((c) => c.tag === 'g' && c.attrs['data-node-id'] === 'n1');
     expect(g).toBeDefined();
@@ -343,7 +343,7 @@ describe('renderSvg: links (A15)', () => {
     expect(findOne(root, (n) => n.tag === 'a')).toBe(a); // exactly one <a>, the one just checked
   });
 
-  it('without `links`, nothing is wrapped', () => {
+  it('without `linkHrefs`, nothing is wrapped', () => {
     const { root } = renderFixture('light');
     expect(findOne(root, (n) => n.tag === 'a')).toBeUndefined();
   });

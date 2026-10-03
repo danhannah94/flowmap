@@ -109,8 +109,42 @@ export function renamedFolderLinkTarget(target: string, oldFolder: string, newFo
 }
 
 /**
- * Well-formed, non-traversing link targets by node id, for the SVG export (§7.1 A15): wraps a linked block in
- * `<a href="<target>.svg">`. A malformed or traversing target is left out (nothing to link to safely); a missing
+ * A diagram's default export file (§7 `flowmap export`: `exports/<name>.<ext>` beside the `.mmd`), as a path relative
+ * to the served root, from the diagram's id (its root-relative path without `.mmd`, §4 A16): `sales/stage-2` exports
+ * to `sales/exports/stage-2.svg`.
+ */
+export function exportFileOf(id: string, ext: string): string {
+  const i = id.lastIndexOf('/');
+  return i < 0 ? `exports/${id}.${ext}` : `${id.slice(0, i)}/exports/${id.slice(i + 1)}.${ext}`;
+}
+
+/**
+ * The relative URL path from folder `fromDir` to file `to`, both relative to the served root, forward slashes,
+ * without `.` or `..` segments (`''` is the root itself).
+ */
+export function relativePath(fromDir: string, to: string): string {
+  const from = fromDir.split('/').filter(Boolean);
+  const dest = to.split('/').filter(Boolean);
+  let common = 0;
+  while (common < from.length && common < dest.length - 1 && from[common] === dest[common]) common++;
+  return [...new Array<string>(from.length - common).fill('..'), ...dest.slice(common)].join('/');
+}
+
+/**
+ * §7.1 A15: the `href` an exported diagram's linked block gets: the relative path from where the exporting diagram's
+ * export is written (its default, `exportFileOf`) to where the target's export of the same format is written. So a set
+ * of diagrams exported in place stays clickable across folders: `overview` linking to `services/compute` gets
+ * `../services/exports/compute.svg`, and back the other way `../../exports/overview.svg`. `fromId` and `target` are
+ * root-relative ids (a well-formed, non-traversing target, §4).
+ */
+export function exportLinkHref(fromId: string, target: string, ext = 'svg'): string {
+  const from = exportFileOf(fromId, ext);
+  return relativePath(from.slice(0, from.lastIndexOf('/')), exportFileOf(target, ext));
+}
+
+/**
+ * Well-formed, non-traversing link targets by node id, for the SVG export (§7.1 A15): each becomes a linked block's
+ * `<a href>` (`exportLinkHref`). A malformed or traversing target is left out (nothing to link to safely); a missing
  * target is still included (the exported set may gain that page later, or another export writes it alongside).
  */
 export function linkTargetsByNode(config: FlowConfig | null, nodeIds: Iterable<string>): Record<string, string> {

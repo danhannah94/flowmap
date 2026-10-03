@@ -24,11 +24,12 @@ export interface RenderSvgOptions {
   styles: Record<string, ResolvedStyle>;
   legend: LegendItem[];
   theme: ThemeName;
-  /** A15: well-formed, non-traversing link targets by node id (`linkTargetsByNode`, core/config), for the export
-   *  only (§7.1 "so exported sets stay clickable"). A linked node's `<g>` is wrapped in `<a href="<target>.svg">`.
-   *  Omitted (or a node missing here) draws that node exactly as before. PNG export takes no special handling: it
-   *  screenshots this SVG, and a static raster has no links either way. */
-  links?: Record<string, string>;
+  /** A15: the `href` of each linked node, by node id, for the export only (§7.1 "so exported sets stay clickable"):
+   *  the caller works it out from the node's link target (`exportLinkHref`, core/config: relative from this export's
+   *  file to the target's). A linked node's `<g>` is wrapped in `<a href="…">`. Omitted (or a node missing here) draws
+   *  that node exactly as before. PNG export takes no special handling: it screenshots this SVG, and a static raster
+   *  has no links either way. */
+  linkHrefs?: Record<string, string>;
   /** A20: the preset pack's icon for each node that has one (`FlowDocument.icons`). Drawn as a small round tag on the
    *  node's top edge, towards the left (`iconBox`); omitted (or a node missing here) draws that node as before. */
   icons?: Record<string, ResolvedIcon>;
@@ -179,7 +180,7 @@ function renderGroup(group: NonNullable<LayoutResult['groups']>[number], theme: 
   ].join('');
 }
 
-function renderNode(node: LayoutResult['nodes'][number], style: ResolvedStyle | undefined, theme: Theme, linkTarget?: string, icon?: ResolvedIcon): string {
+function renderNode(node: LayoutResult['nodes'][number], style: ResolvedStyle | undefined, theme: Theme, linkHref?: string, icon?: ResolvedIcon): string {
   const resolved = resolveStyle(style, theme);
   const geometry = shapeGeometry(node.kind, { x: node.x, y: node.y, width: node.width, height: node.height });
   const localArea = textArea(node.kind, node.width, node.height);
@@ -197,7 +198,7 @@ function renderNode(node: LayoutResult['nodes'][number], style: ResolvedStyle | 
   const group = parts.join('');
   // A15 §7.1: wrap a linked block so exported sets stay clickable (the `<g>` itself is unchanged, so every existing
   // structural check on it still matches).
-  return linkTarget ? `<a href="${escapeXml(`${linkTarget}.svg`)}">${group}</a>` : group;
+  return linkHref ? `<a href="${escapeXml(linkHref)}">${group}</a>` : group;
 }
 
 /** A18: how each edge style is drawn. Solid is the original look; the others change only the stroke and the heads. */
@@ -350,7 +351,7 @@ export function renderSvg(options: RenderSvgOptions): string {
   layout.lanes.forEach((lane, index) => parts.push(renderLane(lane, index, theme, laneFree)));
   // A19: groups over the lanes and under everything else, outer before inner (file order).
   for (const group of layout.groups ?? []) parts.push(renderGroup(group, theme));
-  for (const node of layout.nodes) parts.push(renderNode(node, styles[node.id], theme, options.links?.[node.id], options.icons?.[node.id]));
+  for (const node of layout.nodes) parts.push(renderNode(node, styles[node.id], theme, options.linkHrefs?.[node.id], options.icons?.[node.id]));
   for (const edge of layout.edges) parts.push(renderEdge(edge, theme));
   // Notes and the title take no part in the layout rules and may sit over anything: drawn last, on top.
   for (const note of notes) parts.push(renderNote(note, noteStyle.get(note.id), theme));

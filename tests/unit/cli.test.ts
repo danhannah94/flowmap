@@ -262,15 +262,54 @@ describe('validate: A15 link warnings', () => {
 });
 
 describe('export --format svg: A15 links', () => {
-  it('wraps a linked block in <a href="<target>.svg">', () => {
+  /** A diagram with one block `a` linking to `target`, at `id` (root-relative, no `.mmd`) under `root`. */
+  function linked(root: string, id: string, target: string): string {
+    const mmd = join(root, `${id}.mmd`);
+    mkdirSync(join(mmd, '..'), { recursive: true });
+    writeFileSync(mmd, 'flowchart LR\n  a["A"]\n');
+    writeFileSync(join(root, `${id}.flow.yaml`), `version: 1\nnodes:\n  a:\n    link: ${target}\n`);
+    return mmd;
+  }
+  const hrefOf = (svg: string) => /<a href="([^"]*)">\s*<g data-node-id="a"/.exec(svg)?.[1];
+
+  it('flat: wraps a linked block in <a href="<target>.svg"> (both exports in the same exports/ folder)', () => {
     const dir = tmpDir('export-link');
-    writeFileSync(join(dir, 'a.mmd'), 'flowchart LR\n  a["A"]\n');
-    writeFileSync(join(dir, 'a.flow.yaml'), 'version: 1\nnodes:\n  a:\n    link: b\n');
-    const out = join(dir, 'a.svg');
-    const { status } = run(['export', join(dir, 'a.mmd'), '--format', 'svg', '--out', out]);
+    const mmd = linked(dir, 'a', 'b');
+    const { status } = run(['export', mmd, '--format', 'svg']);
     expect(status).toBe(0);
-    const svg = readFileSync(out, 'utf8');
-    expect(svg).toMatch(/<a href="b\.svg">\s*<g data-node-id="a"/);
+    expect(hrefOf(readFileSync(join(dir, 'exports', 'a.svg'), 'utf8'))).toBe('b.svg');
+  });
+
+  it('nested (--root): from the root into a folder, and back up, relative between the two exports/ folders', () => {
+    const dir = tmpDir('export-link-nested');
+    const overview = linked(dir, 'overview', 'services/compute');
+    const compute = linked(dir, 'services/compute', 'overview');
+    expect(run(['export', overview, '--format', 'svg', '--root', dir]).status).toBe(0);
+    expect(run(['export', compute, '--format', 'svg', '--root', dir]).status).toBe(0);
+    expect(hrefOf(readFileSync(join(dir, 'exports', 'overview.svg'), 'utf8'))).toBe('../services/exports/compute.svg');
+    expect(hrefOf(readFileSync(join(dir, 'services', 'exports', 'compute.svg'), 'utf8'))).toBe('../../exports/overview.svg');
+  });
+
+  it('sibling folders (--root)', () => {
+    const dir = tmpDir('export-link-sibling');
+    const a = linked(dir, 'sales/stage-1', 'ops/handoff');
+    expect(run(['export', a, '--format', 'svg', '--root', dir]).status).toBe(0);
+    expect(hrefOf(readFileSync(join(dir, 'sales', 'exports', 'stage-1.svg'), 'utf8'))).toBe('../../ops/exports/handoff.svg');
+  });
+
+  it('without --root, the diagram\'s own folder stands in for the root (as for validate)', () => {
+    const dir = tmpDir('export-link-noroot');
+    const a = linked(dir, 'sales/stage-1', 'legal/nda');
+    expect(run(['export', a, '--format', 'svg']).status).toBe(0);
+    expect(hrefOf(readFileSync(join(dir, 'sales', 'exports', 'stage-1.svg'), 'utf8'))).toBe('../legal/exports/nda.svg');
+  });
+
+  it('--out: the href is relative from where the file is actually written to the target\'s default export', () => {
+    const dir = tmpDir('export-link-out');
+    const mmd = linked(dir, 'a', 'services/b');
+    const out = join(dir, 'a.svg');
+    expect(run(['export', mmd, '--format', 'svg', '--out', out]).status).toBe(0);
+    expect(hrefOf(readFileSync(out, 'utf8'))).toBe('services/exports/b.svg');
   });
 });
 
