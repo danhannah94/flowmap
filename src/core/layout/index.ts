@@ -14,8 +14,9 @@
 //    `pinTranslation`) so the output starts at 0 and the first lane grows toward its start to hold its pins. A lane
 //    with a stored size (A8) is at least that thick, measured from its zero line; with a stored lane length (A13), the
 //    lanes are at least that long along the flow, measured from the flow axis's zero line (T after the start).
-// 6. Ports per node side (decisions use their four corners), then the orthogonal A* router (router.ts), then edge
-//    labels next to the source (L8).
+// 6. Ports per node side (decisions use their four corners; A22: an end with a stored offset at that point along its
+//    side, and with `spread_ends` the ends sharing a side spread evenly along it), then the orthogonal A* router
+//    (router.ts), then edge labels next to the source (L8).
 // Everything from step 2 on works in abstract coordinates: x along the flow, y across it; the output maps them to
 // real x/y for LR or TB.
 
@@ -24,14 +25,14 @@ import type {
 } from '../types';
 import { UNASSIGNED, isLaneFree, pinOf, sizeOf } from '../types';
 import { effectiveSize, edgeLabelSize, noteSize, roundRadius, SHAPE_GEOMETRY, TITLE_FONT, titleSize } from '../measure';
-import { portPoint } from '../shapes';
+import { alongSide, MID_AT, portPoint } from '../shapes';
 import { facingAbstract, pointAtFraction } from './geometry';
 
 // Geometry the UI and the edit operations share with the layout (v1.1): polylines (UI36, UI37), lanes of points
 // (§5), ports (§6 L12) and the stored frame of bend points.
 export {
   polylineLength, pointAtFraction, projectOntoPolyline, mergePolyline, laneAt, nodePort, nodePorts, endAtPort,
-  pointFromStored, storedFromPoint, facingAbstract, facingSide, type AbstractSide, type Point, type Frame,
+  edgeEndPort, fractionAlongSide, pointFromStored, storedFromPoint, facingAbstract, facingSide, type AbstractSide, type Point, type Frame,
 } from './geometry';
 import { stronglyConnected, backEdges, assignRanks, heights, type IndexedEdge } from './graphalg';
 import { readHints, type Hints } from './hints';
@@ -137,6 +138,9 @@ interface E {
   /** v1.1 (§5): stored sides (real names), applied bend points (stored frame), `label_at`. */
   srcSide: RealSide | null;
   tgtSide: RealSide | null;
+  /** A22: stored offsets along the stored sides (null: none, or no stored side). */
+  srcAt: number | null;
+  tgtAt: number | null;
   points: Pin[] | null;
   labelAt: number | null;
 }
@@ -208,10 +212,15 @@ export function layoutDiagram(input: LayoutInput): LayoutOutput {
       ? pts.map((p) => ({ lane: p.lane, along: Math.round(p.along), across: Math.round(p.across) }))
       : null;
     const la = entry?.label_at;
+    const srcSide = valid(entry?.source_side) ? entry.source_side : null;
+    const tgtSide = valid(entry?.target_side) ? entry.target_side : null;
+    const atOf = (v: unknown, side: RealSide | null) => (side && typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : null);
     edges.push({
       i, id: ge.id, s, t, label: ge.label,
-      srcSide: valid(entry?.source_side) ? entry.source_side : null,
-      tgtSide: valid(entry?.target_side) ? entry.target_side : null,
+      srcSide,
+      tgtSide,
+      srcAt: atOf(entry?.source_at, srcSide),
+      tgtAt: atOf(entry?.target_at, tgtSide),
       points,
       labelAt: typeof la === 'number' && Number.isFinite(la) ? Math.min(1, Math.max(0, la)) : null,
     });
@@ -442,7 +451,7 @@ export function layoutDiagram(input: LayoutInput): LayoutOutput {
       })
       : null,
   );
-  const routed = routeEdges(nodes, edges, boxes, mainSucc, height, back, dir, totalA, totalC, laneStart.slice(1), head, bendPts);
+  const routed = routeEdges(nodes, edges, boxes, mainSucc, height, back, dir, totalA, totalC, laneStart.slice(1), head, bendPts, file?.spread_ends === true);
 
   // ---- Output in real coordinates.
   const P = (x: number, y: number): [number, number] => (dir === 'LR' ? [x, y] : [y, x]);
@@ -472,6 +481,8 @@ export function layoutDiagram(input: LayoutInput): LayoutOutput {
         manual: r ? r.manual : false,
         source_side: r ? REAL_SIDE[dir][r.sides[0]]! : REAL_SIDE[dir][0]!,
         target_side: r ? REAL_SIDE[dir][r.sides[1]]! : REAL_SIDE[dir][1]!,
+        ...(r && r.ats[0] !== null ? { source_at: r.ats[0] } : {}),
+        ...(r && r.ats[1] !== null ? { target_at: r.ats[1] } : {}),
       };
     }),
   };
@@ -547,6 +558,8 @@ interface Routed {
   /** Abstract side codes used at the source and the target. */
   sides: [Side, Side];
   manual: boolean;
+  /** A22: the source's and target's offsets along their sides, when reported (stored, or spread). */
+  ats: [number | null, number | null];
 }
 
 /** Side codes are router directions: 0 = forward (+x), 1 = back (-x), 2 = +y, 3 = -y. */
@@ -555,6 +568,7 @@ type Side = Dir;
 function routeEdges(
   nodes: N[], edges: E[], boxes: RBox[], mainSucc: number[], height: number[], back: boolean[], dir: Direction,
   totalA: number, totalC: number, laneBorders: number[], headerEnd: number, bends: ([number, number][] | null)[],
+  spread: boolean,
 ): Map<number, Routed> {
   const cy = (b: RBox) => b.y + b.h / 2;
   const cx = (b: RBox) => b.x + b.w / 2;
@@ -674,17 +688,33 @@ function routeEdges(
   }
 
   // Port positions: spread the edges on each side, in the order of their other ends so they don't cross.
+  // - An end with a stored offset (A22) is at that offset's port, whatever else shares its side.
+  // - By default (v1.1) only automatic ends are spread, close around the midline; an end with a set side, or on a
+  //   manual line, is at its side's midline port (L12).
+  // - With `spread_ends` (A22), every other end that shares a side is spread evenly along it: the i-th of n (from the
+  //   side's start, in the order of their other ends) at (i + 1) / (n + 1), rounded to two decimals. Sides with a
+  //   single attachment point (a diamond's vertex, round ends) aren't spread.
   const portPos = new Map<string, number>(); // `${edge}:${end}` -> offset along the side from the box's top/left
+  /** The fraction along its side an end is attached at, when it isn't the midline (stored, or spread with A22). */
+  const endAt: (number | null)[][] = edges.map((e) => [e.srcAt, e.tgtAt]);
+  /** Whether that fraction is reported in the layout JSON (`source_at` / `target_at`). */
+  const reportAt: boolean[][] = edges.map((e) => [e.srcAt !== null, e.tgtAt !== null]);
+  /** Automatic ends spread with A22 (`${edge}:${end}` -> fraction), reported when the route uses that port. */
+  const spreadAt = new Map<string, number>();
   const bySide = new Map<string, { k: number; end: 0 | 1; other: number; aligned: boolean }[]>();
   edges.forEach((e, k) => {
     for (const end of [0, 1] as const) {
-      if (fixedEnd(k, end)) continue; // at the side's port (L12), not spread
+      if (endAt[k]![end] !== null) continue; // at its stored offset
+      if (!spread && fixedEnd(k, end)) continue; // at the side's port (L12), not spread
       const v = end === 0 ? e.s : e.t;
       const side = end === 0 ? srcSide[k]! : tgtSide[k]!;
       const ob = boxes[end === 0 ? e.t : e.s]!;
       const b = boxes[v]!;
       const alongSideAxisY = side < 2; // F/B sides run across the flow (y)
-      const other = alongSideAxisY ? cy(ob) : cx(ob);
+      // The way the line goes from this end: its other block, or (a manual line) its nearest bend point.
+      const pts = bends[k];
+      const near = pts ? (end === 0 ? pts[0]! : pts[pts.length - 1]!) : null;
+      const other = near ? (alongSideAxisY ? near[1] : near[0]) : alongSideAxisY ? cy(ob) : cx(ob);
       const aligned = e.s !== e.t && (alongSideAxisY ? Math.abs(cy(ob) - cy(b)) <= 1 : Math.abs(cx(ob) - cx(b)) <= 1);
       const key = v + ':' + side;
       let l = bySide.get(key);
@@ -705,6 +735,18 @@ function routeEdges(
       for (const p of list) portPos.set(p.k + ':' + p.end, mid);
       continue;
     }
+    if (spread) {
+      list.forEach((p, idx) => {
+        const at = Math.round(((idx + 1) * 100) / (list.length + 1)) / 100;
+        portPos.set(p.k + ':' + p.end, alongSide(len, at));
+        if (at === MID_AT) return;
+        if (fixedEnd(p.k, p.end)) {
+          endAt[p.k]![p.end] = at;
+          reportAt[p.k]![p.end] = true;
+        } else spreadAt.set(p.k + ':' + p.end, at);
+      });
+      continue;
+    }
     const anchor = Math.max(0, list.findIndex((p) => p.aligned));
     const hasAnchor = list.some((p) => p.aligned);
     const usable = Math.max(8, len - 2 * roundEnd(v.kind, side, b, dir) - 16);
@@ -716,26 +758,32 @@ function routeEdges(
     });
   }
 
-  const portOf = (v: number, side: Side, offset: number, cost: number): Port => {
+  const portOf = (v: number, side: Side, offset: number, cost: number, tag?: number): Port => {
     const b = boxes[v]!;
     switch (side) {
-      case 0: return { x: b.x + b.w, y: b.y + offset, dir: 0, cost };
-      case 1: return { x: b.x, y: b.y + offset, dir: 1, cost };
-      case 2: return { x: b.x + offset, y: b.y + b.h, dir: 2, cost };
-      default: return { x: b.x + offset, y: b.y, dir: 3, cost };
+      case 0: return { x: b.x + b.w, y: b.y + offset, dir: 0, cost, tag };
+      case 1: return { x: b.x, y: b.y + offset, dir: 1, cost, tag };
+      case 2: return { x: b.x + offset, y: b.y + b.h, dir: 2, cost, tag };
+      default: return { x: b.x + offset, y: b.y, dir: 3, cost, tag };
     }
   };
   const mid = (v: number, side: Side) => Math.floor(side < 2 ? boxes[v]!.h / 2 : boxes[v]!.w / 2);
+  const at = (k: number, end: 0 | 1) => endAt[k]![end] ?? undefined;
+  /** An automatic end's planned port, tagged with its spread fraction (A22) so the result can report it. */
+  const planned = (v: number, side: Side, k: number, end: 0 | 1): Port => {
+    const f = spreadAt.get(k + ':' + end);
+    return portOf(v, side, portPos.get(k + ':' + end)!, 0, f === undefined ? undefined : Math.round(f * 100));
+  };
   const requests = edges.map((e, k) => {
     if (manual[k]) return null; // drawn, not routed
-    // A set side (L12): only its port, on the box boundary where the side's midline meets it (the drawn line then
-    // continues inward to the port itself when the outline is inside the box).
+    // A set side (L12): only its port, on the box boundary where the side's midline (or, A22, its offset) meets it
+    // (the drawn line then continues inward to the port itself when the outline is inside the box).
     const starts: Port[] = fixSrc[k] !== null
-      ? [ports.boundary(e.s, fixSrc[k]!)]
-      : [portOf(e.s, srcSide[k]!, portPos.get(k + ':0')!, 0)];
+      ? [ports.boundary(e.s, fixSrc[k]!, at(k, 0))]
+      : [planned(e.s, srcSide[k]!, k, 0)];
     const goals: Port[] = fixTgt[k] !== null
-      ? [ports.boundary(e.t, fixTgt[k]!)]
-      : [portOf(e.t, tgtSide[k]!, portPos.get(k + ':1')!, 0)];
+      ? [ports.boundary(e.t, fixTgt[k]!, at(k, 1))]
+      : [planned(e.t, tgtSide[k]!, k, 1)];
     for (const side of [0, 1, 2, 3] as Side[]) {
       if (fixSrc[k] === null && side !== srcSide[k]) starts.push(portOf(e.s, side, mid(e.s, side), ALT_SIDE));
       if (fixTgt[k] === null && side !== tgtSide[k]) goals.push(portOf(e.t, side, mid(e.t, side), ALT_SIDE));
@@ -745,7 +793,9 @@ function routeEdges(
   // Manual lines (L11): source port, each bend point in order, target port, one elbow per step that isn't lined up.
   const drawn = edges.map((e, k) => {
     const pts = bends[k];
-    return pts ? manualLine(ports.port(e.s, srcSide[k]!), srcSide[k]!, pts, ports.port(e.t, tgtSide[k]!), tgtSide[k]!) : null;
+    return pts
+      ? manualLine(ports.port(e.s, srcSide[k]!, at(k, 0)), srcSide[k]!, pts, ports.port(e.t, tgtSide[k]!, at(k, 1)), tgtSide[k]!)
+      : null;
   });
   const xs: number[] = [];
   const ys: number[] = [];
@@ -790,6 +840,8 @@ function routeEdges(
     const e = edges[k]!;
     let points: [number, number][];
     let sides: [Side, Side];
+    // A22: the offsets reported for the two ends (stored or spread), when the end is attached there.
+    const ats: [number | null, number | null] = [reportAt[k]![0] ? endAt[k]![0]! : null, reportAt[k]![1] ? endAt[k]![1]! : null];
     if (manual[k]) {
       points = drawn[k]!;
       sides = [srcSide[k]!, tgtSide[k]!];
@@ -804,9 +856,11 @@ function routeEdges(
       }
       points = r.points;
       sides = [r.start.dir, r.goal.dir];
+      if (fixSrc[k] === null) ats[0] = r.start.tag === undefined ? null : r.start.tag / 100;
+      if (fixTgt[k] === null) ats[1] = r.goal.tag === undefined ? null : r.goal.tag / 100;
       // A set side's port may lie inside the box (a slanted or wavy outline): extend the end stub to it.
-      if (fixSrc[k] !== null) points[0] = ports.port(e.s, fixSrc[k]!);
-      if (fixTgt[k] !== null) points[points.length - 1] = ports.port(e.t, fixTgt[k]!);
+      if (fixSrc[k] !== null) points[0] = ports.port(e.s, fixSrc[k]!, at(k, 0));
+      if (fixTgt[k] !== null) points[points.length - 1] = ports.port(e.t, fixTgt[k]!, at(k, 1));
     }
     for (let q = 0; q + 1 < points.length; q++) segs.push([points[q]![0], points[q]![1], points[q + 1]![0], points[q + 1]![1]]);
     let labelPos: [number, number] | null = null;
@@ -826,7 +880,7 @@ function routeEdges(
       labels.push(lb);
       router.addLabel(lb);
     }
-    out.set(e.i, { points, labelPos, sides, manual: manual[k]! });
+    out.set(e.i, { points, labelPos, sides, manual: manual[k]!, ats });
   }
   return out;
 }
@@ -866,19 +920,19 @@ function manualLine(a: [number, number], sa: Side, pts: [number, number][], b: [
 class PortGeometry {
   constructor(private nodes: N[], private boxes: RBox[], private dir: Direction) {}
 
-  /** The port of an abstract side of node `v`: on the drawn outline, integers. */
-  port(v: number, side: Side): [number, number] {
+  /** The port of an abstract side of node `v` (A22: at `at` along its real side): on the drawn outline, integers. */
+  port(v: number, side: Side, at?: number): [number, number] {
     const b = this.boxes[v]!;
     const LR = this.dir === 'LR';
     const real = LR ? { x: b.x, y: b.y, width: b.w, height: b.h } : { x: b.y, y: b.x, width: b.h, height: b.w };
-    const [px, py] = portPoint(this.nodes[v]!.kind, real, REAL_SIDE[this.dir][side]!);
+    const [px, py] = portPoint(this.nodes[v]!.kind, real, REAL_SIDE[this.dir][side]!, at);
     return LR ? [px, py] : [py, px];
   }
 
   /** Where a line reaching that port crosses the box boundary (the router's end point), as a router port. */
-  boundary(v: number, side: Side): Port {
+  boundary(v: number, side: Side, at?: number): Port {
     const b = this.boxes[v]!;
-    const [px, py] = this.port(v, side);
+    const [px, py] = this.port(v, side, at);
     switch (side) {
       case 0: return { x: b.x + b.w, y: py, dir: 0, cost: 0 };
       case 1: return { x: b.x, y: py, dir: 1, cost: 0 };

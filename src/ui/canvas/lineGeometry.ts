@@ -7,7 +7,10 @@
 //   drawn line except the two ends, plus an end that isn't at its side's port (the op's "manual form").
 // Previews follow the same rules the layout will apply after the drop (L11 for manual lines), so what is drawn during
 // the drag is what the line becomes.
-import { endAtPort, facingSide as coreFacingSide, mergePolyline, nodePort, pointFromStored, type LayoutOutput } from '../../core/layout';
+import {
+  edgeEndPort, endAtPort, facingSide as coreFacingSide, fractionAlongSide, mergePolyline, nodePort, pointFromStored,
+  type LayoutOutput,
+} from '../../core/layout';
 import { roundPx } from '../../core/layoutfile';
 import { STUB, segmentRuns } from '../../core/ops/lines';
 import type { Direction, LayoutEdgeEntry, LayoutResult, Side } from '../../core/types';
@@ -85,6 +88,8 @@ export interface LineModel {
   segments: { a: XY; b: XY; mid: XY; horizontal: boolean }[];
   /** The sides stored in the layout file, if any (the layout chooses the others). */
   stored: { source?: Side; target?: Side };
+  /** A22: the offsets along those sides stored in the layout file, if any. */
+  storedAt: { source?: number; target?: number };
 }
 
 /**
@@ -109,7 +114,10 @@ export function lineModel(output: LayoutOutput, entry: LayoutEdgeEntry | undefin
   const stored: LineModel['stored'] = {};
   if (entry?.source_side) stored.source = entry.source_side;
   if (entry?.target_side) stored.target = entry.target_side;
-  const base = { id: edgeId, edge, source, target, direction: result.direction, drawn, segments, stored };
+  const storedAt: LineModel['storedAt'] = {};
+  if (entry?.source_side && entry.source_at !== undefined) storedAt.source = entry.source_at;
+  if (entry?.target_side && entry.target_at !== undefined) storedAt.target = entry.target_at;
+  const base = { id: edgeId, edge, source, target, direction: result.direction, drawn, segments, stored, storedAt };
   if (edge.manual && entry?.points) {
     const bends: XY[] = [];
     for (const p of entry.points) {
@@ -121,26 +129,32 @@ export function lineModel(output: LayoutOutput, entry: LayoutEdgeEntry | undefin
   const srcOff = !endAtPort(result, edgeId, 'source');
   const tgtOff = !endAtPort(result, edgeId, 'target');
   const v: XY[] = [
-    ...(srcOff ? [nodePort(source, edge.source_side) as XY] : []),
+    ...(srcOff ? [edgeEndPort(source, edge, 'source') as XY] : []),
     ...drawn,
-    ...(tgtOff ? [nodePort(target, edge.target_side) as XY] : []),
+    ...(tgtOff ? [edgeEndPort(target, edge, 'target') as XY] : []),
   ];
   return { ...base, manual: false, v, lead: srcOff ? 1 : 0, bends: v.slice(1, -1) };
 }
 
-/** The sides the line will use once `bends` are its points (§6 L12, R11.7), and so its two ports. */
+/**
+ * The sides the line will use once `bends` are its points (§6 L12, R11.7), and so its two ports: (A22) at the offsets
+ * along them the line keeps (stored, or reported by the layout and stored on becoming manual).
+ */
 function ends(m: LineModel, bends: readonly XY[]): { sa: Side; sb: Side; a: XY; b: XY } {
   let sa: Side;
   let sb: Side;
   if (!m.manual) {
-    // Becoming manual stores the sides the line uses now.
+    // Becoming manual stores the sides the line uses now, and the offsets the layout reports.
     sa = m.edge.source_side;
     sb = m.edge.target_side;
   } else {
     sa = m.stored.source ?? (bends.length ? facingSide(m.direction, m.source, bends[0]!) : m.edge.source_side);
     sb = m.stored.target ?? (bends.length ? facingSide(m.direction, m.target, bends[bends.length - 1]!) : m.edge.target_side);
   }
-  return { sa, sb, a: nodePort(m.source, sa) as XY, b: nodePort(m.target, sb) as XY };
+  // A side that doesn't change keeps its end's offset (a spread one included, as the layout reports it).
+  const atA = m.storedAt.source ?? (sa === m.edge.source_side ? m.edge.source_at : undefined);
+  const atB = m.storedAt.target ?? (sb === m.edge.target_side ? m.edge.target_at : undefined);
+  return { sa, sb, a: nodePort(m.source, sa, atA) as XY, b: nodePort(m.target, sb, atB) as XY };
 }
 
 /** The line redrawn through `bends` by L11, with the sides it will have (the bend-drag preview). */
@@ -268,6 +282,12 @@ export function connectorPath(a: XY, sa: Side, b: XY, sb: Side | null): XY[] {
 /** The screen-space distance within which a pointer is "on" a connection point (UI38). */
 export const PORT_SNAP_PX = 12;
 
+/** A22: the points along a side a dragged line end snaps to, and how close (on screen, along the side) it snaps. */
+export const SIDE_SNAPS = [0.25, 0.5, 0.75] as const;
+export const SIDE_SNAP_PX = 8;
+/** A22: how close (on screen) to a side's outline a dragged line end must be to attach along it. */
+export const SIDE_ON_PX = 6;
+
 /**
  * How close (world px) the pointer must be to one of `node`'s connection points to be on it: PORT_SNAP_PX on screen,
  * but never more than 30% of the block's smaller side, so the middle of even a small block is "elsewhere on the block"
@@ -278,10 +298,37 @@ export function portSnapRadius(node: Pick<NodeBox, 'width' | 'height'>, zoom: nu
 }
 
 /**
- * The connection point of `node` nearest to `p`, and whether `p` is on it (within `snapWorld`). Ports are the four
- * L12 ports (diamonds at their vertices), in the order top, right, bottom, left.
+ * A22: how close (world px) the pointer must be to a side's outline to attach along it: SIDE_ON_PX on screen, never more
+ * than 15% of the block's smaller side (half the ports' share), so a drop on the block's body, even near an edge, still
+ * leaves the side to the layout as in v1.1.
  */
-export function nearestPort(node: NodeBox, p: { x: number; y: number }, snapWorld: number): { side: Side; at: XY; on: boolean } {
+export function sideSnapRadius(node: Pick<NodeBox, 'width' | 'height'>, zoom: number): number {
+  return Math.min(SIDE_ON_PX / zoom, 0.15 * Math.min(node.width, node.height));
+}
+
+/** Where a dragged line end would attach on a block (UI38, A22). */
+export interface PortPick {
+  /** The side: the one the end attaches to when `on`, else the side of the nearest midline port. */
+  side: Side;
+  /** The attachment point (when `on`), or the nearest midline port. */
+  at: XY;
+  /** Whether the pointer is on a connection point (a drop attaches there). */
+  on: boolean;
+  /** A22: the fraction along `side` the end attaches at (0.5: the midline port), two decimals. */
+  frac: number;
+}
+
+/**
+ * The connection point of `node` nearest to `p`, and whether `p` is on it (within `snapWorld`).
+ * - The four L12 ports (diamonds at their vertices), in the order top, right, bottom, left, come first: a pointer
+ *   within `snapWorld` of one is on it, at 0.5, as in v1.1.
+ * - (A22) Otherwise a pointer within `sideWorld` of a side's outline is on that side, at the fraction along it it is
+ *   level with: snapped to 0.25, 0.5 or 0.75 when within `snapAlong` (world px, along the side) of one, else rounded to
+ *   two decimals. `snapAlong` 0 turns that snapping off (Alt held, as UI39); `sideWorld` 0, attaching along sides.
+ */
+export function nearestPort(
+  node: NodeBox, p: { x: number; y: number }, snapWorld: number, sideWorld = 0, snapAlong = 0,
+): PortPick {
   const sides: Side[] = ['top', 'right', 'bottom', 'left'];
   let best: { side: Side; at: XY; d: number } | null = null;
   for (const side of sides) {
@@ -289,5 +336,19 @@ export function nearestPort(node: NodeBox, p: { x: number; y: number }, snapWorl
     const d = Math.hypot(at[0] - p.x, at[1] - p.y);
     if (!best || d < best.d) best = { side, at, d };
   }
-  return { side: best!.side, at: best!.at, on: best!.d <= snapWorld };
+  if (best!.d <= snapWorld) return { side: best!.side, at: best!.at, on: true, frac: 0.5 };
+  let along: { side: Side; at: XY; d: number; frac: number } | null = null;
+  for (const side of sides) {
+    const len = side === 'top' || side === 'bottom' ? node.width : node.height;
+    const raw = fractionAlongSide(node, side, [p.x, p.y]);
+    const snap = snapAlong > 0 ? SIDE_SNAPS.find((s) => Math.abs(raw - s) * len <= snapAlong) : undefined;
+    const level = Math.round(raw * 100) / 100;
+    // How far the pointer is from the side's outline, where it is level with it; then where it attaches (snapped).
+    const here = nodePort(node, side, level) as XY;
+    const d = Math.hypot(here[0] - p.x, here[1] - p.y);
+    const frac = snap ?? level;
+    if (!along || d < along.d) along = { side, at: nodePort(node, side, frac) as XY, d, frac };
+  }
+  if (along && along.d <= sideWorld) return { side: along.side, at: along.at, on: true, frac: along.frac };
+  return { side: best!.side, at: best!.at, on: false, frac: 0.5 };
 }

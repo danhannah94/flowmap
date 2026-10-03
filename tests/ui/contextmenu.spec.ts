@@ -495,7 +495,8 @@ test('canvas: a block of each shape; add-<shape> puts its top-left at the click,
   const names = await itemNames(page);
   for (const k of SHAPES) expect(names).toContain(`add-${k}`);
   expect(names).not.toContain('show-title'); // the title is showing
-  for (const n of names) expect(['add-note', 'show-title', ...SHAPES.map((k) => `add-${k}`)]).toContain(n);
+  expect(names).toContain('spread-ends'); // A22
+  for (const n of names) expect(['add-note', 'show-title', 'spread-ends', ...SHAPES.map((k) => `add-${k}`)]).toContain(n);
   // Where the click is in diagram coordinates, from a block's on-screen box and its data-x/y.
   const ref = await attrs(node(page, 'a1'));
   const rb = (await node(page, 'a1').boundingBox())!;

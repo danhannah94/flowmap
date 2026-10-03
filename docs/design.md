@@ -336,6 +336,11 @@ or none), or both.
 **Edges** (v1.1). Keyed by edge id (§3.4). An entry holds any of:
 - `source_side`, `target_side`: `top`, `right`, `bottom` or `left`. The line leaves or enters the node at that side's
   **port** (§6 L12). A side that isn't set is chosen by the layout.
+- `source_at`, `target_at` (amendment A22): where along its side that end is attached, as a fraction of the side's
+  length from its start (the left end of a top or bottom side, the top end of a left or right side): a number from 0
+  to 1 with at most two decimals. Absent means 0.5, the side's midline port, so a file without them lays out exactly as
+  before; the UI never writes 0.5. Each is allowed only beside its own side (`source_at` needs `source_side`), and
+  goes when that side goes.
 - `points`: the line's **bend points**, in order from source to target, each `{lane, along, across}` in the same frame
   as a pin (`lane` may be `_unassigned`). A line with `points` is **manual**: it is drawn through its bend points
   (§6 L11) instead of being routed automatically, and its bend points stay where they are when blocks move. If any
@@ -345,13 +350,17 @@ or none), or both.
 - `label_at`: where along the drawn line the label's centre sits, as a fraction of the line's length from its first
   point to its last (the `points` of the layout JSON, §7): a number from 0 to 1 with at most two decimals.
 
+**Spreading line ends** (amendment A22). `"spread_ends": true` (after `lane_length`) spreads the line ends that share a
+side evenly along it instead of meeting at its port (§6 L12). Absent, or `false`, means off; the UI turns it off by
+removing the key.
+
 **Notes and title** (v1.1). `notes` maps a note id (§4) to its position `{x, y}`, and `title` is the title's position
 `{x, y}`: the top-left corner in pixels, x horizontal and y vertical whatever the direction. They aren't lane-relative:
 their zero is the diagram's top-left corner as it would be with no negative values, and they shift with the frame
 (§6, "Frame"). A note without a position, and a title without one, are placed by §6.
 
-**Values.** Every number is an integer, except `label_at`. `along` (of pins and bend points), note and title positions may be
-**negative**, and so may `across` in the **first** displayed lane: a person can put anything anywhere, including
+**Values.** Every number is an integer, except `label_at`, `source_at` and `target_at`. `along` (of pins and bend
+points), note and title positions may be **negative**, and so may `across` in the **first** displayed lane: a person can put anything anywhere, including
 before the start of the flow axis or before the first lane, and the file stores exactly where it was put. In every
 other lane `across` is at least 0: a block or bend point that would start before its lane's zero line is stored at 0
 (it sits on the lane's start edge). Sizes are at least 40. An entry with no keys is never written: an operation that empties an entry
@@ -363,7 +372,8 @@ is still an input to the layout function (L10). The UI rewrites this file; hand 
 **Problems.** Entries for unknown ids are warnings `W-layout-unknown-node`, `W-layout-unknown-edge` and
 `W-layout-unknown-note`. A file that isn't valid JSON, has keys other than the ones above plus `hints`, has an empty
 entry, or has a value of the wrong type or range is error `E-layout` (line null); the diagram still lays out, with
-none of the file's placements.
+none of the file's placements. (A22) So is a `source_at` or `target_at` outside 0 to 1, with more than two decimals,
+or without its side, and a `spread_ends` that isn't `true` or `false`.
 
 ## 6. Layout rules
 
@@ -424,6 +434,23 @@ stadiums). The result MUST satisfy:
   parallelogram's left and right sides, a cylinder's top, a document's wavy bottom, round ends). Diamonds have their
   ports at their four vertices. An edge with `source_side` or `target_side` starts or ends at that port, within 2 px,
   whether it is manual or routed automatically.
+  - (A22) **Offsets.** The port at fraction `f` along a side is on the line across the side `floor(f × length)` px from
+    its start (computed in hundredths, so a two-decimal `f` lands on the same pixel everywhere; 0.5 is the midline),
+    where the drawn outline crosses it: on the box edge for most shapes, inside it for slanted and curved outlines as
+    above, and on a diamond's face (however deep) anywhere but its vertex. An end with `source_at` or `target_at` is
+    at that port of its side, within 2 px, manual or automatic, whatever else shares the side.
+  - (A22) **Spreading.** Without `spread_ends`, as in v1.1, ends with a set side and the ends of manual lines meet at
+    their side's port, and only the layout's own automatic ends spread close around it. With `spread_ends`, the ends
+    sharing a side that have no offset (set side or not, manual or automatic) are spread evenly along it: the i-th of
+    n, counted from the side's start in the order of where their lines go (the other block's centre, or a manual line's
+    nearest bend point, along the side; then file order), at fraction `round((i + 1) / (n + 1), 2)`, so three ends
+    take 0.25, 0.5 and 0.75 and their lines don't cross on the way out. A side with a single attachment point (a
+    diamond's vertex, a round end) isn't spread. An end with a stored offset keeps it and isn't counted.
+  - **Why spreading is off by default.** Turning it on moves the ends of every line that shares a side in every
+    existing diagram, including manual lines whose bend points were placed against the old ends, and adding one line
+    later moves its neighbours' ends too (against the Stability goal below). Off by default, every existing file draws
+    exactly as before (the golden layouts are unchanged); a diagram that needs it, such as a sequence-style exchange
+    between two blocks, turns it on once, and stored offsets give exact control of any single end either way.
 - **Notes and title** (v1.1) take no part in L1–L8: they may sit anywhere, over anything. Without a stored position,
   the title sits above the diagram's top-left corner and unplaced notes sit in a row below the diagram, in the
   config's order.
@@ -481,8 +508,11 @@ least one node has no lane. `kind` is the shape kind. All numbers are integers. 
 or null when the edge has none. (v1.1) `manual` says whether the edge has bend points; `source_side` and
 `target_side` are the sides actually used (stored or chosen by the layout). (A18) `style` is `"dashed"`, `"thick"` or
 `"bidirectional"`, and is left out for a solid (`-->`) edge, so a diagram that uses only `-->` has the output it always
-had; the points, sides and label position are the same as the layout gives the edge drawn as `-->`. `notes` lists every note with its box in
-diagram coordinates (x and y may be negative), in the config's order. `title` is the title's box, or null when the title is
+had; the points, sides and label position are the same as the layout gives the edge drawn as `-->`. (A22) `source_at` and `target_at` say
+where along its side an end is attached, present only when the layout file asks for it: the stored offset, or with
+`spread_ends` the end's spread position when that isn't 0.5. They are the only fractions in the output; without them
+an end is at its side's midline port, or (an automatic end) spread on its side as v1.1 does. `notes` lists every note
+with its box in diagram coordinates (x and y may be negative), in the config's order. `title` is the title's box, or null when the title is
 hidden. `width` and `height` of the diagram cover the lanes; notes and the title may extend beyond them.
 
 ### 7.1 The SVG export (what the tests read)
@@ -651,7 +681,8 @@ Three rules apply to every operation below:
 - **UI23 Direction**: a toggle between left-to-right and top-to-bottom. It rewrites the header; pins keep their `along`
   and `across` values, and (v1.1) so do sizes, bend points and `label_at`. Sides rotate with the diagram (`right` ↔
   `bottom`, `left` ↔ `top`), and note and title positions swap x and y, so everything keeps its place relative to the
-  flow.
+  flow. (A22) Offsets along sides and `spread_ends` stay as they are: a side's start rotates with it (the top of a
+  right side becomes the left of a bottom side).
 
 **Evidence and styles**
 
@@ -723,8 +754,9 @@ Three rules apply to every operation below:
   segments in a straight row are one).
   - **Becoming manual.** The first shaping edit on an automatic line first stores, as its `points`, every corner of
     its drawn line except the two ends (the layout JSON's `points` without the first and last). It also stores the
-    sides the line uses, so redrawing through L11 and L12 gives exactly the same line. If an end of the automatic
-    line isn't at its side's port, that end is stored as a bend point too.
+    sides the line uses, and (A22) the offsets the layout JSON reports for its ends (`source_at`, `target_at`), so
+    redrawing through L11 and L12 gives exactly the same line. If an end of the automatic line isn't at its side's
+    port (at that offset, when there is one), that end is stored as a bend point too.
   - **Segment drag.** Dragging a segment's handle slides that segment sideways, perpendicular to itself, like
     draw.io: both of its end corners move by the same amount. An end of the segment that is attached to a port can't
     move, so the drag first adds a stub: a corner 20 px out from that port along the segment. A segment attached to
@@ -753,6 +785,15 @@ Three rules apply to every operation below:
     end's side: the id, `points` and `label_at` stay.
   - The preview line is drawn orthogonally, bending the way the final line will. The click path in UI15 sets no
     sides. Diamonds connect at their four vertices.
+  - (A22) **Along a side.** The four ports come first: a drop within the snap distance (12 screen px) of one attaches
+    there, as above. Otherwise a drop right at a side's outline (within 6 screen px of it, and never more than 15% of
+    the block's smaller side inside it, so the block's body is still "elsewhere on the block") attaches to that side at
+    the point the pointer is level with, which snaps to 0.25, 0.5 or 0.75 of the side when within 8 screen px of one (Alt held turns
+    this snapping off, as in UI39) and is otherwise rounded to two decimals; it writes the side and, unless it is 0.5,
+    the offset (`target_at`, or `source_at` when reconnecting a source end). So dragging a line's end along the side
+    it is on moves it along that side (UI38's same-block rule: only that end's side and offset change). While
+    dragging, the snap points other than the ports show as small ticks, and a marker shows where a drop along a side
+    would attach. Any drop that sets a side without an offset removes the end's old offset.
 - **UI39 Snap and guides**: while dragging blocks, bend points, notes or the title, the dragged item snaps when its
   centre line or one of its edges comes within 6 screen pixels of the same kind of line on a target that isn't being
   dragged: centre to centre, left edge to left edge, top to top, and so on, horizontally and vertically on their own.
@@ -782,6 +823,7 @@ Three rules apply to every operation below:
   | title | `reset-position` | the title has a stored position |
   | canvas | `add-note`, `add-<shape kind>` for each of the eight shapes | always |
   | canvas | `show-title` | the title is hidden |
+  | canvas | `spread-ends` (A22: "Spread line ends", ticked while on; toggles `spread_ends`) | always |
 
   `shape` opens `data-shape` options, `colors` and `color` open colour inputs (`data-prop`, `data-variant`), and
   `font-size` opens a number input (`data-prop="font_size"`), all inside the menu. `add-<shape kind>` adds the block
@@ -817,15 +859,15 @@ entry by its edge's new id (matching edges by their position in the file, so a r
 duplicate pair keeps entries on the right lines). In the same write:
 - deleting an edge deletes its entry;
 - renaming a node renames its node entry and the keys of its edges' entries;
-- reconnecting an end to another block removes the entry's `points` and the moved end's side (the other side and
-  `label_at` stay);
+- reconnecting an end to another block removes the entry's `points` and the moved end's side, with its offset (A22)
+  (the other side and its offset, and `label_at` stay);
 - deleting a node deletes its entry and its edges' entries;
 - renaming a lane renames `lane` in pins and bend points;
 - deleting a lane in any way removes the `points` of every line with a bend point in that lane, and the pins of
   blocks that move out of it;
 - duplicating a block (UI13) copies its size as well;
-- "Re-layout all" (UI12) removes every pin and every line's `points`, and keeps sizes, sides, `label_at`, notes and the
-  title position;
+- "Re-layout all" (UI12) removes every pin and every line's `points`, and keeps sizes, sides (with their offsets, A22),
+  `label_at`, `spread_ends`, notes and the title position;
 - when an operation leaves no block in Unassigned, so that its lane disappears, every bend point in `_unassigned` is
   re-expressed in the last remaining lane at the same on-screen position;
 - any entry these leave empty is removed (§5).
@@ -865,7 +907,7 @@ opening first, through the listed opener).
 | Export result | `data-testid="export-path"` with the written path as text |
 | Notices | `data-testid="edit-dropped"` (UI30), `data-testid="history-cleared"` (UI28) |
 | Shortcut list | `data-testid="shortcuts"` (shown by `?`) |
-| Node (v1.1) | also `data-sized="true\|false"` (has a stored size); four connection handles `data-handle="source"` each with `data-port="top\|right\|bottom\|left"`, in that DOM order; when selected, resize handles `data-resize="n\|ne\|e\|se\|s\|sw\|w\|nw"`; while a line is being connected or reconnected over it, connection points `data-port-target="<side>"`; (amendment A15) a node with a `link` also has a `data-testid="link-badge"` child with `data-link-target="<target>"` |
+| Node (v1.1) | also `data-sized="true\|false"` (has a stored size); four connection handles `data-handle="source"` each with `data-port="top\|right\|bottom\|left"`, in that DOM order; when selected, resize handles `data-resize="n\|ne\|e\|se\|s\|sw\|w\|nw"`; while a line is being connected or reconnected over it, connection points `data-port-target="<side>"` (A22: plus the snap ticks `data-port-tick="<side>"` with `data-at="0.25\|0.75"`, and, when a drop would attach along a side off its port, `data-port-drop` with `data-side` and `data-at`); (amendment A15) a node with a `link` also has a `data-testid="link-badge"` child with `data-link-target="<target>"` |
 | Edge (v1.1) | also `data-manual="true\|false"` and `data-points` (the drawn line as integer diagram coordinates, `x1,y1 x2,y2 …`, equal to the layout JSON's `points`); its label is a child with `data-role="edge-label"` (draggable); when selected, one handle per segment of the merged drawn line `data-segment="<i>"` (UI36) and one per bend point `data-bend="<i>"` (0-based, from the source) |
 | Line style (A18) | `data-testid="edge-style-picker"` (UI44), one button per style with `data-edge-style`, `aria-pressed`; the line context menu's `data-menu-item="line-style"` holds the same four `data-edge-style` options with `aria-checked` |
 | Snap guide (v1.1) | `data-testid="snap-guide"`, present while a snap is active during a drag |
@@ -1021,3 +1063,4 @@ in flight.
 | 2026-09-30 | **A16. Folders on the home screen (Dan).** Folders are real subdirectories of the served root, so they work with git, the CLI and editors: a diagram's id/path is its root-relative path without extension (`sales/stage-2`), and `?file=` is that path plus `.mmd` (a bare `<name>.mmd` still works unchanged). **Server**: `isValidMmdName` (§8.2's traversal rejections) now accepts any number of folder segments; every segment (of a diagram's or a folder's path alike) is still checked for `..`, a leading slash and a backslash, and additionally rejected if it's a dot-folder, `node_modules` or `exports` (already special, UI32/A10, so never reachable as a browsable folder). Every path is further resolved through the served root with symlinks followed (`resolveInRoot`/`PathTraversalError` in `src/server/files.ts`) before any read, write, move, or create/rename/delete, rejecting one that lands outside it. `GET /api/diagrams` now lists every `.mmd` under the root recursively (root-relative paths, depth-limited, `MAX_FOLDER_DEPTH` = 12), skipping dot-folders (so `.flowmap-trash`, A10, is never listed or reachable through these routes), `node_modules` and `exports` (already special, UI32/A10) at any depth. `GET /api/folder?dir=<path>` lists one folder's immediate subfolders and diagrams only (so an empty subfolder still shows, unlike the recursive list); `POST`/`PUT`/`DELETE /api/folder` create, rename (keeping a folder in its parent) and delete (only when empty, else 409 with a message) a folder. `POST /api/diagram/move` `{file, to}` moves a diagram's `.mmd`/`.flow.yaml`/`.layout.json` (whichever exist) and any other file beside it sharing its base name (an extra export, say) into folder `to`, refusing a name collision at the destination; it is one server function (`moveDiagram`) precisely so a later change could rewrite `link:` node values (the cross-diagram link feature built alongside this one) that point at the diagram's old path — that change is amendment A17 (§12), below. **Home screen**: shows the current folder's subfolders, then its diagrams; a breadcrumb (root, then each segment) remembers the folder in `?dir=`, so Back works. "New folder" creates one in the current folder; a folder's own small menu (opener + popover, the same pattern UI6/A10's per-row control uses) offers Rename and Delete (refused, with a message, unless empty); a diagram's row menu adds "Move to…" (a small dialog: breadcrumbs and subfolders to browse to, "Move here") beside Delete (A10, now inside the same menu rather than its own button). Dragging a diagram row onto a folder row or a breadcrumb segment moves it there the same way. New diagrams (UI6) are created in the current folder. The editor shows the full path in its file name and its "back to list" (the home logo, UI1) returns to the diagram's own folder, not always the root; a diagram's `?file=` keeps working with or without a folder. | Diagrams needed real folders to organise a growing set of process maps (Sales-style client work spans many stages), while staying plain files a person could also browse in Finder or edit by hand. |
 | 2026-10-03 | **A18. Dashed, thick and bidirectional edges (issue #1).** §3.1: three more arrows are accepted, each a line style (new §3.1.1): `-.->` dashed (async, event, optional), `==>` thick (critical path) and `<-->` bidirectional (a head at each end). Labels work as for `-->` (`-.->|event|`, `-.->|"x"|`, and the long forms `-. x .->`, `== x ==>`, `<-- x -->`), and chains and `&` groups give each arrow its own style. Every other arrow, including the combinations `<-.->` and `<==>`, `-.-` and `===`, is still `E-edge`. §3.3: canonical form writes the one spelling of each style, with the label in `|…|` form. The style lives only in the `.mmd` (not the config or layout file), does not change the edge id, and does not change layout or routing: L1–L12 treat every style like `-->`. §7: `flowmap layout --json` edges gain `style` (`dashed`, `thick` or `bidirectional`; absent for solid, so a diagram of only `-->` edges has byte-identical output); §7.1: a non-solid edge's `<g>` has `data-edge-style`, dashed is `stroke-dasharray="6 4"`, thick is `stroke-width="3"` with its own `arrowhead-thick` marker (defined only when used), bidirectional has `marker-start`. §8: UI44 (line style picker `edge-style-picker`, the line context menu's `line-style` item, `data-edge-style` on every UI edge element; copy, paste and duplicate carry the style), §8.3 rows, U17 and P31. §11: "line styles" narrows to styles beyond these four. `fixtures/errors/E-edge.mmd` uses `---` now (it used `-.->`), and `docs/rulings.md` ruling 7 is annotated. Golden SVGs for each form are in `tests/golden/edge-styles/`. | Architecture diagrams need to tell synchronous calls from async or event flows, mark a critical path and show two-way links, and every arrow other than `-->` was an error. |
 | 2026-10-03 | **A21. Distribution and CI.** §7: the `flowmap` command is also installed from npm as `@danhannah94/flowmap` (`npx @danhannah94/flowmap <command>`); the package ships the built CLI and UI only (`dist/`, `bin/`), and `pnpm exec flowmap` from a clone still works as before (A2). §7: when `export --format png` cannot find the Playwright headless Chromium it exits 1 with a one-line message giving the install command (`npx playwright@<version> install chromium-headless-shell`) instead of a stack trace, and `POST /api/export` answers 503 with the same message; SVG export is unaffected. GitHub Actions runs typecheck, the unit tests and the browser tests on every push to `main` and pull request, and a `v*` tag publishes to npm. | The tool could only be run from a clone, nothing checked a change before it merged, and a fresh clone failed the PNG export test with a raw Playwright error. |
+| 2026-10-03 | **A22. More connection points per block side (issue #6).** **Offsets**: §5: an edge entry may hold `source_at` / `target_at` beside `source_side` / `target_side`: where along that side the end is attached, as a fraction of the side's length from its start (the left end of a top or bottom side, the top end of a left or right side), a number from 0 to 1 with at most two decimals; absent means 0.5, the midline port, so every existing file lays out exactly as before. An offset outside 0 to 1, with more than two decimals, or without its own side is `E-layout`. §6 L12: the port at fraction `f` is on the line across the side `floor(f × length)` px from its start (in hundredths, so every implementation lands on the same pixel), where the drawn outline crosses it (a diamond's face off its vertices); an end with an offset is there within 2 px, manual or automatic. §7: the layout JSON's edges report `source_at` / `target_at` only when the file asks for them (a stored offset, or a spread position other than 0.5), so the output of every existing file is unchanged. **Setting one**: UI38: while connecting or reconnecting, a drop right at a side's outline (within 6 screen px, at most 15% of the block's smaller side inside it), not only on its port, attaches at the point along the side the pointer is level with, snapped to 0.25, 0.5 and 0.75 within 8 screen px (Alt turns that off, as UI39), else rounded to two decimals; dragging a line's end along the side it is on is the same-block case, so only that end's side and offset change. The four ports still win within their 12 px snap distance and the block's body is still "elsewhere", so a v1.1 drop does what it did unless it lands right on the outline. While dragging, the snap points show as `data-port-tick="<side>"` (`data-at`) and the drop point as `data-port-drop` (`data-side`, `data-at`). 0.5 is never written. Removing a side removes its offset (reconnecting an end to another block, Reset line, a drop elsewhere on the block); Re-layout all, copy, paste, duplicate, renames and UI23 keep offsets (UI23: a side's start rotates with it, so the value stays). UI36: becoming manual stores the reported offsets with the sides, so an end at an offset counts as at its port (`endAtPort`) and doesn't turn into a bend point, and the line doesn't move. **Spreading**: §5: `"spread_ends": true` (after `lane_length`) spreads the ends that share a side and have no offset (set side or not, manual or automatic) evenly along it, the i-th of n at `round((i + 1) / (n + 1), 2)`, ordered from the side's start by where their lines go (the other block's centre, or a manual line's nearest bend point), so they don't cross; single-point sides (a diamond's vertex, round ends) aren't spread. Not `true` or `false` is `E-layout`. UI40: the canvas menu's `spread-ends` ("Spread line ends", ticked while on) toggles it, writing `true` or removing the key. **Off by default**, because turning it on moves the ends of every line sharing a side in every existing diagram, manual lines included, and makes one added line move its neighbours' ends (against H5's stability); a diagram that needs it turns it on once, and offsets give exact control of single ends either way. U13 and P25 include a drop along a side, dragging an end along its side and the toggle (`tests/ui/ports-a22.spec.ts`). | Several lines leaving or entering the same side all met at its one midline port and overlapped, so a sequence-style diagram (two blocks exchanging several numbered messages, as in an OAuth flow) couldn't be read; bend points couldn't help, since they still converged on the same port. |

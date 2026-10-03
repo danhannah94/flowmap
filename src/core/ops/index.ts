@@ -25,7 +25,7 @@ export {
   addLane, deleteLane, displayLaneOrder, laneSlug, moveLane, promoteUnassigned, renameLane, reorderLanes,
   resetLaneLength, resetLaneSize, resizeLane, resizeLaneLength, setLaneLabel, type DeleteLaneMode,
 } from './lanes';
-export { setDirection, setTitle } from './diagram';
+export { setDirection, setSpreadEnds, setTitle } from './diagram';
 export {
   addRule, applySwatch, clearNodeLink, deleteOrphanEdgeEntry, deleteOrphanLaneEntry, deleteOrphanNodeEntry,
   deleteOrphanNoteEntry, deleteOrphanPin, deleteRule, editMatchCondition, moveRule, removeFieldFromNodes,

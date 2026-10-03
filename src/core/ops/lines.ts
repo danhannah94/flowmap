@@ -2,7 +2,9 @@
 // current layout's `points`, in diagram coordinates) and writes the line's entry in the layout file (§5):
 //
 // - Becoming manual: the first shaping edit on an automatic line stores, as its `points`, every corner of its drawn line
-//   except the two ends, plus any end that isn't at its side's port, and stores the sides the line uses (§6 L11, L12).
+//   except the two ends, plus any end that isn't at its side's port, and stores the sides the line uses (§6 L11, L12),
+//   with (A22) the offsets along them the layout reports (`source_at` / `target_at`: an end at an offset is at its
+//   port, so it doesn't become a bend point).
 // - A line is handled in its "manual form": the drawn polyline from the source port to the target port. For a manual
 //   line that is the drawn line itself (L11 starts and ends it at the ports); for an automatic line whose end isn't at
 //   its port, the port is put in front of (or after) the drawn line, which is how L11 will draw the stored end.
@@ -11,7 +13,7 @@
 // - Tidy (after every drag): the moved points and their neighbours (a port counts as a neighbour, and is never removed)
 //   are checked; a point in a straight row with both neighbours, or on top of one, is removed. No points left: `points`
 //   is removed and the line is automatic again, keeping its sides.
-import { endAtPort, nodePort, pointFromStored, projectOntoPolyline, storedFromPoint, type Point } from '../layout';
+import { edgeEndPort, endAtPort, pointFromStored, projectOntoPolyline, storedFromPoint, type Point } from '../layout';
 import { resetEdge, roundPx, updateEdge, type EdgePatch } from '../layoutfile';
 import type { LayoutResultEdge, Pin, XY } from '../types';
 import { refuse, run, type Ctx, type Files, type OpResult } from './context';
@@ -80,9 +82,9 @@ function readLine(ctx: Ctx, view: View, edgeId: string): Line {
   const srcOff = !endAtPort(view.result, edgeId, 'source');
   const tgtOff = !endAtPort(view.result, edgeId, 'target');
   const v: Point[] = [
-    ...(srcOff ? [nodePort(node(edge.source), edge.source_side)] : []),
+    ...(srcOff ? [edgeEndPort(node(edge.source), edge, 'source')] : []),
     ...drawn,
-    ...(tgtOff ? [nodePort(node(edge.target), edge.target_side)] : []),
+    ...(tgtOff ? [edgeEndPort(node(edge.target), edge, 'target')] : []),
   ];
   const pointAt = v.slice(1, -1).map((_p, k) => k + 1);
   return {
@@ -91,12 +93,17 @@ function readLine(ctx: Ctx, view: View, edgeId: string): Line {
   };
 }
 
-/** The patch that writes a line's new points (null: none left), plus its sides when it is becoming manual. */
+/**
+ * The patch that writes a line's new points (null: none left), plus its sides when it is becoming manual, and (A22)
+ * the offsets along them that the layout reports (a stored one, or a spread position), so the line keeps its ends.
+ */
 function pointsPatch(line: Line, points: Pin[]): EdgePatch {
   const patch: EdgePatch = { points: points.length ? points : null };
   if (!line.manual) {
     patch.source_side = line.edge.source_side;
     patch.target_side = line.edge.target_side;
+    if (line.edge.source_at !== undefined && line.edge.source_at !== 0.5) patch.source_at = line.edge.source_at;
+    if (line.edge.target_at !== undefined && line.edge.target_at !== 0.5) patch.target_at = line.edge.target_at;
   }
   return patch;
 }

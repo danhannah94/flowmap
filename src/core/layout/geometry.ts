@@ -109,9 +109,13 @@ export function laneAt(layout: Pick<LayoutResult, 'direction' | 'lanes'>, x: num
 
 type NodeBox = Pick<LayoutResult['nodes'][number], 'kind' | 'x' | 'y' | 'width' | 'height'>;
 
-/** The port of one side of a laid-out block (§6 L12), in diagram coordinates. */
-export function nodePort(node: NodeBox, side: Side): Point {
-  return portPoint(node.kind, node, side);
+/**
+ * The port of one side of a laid-out block (§6 L12), in diagram coordinates. (A22) With `at`, the port at that
+ * fraction along the side (from its left end for top and bottom, its top end for left and right) instead of the
+ * midline's.
+ */
+export function nodePort(node: NodeBox, side: Side, at?: number): Point {
+  return portPoint(node.kind, node, side, at);
 }
 
 /** All four ports of a laid-out block, in the order top, right, bottom, left (UI38's handle order). */
@@ -120,8 +124,29 @@ export function nodePorts(node: NodeBox): { side: Side; point: Point }[] {
 }
 
 /**
- * Whether one end of a laid-out edge is at the port of the side it uses (within 2 px, as §6 L12 allows). UI36's
- * "becoming manual" stores an end that isn't as a bend point too. False for an edge or node not in the layout.
+ * A22: the fraction along a side nearest to point `p`: `p` projected onto the side (its x for top and bottom, its y
+ * for left and right), from 0 at the side's start to 1 at its end. Not rounded.
+ */
+export function fractionAlongSide(node: Pick<NodeBox, 'x' | 'y' | 'width' | 'height'>, side: Side, p: readonly [number, number]): number {
+  const vertical = side === 'top' || side === 'bottom';
+  const len = vertical ? node.width : node.height;
+  if (len <= 0) return 0.5;
+  const f = vertical ? (p[0] - node.x) / len : (p[1] - node.y) / len;
+  return Math.min(1, Math.max(0, f));
+}
+
+type EdgeEnds = Pick<LayoutResult['edges'][number], 'source_side' | 'target_side' | 'source_at' | 'target_at'>;
+
+/** The port one end of a laid-out edge is attached to: its side's, at its `source_at` / `target_at` (A22) if any. */
+export function edgeEndPort(node: NodeBox, e: EdgeEnds, end: 'source' | 'target'): Point {
+  return end === 'source' ? nodePort(node, e.source_side, e.source_at) : nodePort(node, e.target_side, e.target_at);
+}
+
+/**
+ * Whether one end of a laid-out edge is at the port of the side it uses (within 2 px, as §6 L12 allows). (A22) The
+ * port is at the end's offset along its side when the layout reports one (`source_at` / `target_at`), so an end
+ * attached at an offset counts as at its port. UI36's "becoming manual" stores an end that isn't as a bend point too.
+ * False for an edge or node not in the layout.
  */
 export function endAtPort(layout: Pick<LayoutResult, 'nodes' | 'edges'>, edgeId: string, end: 'source' | 'target'): boolean {
   const e = layout.edges.find((x) => x.id === edgeId);
@@ -129,7 +154,7 @@ export function endAtPort(layout: Pick<LayoutResult, 'nodes' | 'edges'>, edgeId:
   const node = layout.nodes.find((n) => n.id === (end === 'source' ? e.source : e.target));
   if (!node) return false;
   const p = end === 'source' ? e.points[0]! : e.points[e.points.length - 1]!;
-  const q = nodePort(node, end === 'source' ? e.source_side : e.target_side);
+  const q = edgeEndPort(node, e, end);
   return Math.hypot(p[0] - q[0], p[1] - q[1]) <= 2;
 }
 

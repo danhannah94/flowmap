@@ -60,7 +60,10 @@ export interface FragmentEdge {
   /** A18: absent means `solid`. */
   style?: EdgeStyle;
   source_side?: Side;
+  /** A22: offsets along the sides. */
+  source_at?: number;
   target_side?: Side;
+  target_at?: number;
   label_at?: number;
   /** Bend points of a manual line (only when they applied in the source diagram). */
   points?: FragmentPoint[];
@@ -131,7 +134,9 @@ function readFragment(ctx: Ctx, ids: readonly string[], layout: LayoutArg): Frag
     if (edge.style && edge.style !== 'solid') out.style = edge.style;
     const entry = ctx.layoutIn?.edges?.[edgeIdList[k]!];
     if (entry?.source_side) out.source_side = entry.source_side;
+    if (entry?.source_side && entry.source_at !== undefined) out.source_at = entry.source_at;
     if (entry?.target_side) out.target_side = entry.target_side;
+    if (entry?.target_side && entry.target_at !== undefined) out.target_at = entry.target_at;
     if (entry?.label_at !== undefined) out.label_at = entry.label_at;
     const line = drawn.edges.find((e) => e.id === edgeIdList[k]);
     if (entry?.points && line?.manual) {
@@ -250,7 +255,9 @@ export function pasteFragment(
       .map((e, k) => {
         const patch: EdgePatch = {};
         if (e.source_side) patch.source_side = e.source_side;
+        if (e.source_side && e.source_at !== undefined) patch.source_at = e.source_at;
         if (e.target_side) patch.target_side = e.target_side;
+        if (e.target_side && e.target_at !== undefined) patch.target_at = e.target_at;
         const points = e.points ? pastePoints(e.points, place, view, dx, dy, shows, first) : null;
         if (points) patch.points = points;
         if (e.label_at !== undefined) patch.label_at = e.label_at;
@@ -385,8 +392,10 @@ export function isFragment(v: unknown): v is Fragment {
     for (const k of ['source_side', 'target_side'] as const) {
       if (e[k] !== undefined && !(SIDES as readonly unknown[]).includes(e[k])) return false;
     }
-    if (e.label_at !== undefined && !(isNum(e.label_at) && e.label_at >= 0 && e.label_at <= 1
-      && Math.round(e.label_at * 100) === e.label_at * 100)) return false;
+    for (const k of ['label_at', 'source_at', 'target_at'] as const) {
+      const f = e[k];
+      if (f !== undefined && !(isNum(f) && f >= 0 && f <= 1 && Math.round(f * 100) === f * 100)) return false;
+    }
     if (e.points !== undefined) {
       if (!Array.isArray(e.points) || e.points.length === 0) return false;
       for (const p of e.points) {
