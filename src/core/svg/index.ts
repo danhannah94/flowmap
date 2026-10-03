@@ -150,10 +150,19 @@ function renderNode(node: LayoutResult['nodes'][number], style: ResolvedStyle | 
   return linkTarget ? `<a href="${escapeXml(`${linkTarget}.svg`)}">${group}</a>` : group;
 }
 
+/** A18: how each edge style is drawn. Solid is the original look; the others change only the stroke and the heads. */
+const EDGE_STROKE_WIDTH = { solid: 1.5, dashed: 1.5, bidirectional: 1.5, thick: 3 } as const;
+const EDGE_DASH = '6 4';
+
 function renderEdge(edge: LayoutResult['edges'][number], theme: Theme): string {
+  const style = edge.style ?? 'solid';
   const pointsAttr = edge.points.map(([x, y]) => `${num(x)},${num(y)}`).join(' ');
-  const parts: string[] = [`<g data-edge-id="${escapeXml(edge.id)}">`];
-  parts.push(`<polyline points="${pointsAttr}" fill="none" stroke="${theme.edgeColor}" stroke-width="1.5" marker-end="url(#arrowhead)"/>`);
+  const styleAttr = style === 'solid' ? '' : ` data-edge-style="${style}"`;
+  const parts: string[] = [`<g data-edge-id="${escapeXml(edge.id)}"${styleAttr}>`];
+  const dash = style === 'dashed' ? ` stroke-dasharray="${EDGE_DASH}"` : '';
+  const head = style === 'thick' ? 'arrowhead-thick' : 'arrowhead';
+  const start = style === 'bidirectional' ? ` marker-start="url(#${head})"` : '';
+  parts.push(`<polyline points="${pointsAttr}" fill="none" stroke="${theme.edgeColor}" stroke-width="${EDGE_STROKE_WIDTH[style]}"${dash}${start} marker-end="url(#${head})"/>`);
   if (edge.label) {
     parts.push(`<title>${escapeXml(edge.label)}</title>`);
     if (edge.label_pos) {
@@ -208,8 +217,11 @@ function renderLegend(legend: LegendItem[], theme: Theme, x: number, y: number, 
   return parts.join('');
 }
 
-function renderDefs(theme: Theme): string {
-  return `<defs><marker id="arrowhead" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="${theme.edgeColor}"/></marker></defs>`;
+function renderDefs(theme: Theme, thick: boolean): string {
+  // A18: a thick line's head is sized from its own stroke width (markerUnits), so it gets its own smaller marker, and
+  // only a diagram that has a thick line carries it.
+  const marker = (id: string, size: number) => `<marker id="${id}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="${size}" markerHeight="${size}" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="${theme.edgeColor}"/></marker>`;
+  return `<defs>${marker('arrowhead', 7)}${thick ? marker('arrowhead-thick', 4) : ''}</defs>`;
 }
 
 /** The title: one line of TITLE_FONT, its top-left at the box's (the layout's `title`, §7). */
@@ -275,7 +287,7 @@ export function renderSvg(options: RenderSvgOptions): string {
   parts.push(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${num(totalWidth)}" height="${num(totalHeight)}" viewBox="0 0 ${num(totalWidth)} ${num(totalHeight)}" font-family="Inter, -apple-system, 'Segoe UI', sans-serif" data-theme="${theme.name}">`,
   );
-  parts.push(renderDefs(theme));
+  parts.push(renderDefs(theme, layout.edges.some((e) => e.style === 'thick')));
   parts.push(`<rect x="0" y="0" width="${num(totalWidth)}" height="${num(totalHeight)}" fill="${theme.canvasBackground}"/>`);
 
   parts.push(`<g transform="translate(${num(ox)}, ${num(oy)})">`);

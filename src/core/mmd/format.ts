@@ -4,7 +4,7 @@
 
 import type { Comment, Diagram, Edge, Lane, NodeDecl } from './model';
 import { canWriteUnquoted, encodeLabel } from './syntax';
-import type { ShapeKind } from '../types';
+import type { EdgeStyle, ShapeKind } from '../types';
 
 const NODE_INDENT_UNLANED = '  ';
 const NODE_INDENT_LANED = '    ';
@@ -35,10 +35,14 @@ export function formatNodeDecl(node: Pick<NodeDecl, 'id' | 'shape' | 'label' | '
   return `${node.id}${open}"${encodeLabel(node.label)}"${close}${suffix}`;
 }
 
+/** A18: the one canonical spelling of each arrow style. */
+export const ARROWS: Record<EdgeStyle, string> = { solid: '-->', dashed: '-.->', thick: '==>', bidirectional: '<-->' };
+
 /** One edge in canonical form, without indentation (§3.3 step 5). */
-export function formatEdge(edge: Pick<Edge, 'source' | 'target' | 'label'>): string {
-  if (edge.label === null || edge.label === '') return `${edge.source} --> ${edge.target}`;
-  return `${edge.source} -->|${formatInlineLabel(edge.label)}| ${edge.target}`;
+export function formatEdge(edge: Pick<Edge, 'source' | 'target' | 'label' | 'style'>): string {
+  const arrow = ARROWS[edge.style ?? 'solid'];
+  if (edge.label === null || edge.label === '') return `${edge.source} ${arrow} ${edge.target}`;
+  return `${edge.source} ${arrow}|${formatInlineLabel(edge.label)}| ${edge.target}`;
 }
 
 /** A `subgraph` line in canonical form, without indentation (§3.3 step 4). */

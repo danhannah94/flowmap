@@ -32,8 +32,8 @@ Answers to questions the contract (`design.md`) didn't settle. Newest at the bot
 5. A space between an id and its shape (`a [x]`) is `E-syntax`, and so is a class on a node without a shape
    (`a:::hot`).
 6. `a -- "text" --> b` (a quoted label in the long form) is accepted.
-7. `a -- b` and `a--b["X"]` are `E-syntax`. `---`, `--x`, `--o`, `-.->`, `==>`, `<-->`, `~~~` and `o--o` are
-   `E-edge`.
+7. `a -- b` and `a--b["X"]` are `E-syntax`. `---`, `--x`, `--o`, `~~~` and `o--o` are `E-edge`. (Amendment A18 later accepted `-.->`, `==>` and `<-->`; the
+   rest of Mermaid's arrows are still `E-edge`.)
 8. In pass-through lines, `;` is allowed inside `"…"` and right after a `#word` (so `fill:#f96;stroke:#333` is fine);
    `;;` at the end is `E-syntax`.
 9. `a["A"] & b["B"]` with no arrow is two declarations; a comment above it goes with the first.

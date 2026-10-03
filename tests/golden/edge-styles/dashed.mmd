@@ -1,0 +1,4 @@
+flowchart LR
+  svc["Stream service"]
+  bucket[("Audit store")]
+  svc -.->|event| bucket

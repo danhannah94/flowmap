@@ -99,8 +99,12 @@ so that both authors can round-trip it without loss. Anything outside the subset
 - **Edges**: `a --> b`, `a -->|label| b`, `a -->|"label"| b`, `a -- label --> b`. Whitespace around arrows and labels
   is optional (`a-->b`, `a-->|x|b`). Chains (`a --> b --> c`) and `&` groups (`a --> b & c`, `a & b --> c & d`) expand
   to single edges, source-major, left to right (as Mermaid does): `a & b --> c & d` is `a->c`, `a->d`, `b->c`, `b->d`.
-  A node may be declared inline in an edge (`a["X"] --> b{"Y"}`). Duplicate edges are kept, in file order. Any other
-  arrow (`---`, `-.->`, `==>`, `--o`, `--x`, `<-->` and so on) is `E-edge`.
+  A node may be declared inline in an edge (`a["X"] --> b{"Y"}`). Duplicate edges are kept, in file order.
+  (A18) Three more arrows are accepted, each a *line style* (§3.1.1): `-.->` dashed, `==>` thick and `<-->`
+  bidirectional. They take labels exactly as `-->` does (`a -.->|event| b`, `a -.->|"label"| b`, and the long forms
+  `a -. label .-> b`, `a == label ==> b`, `a <-- label --> b`), and chain and `&`-group the same way; each arrow of a
+  chain has its own style. Any other arrow (`---`, `-.-`, `===`, `--o`, `--x`, `<-.->`, `<==>`, `~~~` and so on) is
+  `E-edge`. Stray characters after an accepted arrow (`-.->>`, `==>>`, `<-->>`, `-..->`, `===>`) are `E-edge`.
 - **Comments**: lines starting with `%%`, including `%%{init: …}%%` directives.
 - **Pass-through lines**: `classDef`, `class`, `style`, `linkStyle` and `click` lines are kept (see 3.3) but have no
   effect in the flowmap UI; styling comes from the config.
@@ -142,6 +146,8 @@ In order:
    written `[<id>]`.
 5. A blank line, then **all edges**, indented 2 spaces, in file order after expansion, one edge per line:
    `a --> b`, or `a -->|label| b` when the label passes the same unquoted-character test, else `a -->|"label"| b`.
+   (A18) The arrow is the edge's style's one spelling: `-->` solid, `-.->` dashed, `==>` thick, `<-->` bidirectional,
+   with the label after it in the same `|…|` form (`a -.->|event| b`); the long label forms are rewritten to it.
 6. If there are pass-through lines: a blank line, then those lines in original order, indented 2 spaces, with a
    trailing `;` removed and otherwise unchanged.
 7. If there are trailing comments: a blank line, then those comments at column 0.
@@ -173,6 +179,20 @@ literally contains the text `#quot;` (or `#35;`, `#92;`) is written with its `#`
 - A comment attached to a node or edge the UI deletes is deleted with it.
 
 `fixtures/syntax/edge-cases.mmd` and `edge-cases.canonical.mmd` exercise many of these rules in one file.
+
+### 3.1.1 Line styles (A18)
+
+An edge has one of four styles, set only by its arrow: `solid` (`-->`, the default), `dashed` (`-.->`), `thick` (`==>`)
+and `bidirectional` (`<-->`). The style is part of the `.mmd` and nowhere else: it is not in the config or the layout
+file. It means *how the line is drawn*, never where: layout, routing, ports, label placement, bend points and sides
+treat every style exactly like `-->` (§6), so changing a style never moves anything. An edge's id (§3.4) does not
+depend on its style, so two edges between the same pair differing only in style are `a->b` and `a->b#2`. In the
+`GraphEdge` the layout and renderer see, `style` is absent for `solid`.
+
+- Mermaid renders all four natively, so GitHub's fallback view shows them (`linkStyle` pass-through lines still apply
+  to edges by position, as before).
+- `bidirectional` has the arrowhead at both ends and is still *directed* for layout: its source and target are the
+  arrow's left and right side, so rank, back edges and ports are decided exactly as for `-->`.
 
 ### 3.4 Edge ids
 
@@ -447,6 +467,9 @@ Layout JSON (all numbers in px, origin top-left, the same coordinates as the UI 
              "x": 40, "y": 50, "width": 160, "height": 60, "pinned": false}],
   "edges": [{"id": "n01->n02", "source": "n01", "target": "n02", "label": null,
              "points": [[200, 80], [260, 80]], "label_pos": null,
+             "manual": false, "source_side": "right", "target_side": "left"},
+            {"id": "n02->n03", "source": "n02", "target": "n03", "label": "event", "style": "dashed",
+             "points": [[320, 80], [380, 80]], "label_pos": [350, 80],
              "manual": false, "source_side": "right", "target_side": "left"}],
   "notes": [{"id": "note1", "text": "Freight is the long pole", "x": 40, "y": -60, "width": 180, "height": 20}],
   "title": {"text": "Purchase request", "x": 0, "y": -48, "width": 210, "height": 24}
@@ -456,7 +479,9 @@ Layout JSON (all numbers in px, origin top-left, the same coordinates as the UI 
 Nodes with no lane are in a lane with id `_unassigned` (label "Unassigned"), placed last. That lane exists only when at
 least one node has no lane. `kind` is the shape kind. All numbers are integers. `label_pos` is the centre of the label,
 or null when the edge has none. (v1.1) `manual` says whether the edge has bend points; `source_side` and
-`target_side` are the sides actually used (stored or chosen by the layout). `notes` lists every note with its box in
+`target_side` are the sides actually used (stored or chosen by the layout). (A18) `style` is `"dashed"`, `"thick"` or
+`"bidirectional"`, and is left out for a solid (`-->`) edge, so a diagram that uses only `-->` has the output it always
+had; the points, sides and label position are the same as the layout gives the edge drawn as `-->`. `notes` lists every note with its box in
 diagram coordinates (x and y may be negative), in the config's order. `title` is the title's box, or null when the title is
 hidden. `width` and `height` of the diagram cover the lanes; notes and the title may extend beyond them.
 
@@ -479,7 +504,10 @@ The tests parse the SVG as XML. Layout and drawing are otherwise the implementat
   `<g>` wrapped in `<a href="<target>.svg">`, so an exported set of diagrams stays clickable; PNG export has no such
   wrapping (it screenshots the SVG, and a flat image has no links either way).
 - Each edge is a `<g data-edge-id="<id>">` with a `<path>` or `<polyline>`, and, if it has a label, a `<title>` with
-  the label.
+  the label. (A18) A non-solid edge's `<g>` also has `data-edge-style="dashed|thick|bidirectional"` (absent for solid),
+  and its line is drawn so: dashed has `stroke-dasharray="6 4"`; thick has `stroke-width="3"` (solid and dashed: `1.5`)
+  and an arrowhead sized for it (its own `<marker id="arrowhead-thick">`, defined only when a thick edge exists);
+  bidirectional has `marker-start` as well as `marker-end`, both `url(#arrowhead)`. A solid edge is drawn as before.
 - The legend is a `<g data-testid="legend">` with one `<g data-testid="legend-item">` per rule that has legend text,
   in rule order. Each holds the legend text and a swatch shape styled with the same attributes as a node shape.
 
@@ -585,6 +613,17 @@ Three rules apply to every operation below:
   label and its comment; its id follows its new endpoints.
 - **UI17 Edge label**: double-click an edge to edit its label. Enter commits, Escape cancels, and an empty label removes
   the label.
+- **UI44 Line style** (A18): while one or more lines are selected and no block is, the line style picker
+  (`data-testid="edge-style-picker"`, a bar docked like the shape picker, UI7) offers the four styles as buttons
+  `data-edge-style="solid|dashed|thick|bidirectional"`; the style every selected line has is pressed
+  (`aria-pressed="true"`), none when they differ. Choosing one rewrites the arrow of every selected line whose style
+  differs, as one undo step; choosing the style they already have writes nothing. The same four options are in the line
+  context menu's `line-style` item (UI40). A line just made by connecting (UI15) is selected, so the picker is where a
+  new line gets its style; connecting itself always makes a solid line. Changing a style keeps the line's id, place in
+  the file, label, comment, sides, bend points and `label_at`; reconnecting (UI16), editing the label (UI17), moving
+  blocks and re-keying (§8.2) keep it too. Copy, cut, paste and duplicate (A12) carry it, and the Mermaid copied to the
+  system clipboard uses the arrows. The drawn line follows the style (dashed stroke, wider stroke, a head at each end
+  for `bidirectional`), in the SVG export exactly as §7.1 says.
 
 **Lanes**
 
@@ -737,6 +776,7 @@ Three rules apply to every operation below:
   | line | `add-bend` | the click wasn't on a bend point |
   | line | `remove-bend` | the click was on a bend point |
   | line | `reset-line` / `reset-label` | the line is manual or has a side / has `label_at` |
+  | line | `line-style` (A18) | always; opens the four style options, each `data-edge-style`, the current one `aria-checked="true"` |
   | note | `edit-note`, `font-size`, `bold`, `color`, `delete` | always |
   | title | `edit-title`, `hide-title` | always |
   | title | `reset-position` | the title has a stored position |
@@ -808,7 +848,7 @@ opening first, through the listed opener).
 | Lane delete dialog | `data-testid="lane-delete-dialog"` with a `data-testid="lane-target"` select (lane ids and `_unassigned`) and buttons `lane-move-blocks`, `lane-delete-blocks`, `confirm-no` |
 | Node | `data-node-id="<id>"`, `data-kind="<shape kind>"`, `data-lane="<lane id>"`, `data-pinned="true\|false"`, `data-selected="true\|false"`, `data-x`, `data-y`, `data-width`, `data-height` (integer layout coordinates at zoom 1, as in `flowmap layout`); the label text is in a child with `data-role="label"` |
 | Node connection handle | `data-handle="source"` inside the node element (v1.1: four of them, see "Node (v1.1)"; there is no `data-handle="target"` in v1.1) |
-| Edge | `data-edge-id="<id>"`, `data-source`, `data-target`, `data-selected`; the label text is inside the element; when selected, its ends are `data-edge-end="source\|target"` |
+| Edge | `data-edge-id="<id>"`, `data-source`, `data-target`, `data-selected`, (A18) `data-edge-style="solid\|dashed\|thick\|bidirectional"`; the label text is inside the element; when selected, its ends are `data-edge-end="source\|target"` |
 | Palette | `data-testid="palette"`, one button per shape with `data-shape="<shape kind>"` (click, or drag onto a lane) |
 | Shape picker | `data-testid="shape-picker"` (shown when one block is selected), one option per shape with `data-shape` |
 | Toolbar | `data-testid` = `connect`, `duplicate`, `delete`, `unpin`, `relayout-all`, `add-lane`, `direction-toggle`, `undo`, `redo`, `styles-toggle`, `fit`, `export-svg`, `export-png`, `theme-toggle` |
@@ -827,6 +867,7 @@ opening first, through the listed opener).
 | Shortcut list | `data-testid="shortcuts"` (shown by `?`) |
 | Node (v1.1) | also `data-sized="true\|false"` (has a stored size); four connection handles `data-handle="source"` each with `data-port="top\|right\|bottom\|left"`, in that DOM order; when selected, resize handles `data-resize="n\|ne\|e\|se\|s\|sw\|w\|nw"`; while a line is being connected or reconnected over it, connection points `data-port-target="<side>"`; (amendment A15) a node with a `link` also has a `data-testid="link-badge"` child with `data-link-target="<target>"` |
 | Edge (v1.1) | also `data-manual="true\|false"` and `data-points` (the drawn line as integer diagram coordinates, `x1,y1 x2,y2 …`, equal to the layout JSON's `points`); its label is a child with `data-role="edge-label"` (draggable); when selected, one handle per segment of the merged drawn line `data-segment="<i>"` (UI36) and one per bend point `data-bend="<i>"` (0-based, from the source) |
+| Line style (A18) | `data-testid="edge-style-picker"` (UI44), one button per style with `data-edge-style`, `aria-pressed`; the line context menu's `data-menu-item="line-style"` holds the same four `data-edge-style` options with `aria-checked` |
 | Snap guide (v1.1) | `data-testid="snap-guide"`, present while a snap is active during a drag |
 | Context menu (v1.1) | `data-testid="context-menu"`, items `data-menu-item="<name>"` exactly as in UI40's table; the `shape`, colour and font-size controls render inside the menu element |
 | Block colours (v1.1) | in the inspector: `data-testid="block-colors"` holding `data-prop="fill\|border_color\|text_color"` controls with `data-variant="light\|dark"` inputs, preset swatches `data-testid="swatch"` with `data-color="#rrggbb"` (light) and `data-color-dark="#rrggbb"`, and `block-colors-reset` |
@@ -884,6 +925,7 @@ opening first, through the listed opener).
 | U13 (v1.1) | Lines (UI36–UI38): segment drag, bend drag, add, remove and reset; label drag and reset; connect from each side; drop on a connection point; UI and `flowmap layout` agree on the drawn path | 🤖 |
 | U14 (v1.1) | Snap (UI39) and context menus (UI40): a drag that ends within 6 px of alignment stores the aligned position and shows `snap-guide`; Alt disables it; every menu item on every target does what its requirement says | 🤖 |
 | U15 (v1.1) | Notes and title (UI41, UI42): add, edit, move, style, delete; hide, show, move and reset the title; the SVG export includes them | 🤖 |
+| U17 (A18) | Line styles (UI44): `-.->`, `==>` and `<-->` round-trip through `validate`, `fmt`, `layout --json` and `export` canonically; the editor draws each, and the picker and context menu change a line's style (one or several lines, undo, redo) and set one on a line just connected; the router treats them like `-->` | 🤖 |
 | U16 (v1.1) | Anywhere (UI43): drops left of and above everything store the dropped position (negative values included), the lane rules for "above" and "left" hold, every other block keeps its on-screen position, and the lanes in `flowmap layout` still start at 0 | 🤖 |
 
 **Part 3: parity (section 8.1)**
@@ -928,6 +970,7 @@ the config as parsed YAML with every untouched line byte-identical, and the layo
 | P28 (v1.1) | Edits that keep the layout file in step (§8.2): delete one of three duplicate edges that have entries; rename a node with a sized, pinned entry and shaped lines; delete a lane that holds a bend point; re-layout all | 🤖 |
 | P29 (v1.1) | Drop a block, a bend point and a note left of and above everything (negative values) | 🤖 |
 | P30 (v1.1) | Undo then redo each of P21–P29 | 🤖 |
+| P31 (A18) | Style a new line, an old line and several lines at once (picker and context menu); undo then redo each | 🤖 |
 
 **Human judgment**
 
@@ -949,7 +992,7 @@ the config as parsed YAML with every untouched line byte-identical, and the layo
 Real-time multi-user editing; accounts; cloud anything; showing or editing `.mmd` comments, class suffixes or
 pass-through lines in the UI (section 8.1); multiple pages per diagram with off-page connectors (stretch); comments on
 the canvas (stretch); a generated open-questions list (stretch); draw.io export (stretch); nested lanes; Mermaid
-features outside the subset in section 3; curved lines; line colours and line styles; grouping several blocks into
+features outside the subset in section 3; curved lines; line colours; line styles beyond the four of A18 (dotted, combinations such as dashed and bidirectional, other arrowheads); grouping several blocks into
 one; rotating blocks.
 
 ## 12. Amendments
@@ -976,3 +1019,4 @@ in flight.
 | 2026-09-30 | **A14. Trackpad-friendly navigation, and a controls legend (Dan).** UI3: a trackpad's two-finger scroll pans the canvas on both axes instead of zooming; a trackpad pinch, a mouse's scroll wheel, and Cmd/Ctrl+wheel (still, unconditionally) all zoom around the cursor; a mouse's Shift+wheel pans horizontally. Space+drag and the middle button still pan (A11). Which way one wheel event goes is a heuristic (`classifyWheel`, `src/ui/canvas/wheel-intent.ts`), since no browser API says "this is a trackpad": `ctrlKey`/`metaKey` always zoom; `deltaMode` 1 or 2 (lines/pages) or a legacy `wheelDeltaY` that is a clean multiple of 120 read as a mouse; a non-zero `deltaX` in pixel mode or a fractional `deltaY` read as a trackpad; a whole-pixel, vertical-only, otherwise-unmarked delta falls back to zoom, the original behaviour. Classification is sticky for 300 ms of one continuous, genuinely ambiguous tail (a trackpad's momentum decaying to a whole-pixel delta near the end of a scroll), but a modifier key or the "Scroll to" override below is read fresh on every event and is never held over. Safari reports a trackpad pinch as `gesturestart`/`gesturechange`/`gestureend` (`scale`) instead of Ctrl+wheel; both are handled, and while one of Safari's gesture events is in progress the wheel handler stands down so the same physical pinch isn't applied twice. A "Scroll to: Auto / Pan / Zoom" choice (`localStorage` key `flowmap.scroll-preference`, degrading quietly if storage is unavailable) overrides the heuristic; Cmd/Ctrl+wheel still always zooms regardless of it. A controls legend — a small chip (`data-testid="controls-legend-toggle"`) beside the `?` shortcut button, its panel `data-testid="controls-legend"` — lists Pan, Zoom, Select, Edit and View in a few lines each, verified against the real gesture and keyboard code rather than guessed, and holds the "Scroll to" control (`data-testid="scroll-preference"`); its open/closed state is remembered in `localStorage` (`flowmap.controls-legend-open`), collapsed by default. It is not modal and doesn't replace the existing `?` shortcut list, which still has the full keyboard reference. | A plain wheel-always-zooms canvas fights a trackpad's two-finger scroll, the way most people expect to pan; and the pan/zoom/select/edit gestures were only discoverable by opening the full shortcut list. |
 | 2026-09-30 | **A15. A block can link to another diagram (Dan).** §4: a node's metadata may hold `link`, another diagram's path relative to the served root, without `.mmd`, forward slashes only (§4's new bullet has the full grammar and the two warning codes, `W-link-missing` and `W-link-traversal`, added to §7's code list). `link` is reserved like `style` (not a field row; the field form refuses it as a key) but, unlike `style`, stays a normal matchable field, so a style rule can mark linked blocks (`match: {link: present}`). Linking a block to its own diagram is allowed. **Following a link**: Cmd+click (Mac) / Ctrl+click (elsewhere) on a linked block follows it instead of extending the selection (the one exception to A11's Cmd/Ctrl-click-extends-selection rule: only on a block that has a link); a plain click always still selects. Every linked block also draws a small corner badge (`data-testid="link-badge"`, `data-link-target`, its title the target); a plain click on the badge alone follows the link regardless of the selection state. Following a link uses the app's own `?file=` navigation (not a hand-rolled route), so Back returns to the diagram it was followed from; the previous diagram's viewport (pan and zoom) is cached in `sessionStorage`, keyed by file name, the moment a link is followed, and consumed once when that diagram is next opened (by Back or otherwise) — cheap, and falling back to the normal fit when there's nothing cached. A traversing link (a `..` segment) is stored and warned but the UI refuses to follow it (a toast explains why); a link to a target that simply doesn't exist is still followed, landing on the same "couldn't open" screen a deleted diagram already shows. **Setting a link**: the inspector gets a "Links to" field (`data-testid="link-field"`, `link-input`, `link-clear`, `link-suggestion` per diagram the server lists — reusing `GET /api/diagrams`, the home page's own API — and `link-open` once set); the block context menu gets `link` ("Link to diagram…"), the same input and suggestions inside the menu. Typing accepts a pasted `.mmd` name or a backslash path, normalising both. **Validation**: `flowmap validate` checks a diagram's links against every `.mmd` under its own directory (recursively, skipping `.flowmap-trash` and `exports`) — the closest available stand-in for "the served root" at the single-file CLI, since `validate` takes no `--dir`; the UI checks against the diagram list it already fetched. **Export**: SVG wraps a linked block's `<g>` in `<a href="<target>.svg">` (§7.1); PNG is unaffected (it screenshots the SVG, and a flat raster has no links regardless). **Staying valid across a move or folder rename**: amendment A17 (§12), below. | "Hand-off" blocks in a set of stage diagrams (e.g. "Hand-off to 2 · Complete + save") should take you straight to the diagram they refer to, without leaving the editor or hunting through the home page. |
 | 2026-09-30 | **A16. Folders on the home screen (Dan).** Folders are real subdirectories of the served root, so they work with git, the CLI and editors: a diagram's id/path is its root-relative path without extension (`sales/stage-2`), and `?file=` is that path plus `.mmd` (a bare `<name>.mmd` still works unchanged). **Server**: `isValidMmdName` (§8.2's traversal rejections) now accepts any number of folder segments; every segment (of a diagram's or a folder's path alike) is still checked for `..`, a leading slash and a backslash, and additionally rejected if it's a dot-folder, `node_modules` or `exports` (already special, UI32/A10, so never reachable as a browsable folder). Every path is further resolved through the served root with symlinks followed (`resolveInRoot`/`PathTraversalError` in `src/server/files.ts`) before any read, write, move, or create/rename/delete, rejecting one that lands outside it. `GET /api/diagrams` now lists every `.mmd` under the root recursively (root-relative paths, depth-limited, `MAX_FOLDER_DEPTH` = 12), skipping dot-folders (so `.flowmap-trash`, A10, is never listed or reachable through these routes), `node_modules` and `exports` (already special, UI32/A10) at any depth. `GET /api/folder?dir=<path>` lists one folder's immediate subfolders and diagrams only (so an empty subfolder still shows, unlike the recursive list); `POST`/`PUT`/`DELETE /api/folder` create, rename (keeping a folder in its parent) and delete (only when empty, else 409 with a message) a folder. `POST /api/diagram/move` `{file, to}` moves a diagram's `.mmd`/`.flow.yaml`/`.layout.json` (whichever exist) and any other file beside it sharing its base name (an extra export, say) into folder `to`, refusing a name collision at the destination; it is one server function (`moveDiagram`) precisely so a later change could rewrite `link:` node values (the cross-diagram link feature built alongside this one) that point at the diagram's old path — that change is amendment A17 (§12), below. **Home screen**: shows the current folder's subfolders, then its diagrams; a breadcrumb (root, then each segment) remembers the folder in `?dir=`, so Back works. "New folder" creates one in the current folder; a folder's own small menu (opener + popover, the same pattern UI6/A10's per-row control uses) offers Rename and Delete (refused, with a message, unless empty); a diagram's row menu adds "Move to…" (a small dialog: breadcrumbs and subfolders to browse to, "Move here") beside Delete (A10, now inside the same menu rather than its own button). Dragging a diagram row onto a folder row or a breadcrumb segment moves it there the same way. New diagrams (UI6) are created in the current folder. The editor shows the full path in its file name and its "back to list" (the home logo, UI1) returns to the diagram's own folder, not always the root; a diagram's `?file=` keeps working with or without a folder. | Diagrams needed real folders to organise a growing set of process maps (Sales-style client work spans many stages), while staying plain files a person could also browse in Finder or edit by hand. |
+| 2026-10-03 | **A18. Dashed, thick and bidirectional edges (issue #1).** §3.1: three more arrows are accepted, each a line style (new §3.1.1): `-.->` dashed (async, event, optional), `==>` thick (critical path) and `<-->` bidirectional (a head at each end). Labels work as for `-->` (`-.->|event|`, `-.->|"x"|`, and the long forms `-. x .->`, `== x ==>`, `<-- x -->`), and chains and `&` groups give each arrow its own style. Every other arrow, including the combinations `<-.->` and `<==>`, `-.-` and `===`, is still `E-edge`. §3.3: canonical form writes the one spelling of each style, with the label in `|…|` form. The style lives only in the `.mmd` (not the config or layout file), does not change the edge id, and does not change layout or routing: L1–L12 treat every style like `-->`. §7: `flowmap layout --json` edges gain `style` (`dashed`, `thick` or `bidirectional`; absent for solid, so a diagram of only `-->` edges has byte-identical output); §7.1: a non-solid edge's `<g>` has `data-edge-style`, dashed is `stroke-dasharray="6 4"`, thick is `stroke-width="3"` with its own `arrowhead-thick` marker (defined only when used), bidirectional has `marker-start`. §8: UI44 (line style picker `edge-style-picker`, the line context menu's `line-style` item, `data-edge-style` on every UI edge element; copy, paste and duplicate carry the style), §8.3 rows, U17 and P31. §11: "line styles" narrows to styles beyond these four. `fixtures/errors/E-edge.mmd` uses `---` now (it used `-.->`), and `docs/rulings.md` ruling 7 is annotated. Golden SVGs for each form are in `tests/golden/edge-styles/`. | Architecture diagrams need to tell synchronous calls from async or event flows, mark a critical path and show two-way links, and every arrow other than `-->` was an error. |

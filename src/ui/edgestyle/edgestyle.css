@@ -1,0 +1,15 @@
+/* Line styles (A18 / UI44): the picker bar reuses the shape picker's bar and buttons (blocks.css); only the icon and the
+   wider button are new. The drawn styles themselves are in styles.css next to the other edge rules. */
+
+.fm-edge-style-picker .fm-edge-style-option {
+  width: 46px;
+}
+
+.fm-edge-style-icon {
+  display: block;
+  overflow: visible;
+}
+
+.fm-cm-shape .fm-edge-style-icon {
+  color: var(--text);
+}

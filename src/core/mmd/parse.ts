@@ -6,7 +6,7 @@
 // Cross-line rules (duplicates, lanes, unclosed subgraphs, edges to subgraphs, W-no-lane) are applied as lines are
 // read or at the end. A file with no subgraphs at all gives no W-no-lane (amendment A5).
 
-import type { Direction, Problem, Problems, ShapeKind } from '../types';
+import type { Direction, EdgeStyle, Problem, Problems, ShapeKind } from '../types';
 import type { Comment, Diagram, Edge, Lane, NodeDecl } from './model';
 import { emptyDiagram, undeclaredNodes } from './model';
 import {
@@ -72,8 +72,8 @@ const YAML_KEY = /[A-Za-z_][A-Za-z0-9_-]*/y;
 const YAML_BARE = /[^\s,}"]+/y;
 
 /**
- * Arrows outside the subset (§3.1: `---`, `-.->`, `==>`, `--o`, `--x`, `<-->`, `~~~`, `o--o`, …). Only consulted after
- * the accepted forms (`-->`, `-- label -->`) have been ruled out.
+ * Arrows outside the subset (§3.1: `---`, `-.-`, `===`, `--o`, `--x`, `<==>`, `~~~`, `o--o`, …). Only consulted after
+ * the accepted forms (`-->`, `-.->`, `==>`, `<-->`, each with its label) have been ruled out.
  */
 const OTHER_ARROW = /^[<ox]?(?:-{2,}|={2,}|~{3,}|-\.)/;
 
@@ -91,10 +91,16 @@ interface NodeRef {
   decl: ShapeDecl | null;
 }
 
-/** `a & b --> c -->|x| d`: groups joined by arrows. `labels[i]` is the arrow between groups i and i+1. */
+/** One arrow (§3.1 edges): its label (or null) and, from A18, its style. */
+interface Arrow {
+  label: string | null;
+  style: EdgeStyle;
+}
+
+/** `a & b --> c -->|x| d`: groups joined by arrows. `arrows[i]` is the arrow between groups i and i+1. */
 interface EdgeStatement {
   groups: NodeRef[][];
-  labels: (string | null)[];
+  arrows: Arrow[];
 }
 
 /**
@@ -117,15 +123,15 @@ const SHAPE_OPENERS: { open: string; close: string; shape: ShapeKind | null }[] 
 function parseEdgeStatement(s: string): EdgeStatement {
   const sc = new Scanner(s);
   const groups = [parseGroup(sc)];
-  const labels: (string | null)[] = [];
+  const arrows: Arrow[] = [];
   for (;;) {
     sc.skipWs();
     if (sc.eof()) break;
-    labels.push(parseArrow(sc));
+    arrows.push(parseArrow(sc));
     sc.skipWs();
     groups.push(parseGroup(sc));
   }
-  return { groups, labels };
+  return { groups, arrows };
 }
 
 /** `a & b & c` (§3.1 `&` groups). */
@@ -253,44 +259,86 @@ function parseExpandedShape(sc: Scanner): ShapeDecl {
 }
 
 /**
- * An arrow and its label (§3.1 edges): `-->`, `-->|label|`, `-->|"label"|`, `-- label -->`, with whitespace optional.
- * Returns the decoded label, or null for none. Other arrows are E-edge.
+ * An arrow and its label (§3.1 edges), with whitespace optional. Four forms (A18), each with the pipe label after the
+ * arrow (`-->|label|`, `-->|"label"|`) or the text label inside it:
+ *   `-->` / `-- label -->` solid, `-.->` / `-. label .->` dashed, `==>` / `== label ==>` thick,
+ *   `<-->` / `<-- label --> ` bidirectional.
+ * Any other arrow is E-edge.
  */
-function parseArrow(sc: Scanner): string | null {
-  if (sc.startsWith('-->')) {
-    const next = sc.peek(3);
-    if (next === '-' || next === '>') throw edgeError(`arrow not supported: "${sc.s.slice(sc.pos)}"`);
-    sc.pos += 3;
-    const save = sc.pos;
-    sc.skipWs();
-    if (sc.peek() === '|') return parsePipeLabel(sc);
-    sc.pos = save;
-    return null;
-  }
-  if (sc.startsWith('--')) {
-    const c = sc.peek(2);
-    const after = sc.peek(3);
+function parseArrow(sc: Scanner): Arrow {
+  const solid = (open: string, style: EdgeStyle): Arrow | null => {
+    // `-->` or `<-->`: the bare form, then an optional `|label|`.
+    if (sc.startsWith(`${open}>`)) {
+      const next = sc.peek(open.length + 1);
+      if (next === '-' || next === '>') throw edgeError(`arrow not supported: "${sc.s.slice(sc.pos)}"`);
+      sc.pos += open.length + 1;
+      return { label: pipeLabelAfter(sc), style };
+    }
+    if (!sc.startsWith(open)) return null;
+    const c = sc.peek(open.length);
+    const after = sc.peek(open.length + 1);
     // `---`, `--.`, `--=`, and `--x` / `--o` standing alone, are other arrows.
     if (c === '-' || c === '.' || c === '=') throw edgeError('arrow not supported');
     if ((c === 'x' || c === 'o') && (after === undefined || after === ' ' || after === '\t' || after === '|')) {
-      throw edgeError(`arrow not supported: "--${c}"`);
+      throw edgeError(`arrow not supported: "${open}${c}"`);
     }
     // `-- label -->`: the label runs to the next `--`, which must be the closing `-->`.
-    const start = sc.pos + 2;
+    const start = sc.pos + open.length;
     const close = sc.s.indexOf('--', start);
-    if (close < 0) throw syntaxError('"--" without a closing "-->"');
+    if (close < 0) throw syntaxError(`"${open}" without a closing "-->"`);
     const tail = sc.s[close + 2];
     if (tail !== '>' || sc.s[close + 3] === '-' || sc.s[close + 3] === '>') throw edgeError('arrow not supported');
     const label = parseTextLabel(sc.s.slice(start, close));
     sc.pos = close + 3;
-    const save = sc.pos;
-    sc.skipWs();
-    if (sc.peek() === '|') throw syntaxError('an arrow has two labels');
-    sc.pos = save;
-    return label;
-  }
+    rejectSecondLabel(sc);
+    return { label, style };
+  };
+  // `-.->` and `==>` (and their text forms): the opener is two characters, the closer three.
+  const marked = (open: string, head: string, stray: string, style: EdgeStyle): Arrow | null => {
+    if (!sc.startsWith(open)) return null;
+    if (sc.startsWith(head)) {
+      const next = sc.peek(head.length);
+      if (next === '>' || next === stray) throw edgeError(`arrow not supported: "${sc.s.slice(sc.pos)}"`);
+      sc.pos += head.length;
+      return { label: pipeLabelAfter(sc), style };
+    }
+    const c = sc.peek(open.length);
+    // `-.-`, `-..->`, `===`, `==>>` and so on: another arrow.
+    if (c === '-' || c === '=' || c === '.' || c === '>') throw edgeError(`arrow not supported: "${sc.s.slice(sc.pos)}"`);
+    // `-. label .->`: the label runs to the closing `.->`.
+    const closer = style === 'dashed' ? '.->' : '==>';
+    const start = sc.pos + open.length;
+    const close = sc.s.indexOf(closer, start);
+    if (close < 0) throw edgeError('arrow not supported');
+    const after = sc.s[close + 3];
+    if (after === '>' || after === stray) throw edgeError('arrow not supported');
+    const label = parseTextLabel(sc.s.slice(start, close));
+    sc.pos = close + 3;
+    rejectSecondLabel(sc);
+    return { label, style };
+  };
+  const arrow = solid('--', 'solid') ?? marked('-.', '-.->', '-', 'dashed') ?? marked('==', '==>', '=', 'thick')
+    ?? solid('<--', 'bidirectional');
+  if (arrow) return arrow;
   if (OTHER_ARROW.test(sc.s.slice(sc.pos))) throw edgeError(`arrow not supported: "${sc.s.slice(sc.pos)}"`);
   throw syntaxError(`unexpected "${sc.s.slice(sc.pos)}"`);
+}
+
+/** After a bare arrow: the `|label|` that may follow it (null for none). */
+function pipeLabelAfter(sc: Scanner): string | null {
+  const save = sc.pos;
+  sc.skipWs();
+  if (sc.peek() === '|') return parsePipeLabel(sc);
+  sc.pos = save;
+  return null;
+}
+
+/** After an arrow with its label inside it, a second `|label|` is an error. */
+function rejectSecondLabel(sc: Scanner): void {
+  const save = sc.pos;
+  sc.skipWs();
+  if (sc.peek() === '|') throw syntaxError('an arrow has two labels');
+  sc.pos = save;
 }
 
 /** `|label|` or `|"label"|` after `-->`, at the opening `|`. */
@@ -502,10 +550,10 @@ export function parse(text: string): ParseResult {
   };
 
   const handleEdgeStatement = (stmt: string, line: number): void => {
-    const { groups, labels } = parseEdgeStatement(stmt);
+    const { groups, arrows } = parseEdgeStatement(stmt);
     const refs = groups.flat();
     // §3.1: a line that is only a bare id is E-syntax; a node joins a lane by being declared there.
-    if (labels.length === 0 && refs.some((ref) => ref.decl === null)) {
+    if (arrows.length === 0 && refs.some((ref) => ref.decl === null)) {
       throw syntaxError(`"${stmt}" declares nothing: give the node a shape, or connect it with an arrow`);
     }
     let firstDecl: NodeDecl | null = null;
@@ -516,10 +564,13 @@ export function parse(text: string): ParseResult {
     }
     // §3.1: chains and `&` groups expand source-major, left to right.
     const edges: Edge[] = [];
-    labels.forEach((label, k) => {
+    arrows.forEach(({ label, style }, k) => {
       for (const source of groups[k]!) {
         for (const target of groups[k + 1]!) {
-          edges.push({ source: source.id, target: target.id, label, comments: [], line });
+          // A18: `style` is only present when it isn't `solid`.
+          edges.push({
+            source: source.id, target: target.id, label, ...(style === 'solid' ? {} : { style }), comments: [], line,
+          });
         }
       }
     });
