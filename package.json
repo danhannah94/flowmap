@@ -1,14 +1,43 @@
 {
-  "name": "flowmap",
+  "name": "@danhannah94/flowmap",
   "version": "0.1.0",
+  "description": "A local flowchart and swimlane editor for process maps that a person and an AI edit together, as plain Mermaid-subset files on disk.",
+  "keywords": [
+    "flowchart",
+    "swimlane",
+    "process-map",
+    "mermaid",
+    "diagram",
+    "editor",
+    "cli",
+    "ai"
+  ],
+  "homepage": "https://github.com/danhannah94/flowmap#readme",
+  "bugs": {
+    "url": "https://github.com/danhannah94/flowmap/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/danhannah94/flowmap.git"
+  },
   "license": "MIT",
-  "private": true,
   "type": "module",
+  "packageManager": "pnpm@9.15.9",
   "bin": {
     "flowmap": "./bin/flowmap.js"
   },
+  "files": [
+    "bin",
+    "dist",
+    "!dist/**/*.map",
+    "LICENSE",
+    "README.md"
+  ],
   "engines": {
     "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "pnpm build:cli && pnpm build:ui",
@@ -17,15 +46,12 @@
     "dev:ui": "vite",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:ui": "pnpm build && playwright test"
+    "test:ui": "pnpm build && playwright test",
+    "prepublishOnly": "pnpm build && pnpm test"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",
-    "@xyflow/react": "^12.11.6",
-    "elkjs": "^0.12.0",
     "playwright": "^1.63.0",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
     "yaml": "^2.9.1"
   },
   "devDependencies": {
@@ -34,8 +60,12 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "@xyflow/react": "^12.11.6",
+    "elkjs": "^0.12.0",
     "esbuild": "^0.28.2",
     "flowmap": "link:.",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.0",
     "vitest": "^5.0.1"

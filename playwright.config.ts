@@ -10,7 +10,8 @@ export default defineConfig({
   workers: 4,
   timeout: 30_000,
   expect: { timeout: 5_000 },
-  reporter: [['list']],
+  // CI also writes an HTML report (playwright-report/), which the workflow uploads when a run fails.
+  reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : [['list']],
   outputDir: 'test-results',
   use: {
     baseURL: `http://127.0.0.1:${E2E_PORT}`,
