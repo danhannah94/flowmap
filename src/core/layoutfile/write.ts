@@ -5,7 +5,7 @@
 // - Entries keep their place in the file; a new entry goes last; a renamed entry keeps its place (R5.10).
 // - An entry an operation empties is removed, and an empty `edges` or `notes` map is left out (§5 Values).
 // - Values are checked: a bad value is a programming error and throws (the file must always parse back).
-import type { LayoutEdgeEntry, LayoutFile, LayoutLaneEntry, LayoutNodeEntry, Pin, Side, Size, XY } from '../types';
+import type { LayoutEdgeEntry, LayoutFile, LayoutLaneEntry, LayoutNodeEntry, NodePin, Pin, Side, Size, XY } from '../types';
 import { pinOf, sizeOf } from '../types';
 import {
   isCoord, isLabelAt, isLaneLengthValue, isLaneSizeValue, isSide, isSizeValue, MIN_LANE_LENGTH, MIN_LANE_SIZE, MIN_SIZE, put,
@@ -70,18 +70,26 @@ function withEntry<T>(entries: Entries<T> | undefined, id: string, value: T | un
 
 // ---- node entries: pins and sizes -----------------------------------------------------------------------------
 
-/** A node entry from its two halves, key order lane, along, across, width, height; undefined when both are absent. */
-export function nodeEntry(pin: Pin | null, size: Size | null): LayoutNodeEntry | undefined {
+/**
+ * A node entry from its two halves, key order lane, (A19) group, along, across, width, height; undefined when both are
+ * absent. A pin's `group` is written only when it has one.
+ */
+export function nodeEntry(pin: NodePin | null, size: Size | null): LayoutNodeEntry | undefined {
   if (!pin && !size) return undefined;
   const e: LayoutNodeEntry = {};
-  if (pin) Object.assign(e, { lane: pin.lane, along: pin.along + 0, across: pin.across + 0 });
+  if (pin) {
+    e.lane = pin.lane;
+    if (pin.group !== undefined) e.group = pin.group;
+    Object.assign(e, { along: pin.along + 0, across: pin.across + 0 });
+  }
   if (size) Object.assign(e, { width: size.width, height: size.height });
   return e;
 }
 
-function checkPin(pin: Pin, what = 'pin'): void {
-  if (!pin || typeof pin.lane !== 'string' || !isCoord(pin.along) || !isCoord(pin.across)) {
-    throw new Error(`invalid ${what} ${JSON.stringify(pin)}: lane must be a string, along/across integers`);
+function checkPin(pin: NodePin, what = 'pin'): void {
+  if (!pin || typeof pin.lane !== 'string' || !isCoord(pin.along) || !isCoord(pin.across)
+    || (pin.group !== undefined && typeof pin.group !== 'string')) {
+    throw new Error(`invalid ${what} ${JSON.stringify(pin)}: lane (and group) must be strings, along/across integers`);
   }
 }
 
@@ -110,12 +118,12 @@ function updateNodes(
 }
 
 /** Pin (or re-pin) a node, keeping its size. Creates the file if there is none. */
-export function setPin(file: LayoutFile | null, id: string, pin: Pin): LayoutFile {
+export function setPin(file: LayoutFile | null, id: string, pin: NodePin): LayoutFile {
   return setPins(file, [[id, pin]]);
 }
 
 /** Pin several nodes at once (one drag of a selection is one write), keeping their sizes. */
-export function setPins(file: LayoutFile | null, pins: Iterable<[string, Pin]>): LayoutFile {
+export function setPins(file: LayoutFile | null, pins: Iterable<[string, NodePin]>): LayoutFile {
   const list = [...pins];
   for (const [, pin] of list) checkPin(pin);
   return updateNodes(file, list.map(([id, pin]) => [id, (e) => nodeEntry(pin, sizeOf(e))]), true)!;
@@ -528,7 +536,9 @@ export function roundPx(v: number): number {
  * the first lane, or the top of a lane-free diagram); the layout's frame translates to contain them (§6). In any other
  * lane `across` is at least 0: it lands on that lane's start edge (§5 Values).
  */
-export function pinFromDrop(lane: string, along: number, across: number, firstLane: string): Pin {
+export function pinFromDrop(lane: string, along: number, across: number, firstLane: string, group?: string | null): NodePin {
   const c = roundPx(across);
-  return { lane, along: roundPx(along), across: lane === firstLane ? c : Math.max(0, c) };
+  const pin: NodePin = { lane, along: roundPx(along), across: lane === firstLane ? c : Math.max(0, c) };
+  // A19: a node in a group records it (key order lane, group, along, across in the file).
+  return group ? { lane, group, along: pin.along, across: pin.across } : pin;
 }

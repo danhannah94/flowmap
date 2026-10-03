@@ -1,0 +1,33 @@
+flowchart TB
+%% Amendment A19: subgraphs inside lanes are groups, nested to any depth.
+
+  subgraph acct [Account]
+    %% the way in
+    gw["Gateway"]
+    %% after the network
+    audit["Audit log"]
+    subgraph net [Network]
+      lb[("Load balancer")]
+      subgraph sub-a [Subnet A]
+        app1["App server 1"]
+        app2["App server 2"]
+        %% end of subnet A
+      end
+      subgraph sub-b [Subnet B]
+        db[("Database")]
+      end
+    end
+  end
+
+  subgraph ops [Operations]
+    oncall(["On call"])
+    subgraph empty [Empty group]
+    end
+  end
+
+  app1 --> db
+  gw --> lb
+  lb --> app1
+  lb --> app2
+  app2 --> db
+  db --> audit

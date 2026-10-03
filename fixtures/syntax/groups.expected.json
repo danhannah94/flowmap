@@ -1,0 +1,10 @@
+{
+  "errors": [],
+  "warnings": [],
+  "lanes": {"acct": ["gw", "lb", "app1", "app2", "db", "audit"], "ops": ["oncall"]},
+  "groups": {"net": ["lb"], "sub-a": ["app1", "app2"], "sub-b": ["db"]},
+  "group_parents": {"net": null, "sub-a": "net", "sub-b": "net", "empty": null},
+  "edge_ids": ["app1->db", "gw->lb", "lb->app1", "lb->app2", "app2->db", "db->audit"],
+  "labels": {"lb": "Load balancer", "acct": "Account"},
+  "note": "Amendment A19. `groups` lists the nodes whose innermost group is that group; `group_parents` gives each group's enclosing group (null: directly in its lane)."
+}

@@ -8,9 +8,9 @@
 //   displayed lane. `checkLayoutRefs` needs the ids: warnings for entries of unknown nodes, edges and notes.
 // `effectivePlacements` then says what applies: stale pins and point sets with a missing lane are ignored.
 import type {
-  LayoutEdgeEntry, LayoutFile, LayoutLaneEntry, LayoutNodeEntry, Pin, Problem, Problems, Side, Size, XY,
+  LayoutEdgeEntry, LayoutFile, LayoutLaneEntry, LayoutNodeEntry, NodePin, Pin, Problem, Problems, Side, Size, XY,
 } from '../types';
-import { pinOf, sizeOf, SIDES } from '../types';
+import { pinMatches, pinOf, sizeOf, SIDES } from '../types';
 
 export interface LayoutParse {
   /** The file, or null when there is no file or it has errors (§5: lay out with none of its placements). */
@@ -21,7 +21,9 @@ export interface LayoutParse {
 const TOP_KEYS = new Set(['version', 'nodes', 'lanes', 'lane_length', 'edges', 'notes', 'title', 'hints']);
 const PIN_KEYS = ['lane', 'along', 'across'] as const;
 const SIZE_KEYS = ['width', 'height'] as const;
-const NODE_KEYS = new Set<string>([...PIN_KEYS, ...SIZE_KEYS]);
+/** A19: a pin of a node in a group also names the group (only together with the pin keys). */
+const GROUP_KEY = 'group';
+const NODE_KEYS = new Set<string>([...PIN_KEYS, GROUP_KEY, ...SIZE_KEYS]);
 const EDGE_KEYS = new Set(['source_side', 'target_side', 'points', 'label_at']);
 const XY_KEYS = new Set(['x', 'y']);
 const LANE_KEYS = new Set(['size']);
@@ -89,6 +91,10 @@ function readNodeEntry(v: unknown): { entry?: LayoutNodeEntry; bad: string[] } {
   if (pinKeys.length > 0 && pinKeys.length < PIN_KEYS.length) {
     bad.push(`a pin needs all of "lane", "along" and "across" (has only ${keyList(pinKeys)})`);
   } else if (pinKeys.length) bad.push(...pinProblems(v));
+  if (GROUP_KEY in v) {
+    if (pinKeys.length === 0) bad.push('"group" only goes with a pin ("lane", "along" and "across")');
+    else if (typeof v.group !== 'string') bad.push('"group" must be a group id');
+  }
   if (sizeKeys.length === 1) bad.push(`a size needs both "width" and "height" (has only ${keyList(sizeKeys)})`);
   else if (sizeKeys.length === 2) {
     if (!isSizeValue(v.width)) bad.push(`"width" must be an integer of at least ${MIN_SIZE}`);
@@ -96,7 +102,11 @@ function readNodeEntry(v: unknown): { entry?: LayoutNodeEntry; bad: string[] } {
   }
   if (bad.length) return { bad };
   const entry: LayoutNodeEntry = {};
-  if (pinKeys.length) Object.assign(entry, { lane: v.lane as string, along: n0(v.along as number), across: n0(v.across as number) });
+  if (pinKeys.length) {
+    entry.lane = v.lane as string;
+    if (GROUP_KEY in v) entry.group = v.group as string;
+    Object.assign(entry, { along: n0(v.along as number), across: n0(v.across as number) });
+  }
   if (sizeKeys.length) Object.assign(entry, { width: v.width as number, height: v.height as number });
   return { entry, bad };
 }
@@ -253,6 +263,8 @@ export interface NodeLane {
   id: string;
   /** The node's lane in the `.mmd`, or `_unassigned`. */
   lane: string;
+  /** A19: the node's group in the `.mmd`; absent when it is directly in its lane. */
+  group?: string;
 }
 
 /** The first displayed lane (§6 L1): the first in display order, or `_unassigned` when the diagram has no lanes. */
@@ -318,21 +330,24 @@ export function checkLayoutRefs(
   return out;
 }
 
-/** The pins that apply: the node exists and the pin's lane is still the node's lane (§5; otherwise auto-placed). */
-export function effectivePins(file: LayoutFile | null, nodes: Iterable<NodeLane>): Map<string, Pin> {
-  const out = new Map<string, Pin>();
+/**
+ * The pins that apply: the node exists and the pin's lane is still the node's lane, and (A19) its group still the
+ * node's group (§5; otherwise auto-placed).
+ */
+export function effectivePins(file: LayoutFile | null, nodes: Iterable<NodeLane>): Map<string, NodePin> {
+  const out = new Map<string, NodePin>();
   if (!file) return out;
   for (const n of nodes) {
     const pin = pinOf(Object.hasOwn(file.nodes, n.id) ? file.nodes[n.id] : undefined);
-    if (pin && pin.lane === n.lane) out.set(n.id, pin);
+    if (pin && pinMatches(pin, n.lane, n.group)) out.set(n.id, pin);
   }
   return out;
 }
 
 /** What of the file applies to this diagram (§5). */
 export interface Placements {
-  /** Pins of existing nodes whose lane still matches. */
-  pins: Map<string, Pin>;
+  /** Pins of existing nodes whose lane (and, A19, group) still matches. */
+  pins: Map<string, NodePin>;
   /** Sizes of existing nodes (a size applies even when its pin is ignored). */
   sizes: Map<string, Size>;
   /** Entries of existing edges; `points` is left out when any point's lane doesn't exist (the line is automatic). */

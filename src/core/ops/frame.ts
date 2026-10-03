@@ -69,6 +69,30 @@ export function blockLaneAt(result: Pick<LayoutResult, 'direction' | 'lanes'>, c
 }
 
 /**
+ * A19 (UI11 with groups): the group a block whose centre is at `cx, cy` joins in `lane`: the innermost group of that
+ * lane whose box (as drawn in `result`) contains the centre (each box includes its start edges and excludes its end
+ * edges), or null for the lane itself. Where boxes of the same depth overlap (pinned members), the later one in file
+ * order wins.
+ */
+export function blockGroupAt(result: Pick<LayoutResult, 'groups'>, lane: string, cx: number, cy: number): string | null {
+  const groups = result.groups ?? [];
+  const depth = new Map<string, number>();
+  for (const g of groups) depth.set(g.id, g.parent === null ? 1 : (depth.get(g.parent) ?? 0) + 1);
+  let best: string | null = null;
+  let bestDepth = 0;
+  for (const g of groups) {
+    if (g.lane !== lane) continue;
+    if (cx < g.x || cx >= g.x + g.width || cy < g.y || cy >= g.y + g.height) continue;
+    const d = depth.get(g.id)!;
+    if (d >= bestDepth) {
+      best = g.id;
+      bestDepth = d;
+    }
+  }
+  return best;
+}
+
+/**
  * A note's or the title's stored position from where it is drawn (§5): x and y less the frame on their axis (T on the
  * flow axis, U across), rounded to whole pixels (halves toward −∞, as UI10).
  */

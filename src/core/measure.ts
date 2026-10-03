@@ -435,3 +435,13 @@ export function noteSize(text: string, fontSize: number, bold: boolean): { width
 export function titleSize(text: string): { width: number; height: number } {
   return { width: Math.max(1, textWidthAt(text, TITLE_FONT.size, true)), height: TITLE_FONT.lineHeight };
 }
+
+// A19: groups (§6 L13)
+
+/** A group's label font (as drawn by the UI and the SVG export, in the top-left corner of its box). */
+export const GROUP_FONT = { size: 12, lineHeight: 16, weight: 600 } as const;
+
+/** The width a group's label takes (one line, never wrapped). */
+export function groupLabelWidth(label: string): number {
+  return textWidthAt(label, GROUP_FONT.size, true);
+}

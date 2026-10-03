@@ -45,6 +45,7 @@ export const NodeView = memo(function NodeView({
       data-node-id={node.id}
       data-kind={node.kind}
       data-lane={node.lane}
+      data-group={node.group}
       data-pinned={node.pinned ? 'true' : 'false'}
       data-selected={selected ? 'true' : 'false'}
       data-x={node.x}

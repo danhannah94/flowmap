@@ -4,7 +4,7 @@ import { laneOrder } from '../config';
 import {
   dropPointsInLanes, removeLaneEntries, removePins, renameLane as renameLaneInLayout, roundPx, setLaneLength, setLaneSize,
 } from '../layoutfile';
-import { isReservedId, undeclaredNodes, type Lane, type NodeDecl } from '../mmd';
+import { declaredNodes, isReservedId, undeclaredNodes, type Lane, type NodeDecl } from '../mmd';
 import { isLaneFree, UNASSIGNED } from '../types';
 import { checkBlockLabel, loadLayout, refuse, run, type Ctx, type Files, type OpResult } from './context';
 import { deleteBlocksAndEdges } from './nodes';
@@ -237,14 +237,17 @@ export type DeleteLaneMode =
 export function deleteLane(files: Files, id: string, how: DeleteLaneMode): OpResult {
   return run(files, (ctx) => {
     const lane = laneOf(ctx, id);
-    const blocks = lane.nodes.map((n) => n.id);
+    // A19: the lane's blocks include those in its groups (file declaration order); its groups go with it.
+    const decls = declaredNodes({ ...ctx.d, unlaned: [], lanes: [lane] }).map((e) => e.node);
+    const blocks = decls.map((n) => n.id);
     if (how.mode === 'empty') {
       if (blocks.length) refuse(`Lane "${id}" still has blocks; move them or delete them with the lane`);
     } else if (how.mode === 'move') {
       if (how.target === id) refuse('Move the blocks to a different lane');
       ctx.requireLane(how.target, { unassigned: true });
-      ctx.declsOf(how.target).push(...lane.nodes);
+      ctx.declsOf(how.target).push(...decls);
       lane.nodes = [];
+      lane.groups = [];
       if (blocks.length) ctx.editLayout(blocks, (file) => removePins(file, blocks));
     } else if (how.mode === 'delete') {
       deleteBlocksAndEdges(ctx, blocks, []);

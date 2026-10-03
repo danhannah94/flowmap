@@ -9,7 +9,11 @@ function nodeLine(e: LayoutNodeEntry): string {
   const parts: string[] = [];
   const pin = pinOf(e);
   const size = sizeOf(e);
-  if (pin) parts.push(`"lane": ${q(pin.lane)}`, `"along": ${num(pin.along)}`, `"across": ${num(pin.across)}`);
+  if (pin) {
+    parts.push(`"lane": ${q(pin.lane)}`);
+    if (pin.group !== undefined) parts.push(`"group": ${q(pin.group)}`); // A19
+    parts.push(`"along": ${num(pin.along)}`, `"across": ${num(pin.across)}`);
+  }
   if (size) parts.push(`"width": ${num(size.width)}`, `"height": ${num(size.height)}`);
   return `{ ${parts.join(', ')} }`;
 }
@@ -37,7 +41,7 @@ function section<T>(entries: Record<string, T>, line: (v: T) => string): string 
 
 /**
  * The file text: 2-space JSON with keys in a fixed order (`version`, `nodes`, `lanes`, `lane_length`, `edges`,
- * `notes`, `title`, `hints`), one line per entry in file order, each entry's keys in a fixed order (`lane`, `along`, `across`, `width`,
+ * `notes`, `title`, `hints`), one line per entry in file order, each entry's keys in a fixed order (`lane`, `group` (A19), `along`, `across`, `width`,
  * `height`; `size`; `source_side`, `target_side`, `points`, `label_at`; `x`, `y`), ending with a newline. Empty
  * `lanes`, `edges` and `notes` maps are left out. A v1.0 file written by v1.0 comes out byte-identical.
  */

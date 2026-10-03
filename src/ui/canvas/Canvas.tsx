@@ -317,6 +317,8 @@ function themeVars(t: Theme): React.CSSProperties {
     '--canvas-bg': t.canvasBackground,
     '--lane-border': t.laneBorder,
     '--lane-label': t.laneLabel,
+    '--group-fill': t.groupFill,
+    '--group-border': t.groupBorder,
     '--title': t.titleColor,
     '--edge': t.edgeColor,
     '--edge-label-text': t.edgeLabelText,

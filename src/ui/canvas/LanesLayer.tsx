@@ -5,6 +5,7 @@
 // no header, and it lets clicks through to the canvas), keeping only its `data-lane-id` (§8.3).
 import { memo } from 'react';
 import { LANE_HEADER } from '../../core/layout';
+import { blockGroupAt } from '../../core/ops/frame';
 import type { Theme } from '../../core/theme';
 import { isLaneFree, UNASSIGNED, type Direction, type LayoutResult } from '../../core/types';
 import type { State } from '../store/store';
@@ -78,9 +79,50 @@ function dropTargetLane(s: State): string | null {
   return lane !== n.lane ? lane : null;
 }
 
+/**
+ * A19: while blocks are dragged, the group the block under the pointer would join on drop (the innermost group box
+ * holding its centre, in the lane it lands in, as `dropNodes` decides), or null when that is where it already is.
+ */
+function dropTargetGroup(s: State): string | null {
+  const drag = s.drag;
+  const layout = s.shown?.layout;
+  if (!drag || !layout?.groups || drag.ids.length === 0) return null;
+  const n = layout.nodes.find((x) => x.id === (drag.lead ?? drag.ids[0]));
+  if (!n) return null;
+  const c = { x: n.x + drag.dx + n.width / 2, y: n.y + drag.dy + n.height / 2 };
+  const group = blockGroupAt(layout, dropLaneAt(layout, c), c.x, c.y);
+  return group !== (n.group ?? null) ? group : null;
+}
+
+/** A19: the groups of a diagram (§6 L13), drawn over the lane bands and under lines and blocks; clicks go through. */
+const GroupsView = memo(function GroupsView({ groups, dropTarget }: { groups: NonNullable<LayoutResult['groups']>; dropTarget: string | null }) {
+  return (
+    <>
+      {groups.map((g) => (
+        <div
+          key={g.id}
+          className="fm-group"
+          data-group-id={g.id}
+          data-lane={g.lane}
+          data-parent-group={g.parent ?? undefined}
+          data-x={g.x}
+          data-y={g.y}
+          data-width={g.width}
+          data-height={g.height}
+          data-drop-target={dropTarget === g.id ? 'true' : undefined}
+          style={{ left: g.x, top: g.y, width: g.width, height: g.height }}
+        >
+          <span className="fm-group-label" data-role="group-label" title={g.label}>{g.label}</span>
+        </div>
+      ))}
+    </>
+  );
+});
+
 export function LanesLayer({ layout, theme }: { layout: LayoutResult; theme: Theme }) {
   const selectedLane = useStoreState((s) => s.selection.lane);
   const dropTarget = useStoreState(dropTargetLane);
+  const dropGroup = useStoreState(dropTargetGroup);
   const editingLane = useStoreState((s) => (s.editing?.target.kind === 'lane' ? s.editing.target.id ?? null : null));
   if (isLaneFree(layout.lanes)) {
     return (
@@ -124,6 +166,7 @@ export function LanesLayer({ layout, theme }: { layout: LayoutResult; theme: The
           <span className="fm-lane-preview-label">Unassigned</span>
         </div>
       ) : null}
+      {layout.groups ? <GroupsView groups={layout.groups} dropTarget={dropGroup} /> : null}
       {laneLayerExtras?.(layout)}
     </div>
   );
