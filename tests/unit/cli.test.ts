@@ -60,6 +60,33 @@ describe('validate: purchase-request is clean', () => {
   });
 });
 
+describe('help and version', () => {
+  const PKG = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as { version: string };
+
+  it.each([['--help'], ['-h'], ['help'], ['export', '--help'], ['validate', '-h']])('%s prints the usage on stdout, exit 0', (...args) => {
+    const { status, stdout, stderr } = run(args);
+    expect(status).toBe(0);
+    expect(stderr).toBe('');
+    expect(stdout).toMatch(/^flowmap: a local flowchart tool\n\nUsage:\n/);
+    for (const cmd of ['validate', 'fmt', 'layout', 'export', 'serve']) expect(stdout).toContain(`flowmap ${cmd} `);
+    expect(stdout).toContain('--version');
+  });
+
+  it.each([['--version'], ['-v']])('%s prints the package version on stdout, exit 0', (arg) => {
+    const { status, stdout, stderr } = run([arg]);
+    expect(status).toBe(0);
+    expect(stderr).toBe('');
+    expect(stdout).toBe(`${PKG.version}\n`);
+  });
+
+  it('no command is still a usage error (stderr, exit 2)', () => {
+    const { status, stdout, stderr } = run([]);
+    expect(status).toBe(2);
+    expect(stdout).toBe('');
+    expect(stderr).toMatch(/missing command/);
+  });
+});
+
 describe('validate: usage', () => {
   it('exits 2 on an unknown command', () => {
     const { status, stderr } = run(['frobnicate']);

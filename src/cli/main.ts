@@ -21,7 +21,23 @@ Usage:
   flowmap fmt <file.mmd> [--check] [--stdout]
   flowmap layout <file.mmd> [--json]
   flowmap export <file.mmd> --format svg|png [--theme light|dark] [--out <path>] [--root <dir>]
-  flowmap serve <dir> [--port 4870]`;
+  flowmap serve <dir> [--port 4870]
+  flowmap --help        show this help
+  flowmap --version     show the version`;
+
+/** The package's version, from its package.json (beside `dist/` when built, two levels up from `src/cli/` in a clone). */
+function packageVersion(): string {
+  const require = createRequire(import.meta.url);
+  for (const rel of ['../package.json', '../../package.json']) {
+    try {
+      const pkg = require(rel) as { name?: string; version?: string };
+      if (pkg.version && pkg.name?.endsWith('flowmap')) return pkg.version;
+    } catch {
+      /* not there: try the next place */
+    }
+  }
+  return 'unknown';
+}
 
 function usageError(message: string): never {
   process.stderr.write(`flowmap: ${message}\n\n${USAGE}\n`);
@@ -443,6 +459,17 @@ async function cmdServe(argv: string[]): Promise<void> {
 
 async function main(): Promise<void> {
   const [, , cmd, ...rest] = process.argv;
+  // Help and version: on stdout, exit 0. `flowmap <command> --help` shows the same usage.
+  if (cmd === '--help' || cmd === '-h' || cmd === 'help' || rest.includes('--help') || rest.includes('-h')) {
+    process.stdout.write(`${USAGE}\n`);
+    process.exitCode = 0;
+    return;
+  }
+  if (cmd === '--version' || cmd === '-v') {
+    process.stdout.write(`${packageVersion()}\n`);
+    process.exitCode = 0;
+    return;
+  }
   switch (cmd) {
     case 'validate':
       return cmdValidate(rest);

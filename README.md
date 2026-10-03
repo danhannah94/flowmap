@@ -45,6 +45,7 @@ The other commands (each takes the path to a `.mmd`; its config and layout files
 | `flowmap layout <file.mmd> [--json]` | Prints the computed layout (every lane, block and line, in pixels). |
 | `flowmap export <file.mmd> --format svg\|png [--theme light\|dark] [--out <path>] [--root <dir>]` | Writes a picture to `exports/<name>.svg` or `.png` beside the `.mmd` (light theme by default). `--root` is the folder links are relative to (default: the `.mmd`'s own folder). |
 | `flowmap serve <dir> [--port 4870]` | Runs the editor. |
+| `flowmap --help`, `flowmap --version` | Prints the usage, or the version. |
 
 PNG export renders in headless Chromium through Playwright, which downloads its browser separately. If the browser
 isn't installed, `flowmap export --format png` (and the editor's PNG button) stops with a message giving the exact

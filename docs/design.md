@@ -589,6 +589,7 @@ name.
 | `flowmap layout <file.mmd> [--json]` | Prints the computed layout (schema below). | 0, 1 on errors |
 | `flowmap export <file.mmd> --format svg\|png [--theme light\|dark] [--out <path>] [--root <dir>]` | Writes a picture of the diagram: title, lanes, nodes, edges, labels, legend. Default theme light, default path `exports/<name>.<format>` beside the `.mmd`. `--root` is the served root that `link` targets are relative to (§7.1), default the `.mmd`'s own folder. `svg` is required in v1; `png` from the CLI may use a headless browser. | 0, 1 on errors |
 | `flowmap serve <dir> [--port 4870]` | Starts the UI for every `.mmd` in `<dir>`, recursively (A16: `<dir>`'s subfolders are diagrams' folders too), on `http://127.0.0.1:<port>` (loopback only). | runs until stopped |
+| `flowmap --help` (also `-h`, `help`, or `--help` after any command); `flowmap --version` (also `-v`) | Prints the usage, or the package version, on stdout. | 0 |
 
 Which errors stop which command: errors in the `.mmd` stop every command except `validate` (exit 1, no output).
 `E-config` and `E-layout` stop only `validate`; `layout`, `export` and `serve` still work, with default styles or no
