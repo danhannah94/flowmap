@@ -1,10 +1,12 @@
 // Watches the served directory and pushes `changed` events over SSE (design.md UI29, §8.2). Debounces bursts of
 // fs events, then re-reads each tracked diagram's three files and compares their hashes to what the server itself
-// last wrote or broadcast, so the UI's own writes never echo back as a reload.
+// last wrote or broadcast, so the UI's own writes never echo back as a reload. It also pushes a `diagrams` event to
+// every open editor whenever the set of diagrams under the served root changes (one created, deleted, moved, or a
+// folder renamed), so an editor's link checks (A15 `W-link-missing`) use the current list, not the one it opened with.
 import { type FSWatcher, watch } from 'node:fs';
 import type { ServerResponse } from 'node:http';
 
-import { type DiagramSnapshot, type DiagramVersions, readDiagram, snapshotsEqual } from './files.js';
+import { type DiagramSnapshot, type DiagramVersions, listMmdFiles, readDiagram, snapshotsEqual } from './files.js';
 
 export class DiagramWatcher {
   private readonly dir: string;
@@ -20,6 +22,11 @@ export class DiagramWatcher {
   private readonly writing = new Map<string, number>();
   private readonly writeGen = new Map<string, number>();
   private readonly deferred = new Set<string>();
+  /** Every diagram under the served root as last listed (`listMmdFiles`), the baseline a `diagrams` event is sent
+   *  against; null until the first listing (taken when the watcher starts) is done. */
+  private listing: string[] | null = null;
+  /** Listing checks run one at a time, in order, so a slow walk can never overwrite a newer listing with an older one. */
+  private listingChain: Promise<void> = Promise.resolve();
 
   constructor(dir: string, debounceMs = 50) {
     this.dir = dir;
@@ -37,6 +44,9 @@ export class DiagramWatcher {
       this.fsWatcher = watch(this.dir, { persistent: true }, () => this.scheduleCheck());
     }
     this.fsWatcher.on('error', (err) => console.error('flowmap: directory watch error:', err));
+    // The baseline the first change is compared with: any diagram added, removed or moved after the server started
+    // is reported, even one that happens before any editor subscribes.
+    this.listingChain = this.listingChain.then(() => this.checkListing(false));
   }
 
   stop(): void {
@@ -58,7 +68,26 @@ export class DiagramWatcher {
     return new Set([...this.subscribers.keys(), ...this.known.keys()]);
   }
 
+  /** Lists the diagrams again and, when the set changed (and `announce`), tells every open editor (`diagrams`). */
+  private async checkListing(announce: boolean): Promise<void> {
+    let next: string[];
+    try {
+      next = await listMmdFiles(this.dir);
+    } catch (e) {
+      console.error('flowmap: error listing diagrams:', e);
+      return;
+    }
+    const prev = this.listing;
+    this.listing = next;
+    if (!announce || prev === null || sameList(prev, next)) return;
+    this.broadcastAll('diagrams', JSON.stringify({ files: next }));
+  }
+
   private async checkTracked(): Promise<void> {
+    // The diagram list first, so an editor learns a moved diagram's new path before the `changed` event of a link
+    // that was rewritten to point at it (A17), and never flags the rewritten link as missing.
+    this.listingChain = this.listingChain.then(() => this.checkListing(true));
+    await this.listingChain;
     for (const mmdFile of this.trackedFiles()) {
       try {
         const gen = this.writeGen.get(mmdFile) ?? 0;
@@ -137,6 +166,20 @@ export class DiagramWatcher {
     this.subscribers.clear();
   }
 
+  /** Sends one event to every open SSE connection, whichever diagram it watches. */
+  private broadcastAll(event: string, data: string): void {
+    const payload = `event: ${event}\ndata: ${data}\n\n`;
+    for (const set of this.subscribers.values()) {
+      for (const res of set) {
+        try {
+          res.write(payload);
+        } catch (e) {
+          console.error(`flowmap: error writing SSE "${event}" event:`, e);
+        }
+      }
+    }
+  }
+
   private broadcast(mmdFile: string, snapshot: DiagramSnapshot): void {
     const set = this.subscribers.get(mmdFile);
     if (!set || set.size === 0) return;
@@ -149,4 +192,8 @@ export class DiagramWatcher {
       }
     }
   }
+}
+
+function sameList(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
 }

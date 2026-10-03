@@ -5,9 +5,10 @@ import { isLaneFree, type Graph, type LayoutResult, type LayoutTextBox, type Leg
 import { shapeGeometry, type DecorationShape, type OutlineShape } from '../shapes';
 import { getTheme, resolveStyle, type ResolvedNodeStyle, type Theme, type ThemeName } from '../theme';
 import { GLYPH_GRID, GLYPH_STROKE } from '../preset/glyphs';
+import { LEGEND_SWATCH_H, LEGEND_SWATCH_W, legendLayout } from '../legend';
 import {
   BADGE_FONT, GROUP_FONT, ICON_CHIP, ICON_GLYPH, LABEL_FONT, TITLE_FONT, badgeBox, iconBox, noteLineHeight, noteLines, textArea, textWidth,
-  titleSize, wrapLabel,
+  textWidthAt, titleSize, wrapLabel,
 } from '../measure';
 
 export interface RenderSvgOptions {
@@ -24,11 +25,12 @@ export interface RenderSvgOptions {
   styles: Record<string, ResolvedStyle>;
   legend: LegendItem[];
   theme: ThemeName;
-  /** A15: well-formed, non-traversing link targets by node id (`linkTargetsByNode`, core/config), for the export
-   *  only (§7.1 "so exported sets stay clickable"). A linked node's `<g>` is wrapped in `<a href="<target>.svg">`.
-   *  Omitted (or a node missing here) draws that node exactly as before. PNG export takes no special handling: it
-   *  screenshots this SVG, and a static raster has no links either way. */
-  links?: Record<string, string>;
+  /** A15: the `href` of each linked node, by node id, for the export only (§7.1 "so exported sets stay clickable"):
+   *  the caller works it out from the node's link target (`exportLinkHref`, core/config: relative from this export's
+   *  file to the target's). A linked node's `<g>` is wrapped in `<a href="…">`. Omitted (or a node missing here) draws
+   *  that node exactly as before. PNG export takes no special handling: it screenshots this SVG, and a static raster
+   *  has no links either way. */
+  linkHrefs?: Record<string, string>;
   /** A20: the preset pack's icon for each node that has one (`FlowDocument.icons`). Drawn as a small round tag on the
    *  node's top edge, towards the left (`iconBox`); omitted (or a node missing here) draws that node as before. */
   icons?: Record<string, ResolvedIcon>;
@@ -38,11 +40,6 @@ const MARGIN = 24;
 /** The title's default place (§6): above the diagram's top-left corner, as the layout puts it (layout TITLE_GAP). */
 const TITLE_DEFAULT_Y = -(TITLE_FONT.lineHeight + 18);
 const LEGEND_GAP = 28;
-const LEGEND_ROW_HEIGHT = 20;
-const LEGEND_SWATCH_W = 26;
-const LEGEND_SWATCH_H = 16;
-const LEGEND_ITEM_GAP_X = 24;
-const LEGEND_ITEM_GAP_Y = 12;
 const EDGE_LABEL_PAD_X = 6;
 const MIN_CONTENT_WIDTH = 320;
 /** A19: where a group's label sits inside its box (left inset, and the baseline from the top), as the UI draws it. */
@@ -154,7 +151,68 @@ function renderIcon(icon: ResolvedIcon, node: LayoutResult['nodes'][number], res
   ].join('');
 }
 
-function renderLane(lane: LayoutResult['lanes'][number], index: number, theme: Theme, laneFree: boolean): string {
+/** Where a lane's label sits: its left inset and baseline from the lane's top-left corner, and its font size. */
+const LANE_LABEL_X = 12;
+const LANE_LABEL_BASELINE = 20;
+const LANE_LABEL_SIZE = 12;
+
+interface Box {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/** The box a lane label's text covers (plus a little padding), in diagram coordinates. */
+function laneLabelBox(lane: LayoutResult['lanes'][number]): Box {
+  const x = lane.x + LANE_LABEL_X;
+  const y = lane.y + LANE_LABEL_BASELINE;
+  return { x0: x - 4, y0: y - LANE_LABEL_SIZE - 2, x1: x + textWidthAt(lane.label, LANE_LABEL_SIZE, true) + 4, y1: y + 3.5 };
+}
+
+const overlaps = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+
+/**
+ * What is drawn after the lanes and could cover a lane's label (the export's lane label is horizontal at the lane's
+ * top-left, beyond the layout's header strip): every block, its icon tag and badge (both stand out above the block's
+ * top edge), and every group box.
+ */
+function coveringBoxes(layout: LayoutResult, styles: Record<string, ResolvedStyle>, icons: Record<string, ResolvedIcon> | undefined, theme: Theme): Box[] {
+  const out: Box[] = [];
+  for (const n of layout.nodes) {
+    out.push({ x0: n.x, y0: n.y, x1: n.x + n.width, y1: n.y + n.height });
+    if (icons?.[n.id]) {
+      const b = iconBox(n.kind, n.width, n.height);
+      const ring = ICON_CHIP / 2 + 1.5;
+      const cx = n.x + b.x + ICON_CHIP / 2;
+      const cy = n.y + b.y + ICON_CHIP / 2;
+      out.push({ x0: cx - ring, y0: cy - ring, x1: cx + ring, y1: cy + ring });
+    }
+    const badge = resolveStyle(styles[n.id], theme).badge;
+    if (badge) {
+      const b = badgeBox(n.kind, n.width, n.height, badge);
+      out.push({ x0: n.x + b.x, y0: n.y + b.y, x1: n.x + b.x + b.width, y1: n.y + b.y + b.height });
+    }
+  }
+  for (const g of layout.groups ?? []) out.push({ x0: g.x, y0: g.y, x1: g.x + g.width, y1: g.y + g.height });
+  return out;
+}
+
+/**
+ * A lane label something else would cover (a block's icon tag, say), drawn again on top of the blocks and lines with a
+ * halo in the lane's own colour (an outline painted under the letters), so it always reads while what is under it
+ * still shows between the letters. Its place is unchanged (the layout is untouched); the lane's own
+ * `<g data-lane-id>` keeps the label too (hidden, as A4 does), so §7.1's structure is the same.
+ */
+function renderLaneLabelOnTop(lane: LayoutResult['lanes'][number], index: number, theme: Theme): string {
+  return [
+    `<g data-role="lane-label" data-lane="${escapeXml(lane.id)}">`,
+    `<text x="${num(lane.x + LANE_LABEL_X)}" y="${num(lane.y + LANE_LABEL_BASELINE)}" font-size="${LANE_LABEL_SIZE}" font-weight="600" fill="${theme.laneLabel}" stroke="${theme.laneFill[index % 2]}" stroke-width="4" stroke-linejoin="round" paint-order="stroke">${escapeXml(lane.label)}</text>`,
+    '</g>',
+  ].join('');
+}
+
+function renderLane(lane: LayoutResult['lanes'][number], index: number, theme: Theme, laneFree: boolean, labelOnTop = false): string {
   if (laneFree) {
     // Amendment A4: a diagram without subgraphs is a plain flowchart: no band, no header. The lane's group and its
     // label stay in the file (hidden) so the §7.1 structure still lists every lane of `flowmap layout`.
@@ -164,7 +222,7 @@ function renderLane(lane: LayoutResult['lanes'][number], index: number, theme: T
   return [
     `<g data-lane-id="${escapeXml(lane.id)}">`,
     `<rect x="${num(lane.x)}" y="${num(lane.y)}" width="${num(lane.width)}" height="${num(lane.height)}" fill="${fill}" stroke="${theme.laneBorder}" stroke-width="1"/>`,
-    `<text x="${num(lane.x + 12)}" y="${num(lane.y + 20)}" font-size="12" font-weight="600" fill="${theme.laneLabel}">${escapeXml(lane.label)}</text>`,
+    `<text${labelOnTop ? ' visibility="hidden"' : ''} x="${num(lane.x + LANE_LABEL_X)}" y="${num(lane.y + LANE_LABEL_BASELINE)}" font-size="${LANE_LABEL_SIZE}" font-weight="600" fill="${theme.laneLabel}">${escapeXml(lane.label)}</text>`,
     '</g>',
   ].join('');
 }
@@ -179,7 +237,7 @@ function renderGroup(group: NonNullable<LayoutResult['groups']>[number], theme: 
   ].join('');
 }
 
-function renderNode(node: LayoutResult['nodes'][number], style: ResolvedStyle | undefined, theme: Theme, linkTarget?: string, icon?: ResolvedIcon): string {
+function renderNode(node: LayoutResult['nodes'][number], style: ResolvedStyle | undefined, theme: Theme, linkHref?: string, icon?: ResolvedIcon): string {
   const resolved = resolveStyle(style, theme);
   const geometry = shapeGeometry(node.kind, { x: node.x, y: node.y, width: node.width, height: node.height });
   const localArea = textArea(node.kind, node.width, node.height);
@@ -197,7 +255,7 @@ function renderNode(node: LayoutResult['nodes'][number], style: ResolvedStyle | 
   const group = parts.join('');
   // A15 §7.1: wrap a linked block so exported sets stay clickable (the `<g>` itself is unchanged, so every existing
   // structural check on it still matches).
-  return linkTarget ? `<a href="${escapeXml(`${linkTarget}.svg`)}">${group}</a>` : group;
+  return linkHref ? `<a href="${escapeXml(linkHref)}">${group}</a>` : group;
 }
 
 /** A18: how each edge style is drawn. Solid is the original look; the others change only the stroke and the heads. */
@@ -227,32 +285,9 @@ function renderEdge(edge: LayoutResult['edges'][number], theme: Theme): string {
   return parts.join('');
 }
 
-interface LegendPosition {
-  item: LegendItem;
-  x: number;
-  y: number;
-}
-
-function layoutLegend(legend: LegendItem[], maxWidth: number): { items: LegendPosition[]; totalHeight: number } {
-  const items: LegendPosition[] = [];
-  let x = 0;
-  let y = 0;
-  for (const item of legend) {
-    const itemWidth = LEGEND_SWATCH_W + 8 + textWidth(item.text);
-    if (x > 0 && x + itemWidth > maxWidth) {
-      x = 0;
-      y += LEGEND_ROW_HEIGHT + LEGEND_ITEM_GAP_Y;
-    }
-    items.push({ item, x, y });
-    x += itemWidth + LEGEND_ITEM_GAP_X;
-  }
-  const totalHeight = legend.length ? y + LEGEND_ROW_HEIGHT : 0;
-  return { items, totalHeight };
-}
-
 function renderLegend(legend: LegendItem[], theme: Theme, x: number, y: number, maxWidth: number): string {
   if (!legend.length) return '';
-  const { items } = layoutLegend(legend, maxWidth);
+  const { items } = legendLayout(legend, maxWidth);
   const parts: string[] = [`<g data-testid="legend" transform="translate(${num(x)}, ${num(y)})">`];
   for (const { item, x: ix, y: iy } of items) {
     const resolved = resolveStyle(item.style, theme);
@@ -333,9 +368,9 @@ export function renderSvg(options: RenderSvgOptions): string {
   const ox = MARGIN - minX;
   const oy = MARGIN - minY;
   const contentWidth = maxX - minX;
-  const legendLayout = layoutLegend(legend, contentWidth);
+  const legendBox = legendLayout(legend, contentWidth);
   const legendTop = oy + maxY + LEGEND_GAP;
-  const totalHeight = legend.length ? legendTop + legendLayout.totalHeight + MARGIN : oy + maxY + MARGIN;
+  const totalHeight = legend.length ? legendTop + legendBox.totalHeight + MARGIN : oy + maxY + MARGIN;
   const totalWidth = contentWidth + MARGIN * 2;
 
   const parts: string[] = [];
@@ -347,11 +382,17 @@ export function renderSvg(options: RenderSvgOptions): string {
 
   parts.push(`<g transform="translate(${num(ox)}, ${num(oy)})">`);
   const laneFree = isLaneFree(layout.lanes);
-  layout.lanes.forEach((lane, index) => parts.push(renderLane(lane, index, theme, laneFree)));
+  // A lane label that a block, its icon tag or badge, or a group box would paint over is drawn on top instead (below).
+  const covering = laneFree ? [] : coveringBoxes(layout, styles, options.icons, theme);
+  const labelOnTop = layout.lanes.map((lane) => covering.some((c) => overlaps(laneLabelBox(lane), c)));
+  layout.lanes.forEach((lane, index) => parts.push(renderLane(lane, index, theme, laneFree, labelOnTop[index])));
   // A19: groups over the lanes and under everything else, outer before inner (file order).
   for (const group of layout.groups ?? []) parts.push(renderGroup(group, theme));
-  for (const node of layout.nodes) parts.push(renderNode(node, styles[node.id], theme, options.links?.[node.id], options.icons?.[node.id]));
+  for (const node of layout.nodes) parts.push(renderNode(node, styles[node.id], theme, options.linkHrefs?.[node.id], options.icons?.[node.id]));
   for (const edge of layout.edges) parts.push(renderEdge(edge, theme));
+  layout.lanes.forEach((lane, index) => {
+    if (labelOnTop[index]) parts.push(renderLaneLabelOnTop(lane, index, theme));
+  });
   // Notes and the title take no part in the layout rules and may sit over anything: drawn last, on top.
   for (const note of notes) parts.push(renderNote(note, noteStyle.get(note.id), theme));
   if (titleBox) parts.push(renderTitle(titleBox, theme));

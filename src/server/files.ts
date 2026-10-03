@@ -452,8 +452,9 @@ export interface DeleteResult {
 
 /**
  * "Deletes" a diagram by moving its files (the `.mmd`, and the `.flow.yaml`/`.layout.json` beside it, whichever
- * exist) into `.flowmap-trash/<timestamp>-<name>/` inside the served directory, so a misclick is recoverable by
- * hand. Never touches `exports/`. `ok: false` when the `.mmd` doesn't exist.
+ * exist) into `.flowmap-trash/<timestamp>-<name>/` inside the served directory (its top level, wherever the diagram
+ * was), so a misclick is recoverable by hand. Never touches `exports/`. `ok: false` when the `.mmd` doesn't exist, or
+ * couldn't be moved: success is only ever reported once the `.mmd` itself is in the trash.
  */
 export async function deleteDiagram(dir: string, mmdFile: string): Promise<DeleteResult> {
   const names = diagramFileNames(mmdFile);
@@ -465,18 +466,30 @@ export async function deleteDiagram(dir: string, mmdFile: string): Promise<Delet
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   // A diagram in a folder trashes flat (its base name with '/' turned into '-'), not nested to match its old
   // folder: nothing else here needs to recurse into .flowmap-trash, and the folder it came from still reads in the
-  // name.
+  // name. The files inside keep their own names (`stage-2.mmd`, not `sales/stage-2.mmd`).
   const trashPath = join(TRASH_DIR_NAME, `${stamp}-${base.replace(/\//g, '-')}`);
   const trashDir = join(dir, trashPath);
   await mkdir(trashDir, { recursive: true });
 
   // Companions first, the `.mmd` last (the same order and reasoning as `PUT_ORDER` above): a reader keyed off the
-  // `.mmd` never sees it disappear while a companion is still around under the old name.
+  // `.mmd` never sees it disappear while a companion is still around under the old name. A missing config or layout
+  // file is fine (they're optional); the `.mmd` must move, or the delete failed.
+  const moved: FileKey[] = [];
   for (const key of PUT_ORDER) {
+    const from = join(dir, names[key]);
+    const to = join(trashDir, baseNameOf(names[key]));
     try {
-      await rename(join(dir, names[key]), join(trashDir, names[key]));
+      await rename(from, to);
+      moved.push(key);
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; // config/layout may not exist; the .mmd must
+      if (key !== 'mmd' && (e as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      // Put back what already moved, and leave no empty trash folder behind.
+      for (const k of moved) await rename(join(trashDir, baseNameOf(names[k])), join(dir, names[k])).catch(() => {});
+      await rmdir(trashDir).catch(() => {});
+      if (key === 'mmd' && (e as NodeJS.ErrnoException).code === 'ENOENT') {
+        return { ok: false, error: `"${mmdFile}" does not exist` };
+      }
+      throw e;
     }
   }
   return { ok: true, trashPath };

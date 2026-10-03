@@ -10,6 +10,6 @@ export {
   ConfigDoc, fieldValueFromForm, fieldValueToJs, type EditResult, type FieldValue, type MatchInput,
 } from './doc';
 export {
-  checkLinks, isWellFormedLinkTarget, linkHasTraversal, linkOf, linkTargetsByNode, linkTargetToMmdPath,
-  movedLinkTarget, normalizeLinkTarget, renamedFolderLinkTarget,
+  checkLinks, exportFileOf, exportLinkHref, isWellFormedLinkTarget, linkHasTraversal, linkOf, linkTargetsByNode,
+  linkTargetToMmdPath, movedLinkTarget, normalizeLinkTarget, relativePath, renamedFolderLinkTarget,
 } from './links';

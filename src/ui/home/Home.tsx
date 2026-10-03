@@ -35,7 +35,7 @@ export function HomePage() {
   const handleDeleteDiagram = async (file: string) => {
     const ok = await store.confirm({
       message: `Delete ${baseNameOf(file)}?`,
-      detail: 'It moves to .flowmap-trash in this folder.',
+      detail: 'It moves to .flowmap-trash in the folder flowmap is serving.',
       yes: 'Delete',
       no: 'Cancel',
       danger: true,
@@ -367,8 +367,8 @@ function DiagramRow({ file, onDelete, onMoveTo }: { file: string; onDelete: () =
           e.dataTransfer.effectAllowed = 'move';
         }}
       >
-        <span className="fm-diagram-name">{name}</span>
-        <span className="fm-diagram-file">{baseNameOf(file)}</span>
+        <span className="fm-diagram-name" title={name}>{name}</span>
+        <span className="fm-diagram-file" title={baseNameOf(file)}>{baseNameOf(file)}</span>
       </a>
       <RowMenu
         testid="diagram-menu"

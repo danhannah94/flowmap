@@ -244,6 +244,33 @@ describe('deleteDiagram', () => {
     expect(await readFile(join(dir, 'exports', 'purchase-request.svg'), 'utf8')).toBe('<svg/>');
   });
 
+  it('a diagram in a folder: every file moves (flat names in one trash folder at the top), none stay behind', async () => {
+    const { mkdir, cp } = await import('node:fs/promises');
+    await mkdir(join(dir, 'sales', 'legal'), { recursive: true });
+    for (const ext of ['mmd', 'flow.yaml', 'layout.json']) await cp(join(dir, `purchase-request.${ext}`), join(dir, 'sales', 'legal', `nda.${ext}`));
+    const r = await deleteDiagram(dir, 'sales/legal/nda.mmd');
+    expect(r.ok).toBe(true);
+    expect(r.trashPath!.split(/[/\\]/)).toHaveLength(2);
+    expect(r.trashPath!).toMatch(/-sales-legal-nda$/);
+    expect(await readdir(join(dir, 'sales', 'legal'))).toEqual([]);
+    expect((await readdir(join(dir, r.trashPath!))).sort()).toEqual(['nda.flow.yaml', 'nda.layout.json', 'nda.mmd']);
+  });
+
+  it('never reports success when the .mmd itself could not be moved, and leaves no empty trash folder', async () => {
+    const { chmod, mkdir, cp } = await import('node:fs/promises');
+    await mkdir(join(dir, 'locked'));
+    await cp(join(dir, 'purchase-request.mmd'), join(dir, 'locked', 'x.mmd'));
+    await chmod(join(dir, 'locked'), 0o555); // the .mmd can't be renamed out of a read-only folder
+    try {
+      await expect(deleteDiagram(dir, 'locked/x.mmd')).rejects.toThrow();
+      expect(await readdir(join(dir, 'locked'))).toEqual(['x.mmd']);
+      const trash = await readdir(join(dir, TRASH_DIR_NAME)).catch(() => []);
+      expect(trash).toEqual([]);
+    } finally {
+      await chmod(join(dir, 'locked'), 0o755);
+    }
+  });
+
   it('two deletes of different diagrams land in different trash folders', async () => {
     await writeFile(join(dir, 'second.mmd'), 'flowchart LR\n  a["A"]\n');
     const r1 = await deleteDiagram(dir, MMD);

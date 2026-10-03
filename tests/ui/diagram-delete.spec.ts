@@ -5,7 +5,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { E2E_DIR } from './env';
-import { makeDiagram, open } from './helpers';
+import { makeDiagram, makeDiagramIn, open, uniqueFolderName } from './helpers';
 
 /** The `.flowmap-trash/<timestamp>-<base>` folders for one diagram's base name (there should be exactly one). */
 function trashFoldersFor(base: string): string[] {
@@ -28,7 +28,7 @@ test('the delete control is reachable by keyboard and asks before deleting', asy
   const dialog = page.getByTestId('confirm');
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText(d.file);
-  await expect(dialog).toContainText('.flowmap-trash');
+  await expect(dialog).toContainText('.flowmap-trash in the folder flowmap is serving');
 
   // Cancel: the dialog closes, nothing is touched.
   await dialog.getByTestId('confirm-no').click();
@@ -83,4 +83,30 @@ test('a tab with the diagram open is told it was deleted, not crashed', async ({
   await expect(other.getByText(/was deleted/)).toBeVisible();
   await expect(other.getByRole('link', { name: 'All diagrams' })).toBeVisible();
   await ctx.close();
+});
+
+test('deleting a diagram inside a folder moves all its files to the trash, and it stays gone after a reload', async ({ page }, info) => {
+  const folder = uniqueFolderName(info);
+  const d = makeDiagramIn(info, folder);
+  const name = d.base.slice(folder.length + 1);
+  const before = d.read();
+  await page.goto(`/?dir=${encodeURIComponent(folder)}`);
+  const list = page.getByTestId('diagram-list');
+  await expect(list.locator(`[data-file="${d.file}"]`)).toBeVisible();
+
+  await list.locator(`[data-testid="diagram-menu"][data-row-target="${d.file}"]`).click();
+  await page.locator(`[data-testid="diagram-delete"][data-diagram-file="${d.file}"]`).click();
+  await page.getByTestId('confirm-yes').click();
+  await expect(list.locator(`[data-file="${d.file}"]`)).toHaveCount(0);
+  await expect(page.getByTestId('toast')).toHaveCount(0);
+
+  for (const k of ['mmd', 'config', 'layout'] as const) expect(existsSync(d.path(k)), k).toBe(false);
+  const folders = trashFoldersFor(`${folder}-${name}`);
+  expect(folders).toHaveLength(1);
+  const trashed = join(E2E_DIR, '.flowmap-trash', folders[0]!);
+  expect(readdirSync(trashed).sort()).toEqual([`${name}.flow.yaml`, `${name}.layout.json`, `${name}.mmd`]);
+  expect(readFileSync(join(trashed, `${name}.mmd`), 'utf8')).toBe(before.mmd);
+
+  await page.reload();
+  await expect(page.getByTestId('diagram-list').locator(`[data-file="${d.file}"]`)).toHaveCount(0);
 });

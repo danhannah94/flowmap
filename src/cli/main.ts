@@ -4,9 +4,9 @@ import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
-import { checkLinks, linkTargetsByNode } from '../core/config';
+import { checkLinks, exportFileOf, exportLinkHref, linkTargetsByNode } from '../core/config';
 import { loadDocument } from '../core/document';
 import { format as formatMmd, parse as parseMmd } from '../core/mmd';
 import { renderSvg } from '../core/svg';
@@ -20,8 +20,24 @@ Usage:
   flowmap validate <file.mmd> [--json]
   flowmap fmt <file.mmd> [--check] [--stdout]
   flowmap layout <file.mmd> [--json]
-  flowmap export <file.mmd> --format svg|png [--theme light|dark] [--out <path>]
-  flowmap serve <dir> [--port 4870]`;
+  flowmap export <file.mmd> --format svg|png [--theme light|dark] [--out <path>] [--root <dir>]
+  flowmap serve <dir> [--port 4870]
+  flowmap --help        show this help
+  flowmap --version     show the version`;
+
+/** The package's version, from its package.json (beside `dist/` when built, two levels up from `src/cli/` in a clone). */
+function packageVersion(): string {
+  const require = createRequire(import.meta.url);
+  for (const rel of ['../package.json', '../../package.json']) {
+    try {
+      const pkg = require(rel) as { name?: string; version?: string };
+      if (pkg.version && pkg.name?.endsWith('flowmap')) return pkg.version;
+    } catch {
+      /* not there: try the next place */
+    }
+  }
+  return 'unknown';
+}
 
 function usageError(message: string): never {
   process.stderr.write(`flowmap: ${message}\n\n${USAGE}\n`);
@@ -171,7 +187,9 @@ async function cmdValidate(argv: string[]): Promise<void> {
   const warnings = [...doc.problems.warnings, ...linkWarnings];
 
   if (flags.json) {
-    process.stdout.write(`${JSON.stringify({ errors: doc.problems.errors, warnings }, null, 2)}\n`);
+    // §7's shape exactly: `{code, line, message}` (a pack file's problems name the file in their message).
+    const plain = (ps: Problem[]) => ps.map(({ code, line, message }) => ({ code, line, message }));
+    process.stdout.write(`${JSON.stringify({ errors: plain(doc.problems.errors), warnings: plain(warnings) }, null, 2)}\n`);
   } else {
     for (const e of doc.problems.errors) process.stdout.write(`error ${formatProblem(e)}\n`);
     for (const w of warnings) process.stdout.write(`warning ${formatProblem(w)}\n`);
@@ -304,10 +322,39 @@ async function renderPng(svg: string): Promise<Buffer> {
   }
 }
 
+const toPosix = (p: string) => p.split(sep).join('/');
+
+/**
+ * §7.1 A15: the `<a href>` of each linked block in an SVG export, relative from the file being written to where each
+ * target's own export of the same format is written by default (`<its folder>/exports/<name>.svg`). Link targets are
+ * relative to the served root, `linkRoot`; a diagram outside it (or no root given) uses its own folder as the root,
+ * the same stand-in `flowmap validate` uses.
+ */
+function linkHrefsFor(targets: Record<string, string>, mmdAbs: string, outPath: string, defaultOut: boolean, linkRoot: string): Record<string, string> {
+  let root = resolve(linkRoot);
+  let rel = toPosix(relative(root, mmdAbs));
+  if (rel.startsWith('../') || isAbsolute(rel)) {
+    root = dirname(mmdAbs);
+    rel = basename(mmdAbs);
+  }
+  const selfId = rel.replace(/\.mmd$/i, '');
+  const out: Record<string, string> = {};
+  for (const [id, target] of Object.entries(targets)) {
+    // Written to its default place, the export is where `exportFileOf` says, so the pure rule applies as is;
+    // written elsewhere (`--out`), the href is worked out from where it actually is.
+    out[id] = defaultOut
+      ? exportLinkHref(selfId, target, 'svg')
+      : toPosix(relative(dirname(outPath), join(root, ...exportFileOf(target, 'svg').split('/'))));
+  }
+  return out;
+}
+
 /**
  * Render a diagram to `exports/<name>.<format>` beside the `.mmd` (or `out`) and return the path written. Shared by
  * `flowmap export` and the server's export endpoint (UI32), so both write the same bytes. Throws `ExportRefused`
- * when the `.mmd` has errors (§7: they stop `export`).
+ * when the `.mmd` has errors (§7: they stop `export`). `root` is the served folder (the server's export): it bounds
+ * the preset pack file (A20) and is the root link targets are relative to (A15). `linkRoot` sets only the latter (the
+ * CLI's `--root`); without either, the `.mmd`'s own folder stands in for it.
  */
 async function exportDiagram(
   mmdPath: string,
@@ -316,6 +363,7 @@ async function exportDiagram(
   out?: string,
   onProblem?: (line: string) => void,
   root: string | null = null,
+  linkRoot: string | null = root,
 ): Promise<string> {
   const paths = diagramPaths(mmdPath);
   const doc = await loadDoc(paths, root);
@@ -324,6 +372,9 @@ async function exportDiagram(
     for (const e of doc.problems.errors) if (!MMD_CODES.has(e.code)) onProblem(`error ${formatProblem(e)}`);
     for (const w of doc.problems.warnings) if (!MMD_CODES.has(w.code)) onProblem(`warning ${formatProblem(w)}`);
   }
+  const name = basename(paths.mmd).replace(/\.mmd$/i, '');
+  const outPath = out ? resolve(out) : join(dirname(paths.mmd), 'exports', `${name}.${format}`);
+  const targets = linkTargetsByNode(doc.config, doc.graph.nodes.map((n) => n.id));
   const svg = renderSvg({
     title: doc.title,
     graph: doc.graph,
@@ -335,10 +386,8 @@ async function exportDiagram(
     theme,
     // A15: linked blocks stay clickable in an exported SVG set; PNG rendering (below) just screenshots this SVG, so
     // the `<a>` tags have no effect there (§7.1's "skip for PNG" holds without any separate handling).
-    links: linkTargetsByNode(doc.config, doc.graph.nodes.map((n) => n.id)),
+    linkHrefs: linkHrefsFor(targets, paths.mmd, outPath, !out, linkRoot ?? dirname(paths.mmd)),
   });
-  const name = basename(paths.mmd).replace(/\.mmd$/i, '');
-  const outPath = out ? resolve(out) : join(dirname(paths.mmd), 'exports', `${name}.${format}`);
   const contents = format === 'svg' ? svg : await renderPng(svg);
   await writeAtomic(outPath, contents);
   return outPath;
@@ -347,7 +396,7 @@ async function exportDiagram(
 class ExportRefused extends Error {}
 
 async function cmdExport(argv: string[]): Promise<void> {
-  const { positional, flags } = parseArgs(argv, [], ['format', 'theme', 'out']);
+  const { positional, flags } = parseArgs(argv, [], ['format', 'theme', 'out', 'root']);
   const mmdPath = requirePositional(positional, 'export');
 
   const formatArg = flags.format;
@@ -358,8 +407,9 @@ async function cmdExport(argv: string[]): Promise<void> {
   const theme = themeArg as 'light' | 'dark';
 
   try {
-    const outPath = await exportDiagram(mmdPath, format, theme, flags.out as string | undefined, (line) =>
-      process.stderr.write(`${line}\n`),
+    const outPath = await exportDiagram(
+      mmdPath, format, theme, flags.out as string | undefined, (line) => process.stderr.write(`${line}\n`),
+      null, (flags.root as string | undefined) ?? null,
     );
     process.stdout.write(`${outPath}\n`);
     process.exitCode = 0;
@@ -409,6 +459,17 @@ async function cmdServe(argv: string[]): Promise<void> {
 
 async function main(): Promise<void> {
   const [, , cmd, ...rest] = process.argv;
+  // Help and version: on stdout, exit 0. `flowmap <command> --help` shows the same usage.
+  if (cmd === '--help' || cmd === '-h' || cmd === 'help' || rest.includes('--help') || rest.includes('-h')) {
+    process.stdout.write(`${USAGE}\n`);
+    process.exitCode = 0;
+    return;
+  }
+  if (cmd === '--version' || cmd === '-v') {
+    process.stdout.write(`${packageVersion()}\n`);
+    process.exitCode = 0;
+    return;
+  }
   switch (cmd) {
     case 'validate':
       return cmdValidate(rest);

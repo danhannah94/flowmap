@@ -93,3 +93,55 @@ test('the picker suggests the diagrams the server lists', async ({ page }, info)
   // The suggestion list is populated from GET /api/diagrams (reused from the home page); it may take a moment.
   await expect(page.locator('[data-testid="link-suggestion"]', { hasText: b.base })).toBeVisible({ timeout: 5000 });
 });
+
+// A15 viewport cache (viewportCache.ts): a remembered pan/zoom is applied only through the history (Back/Forward),
+// and a restore from the back/forward cache discards it, so an ordinary open never reuses a stale view.
+const zoomLabel = (page: Page) => page.locator('.fm-zoom-level').innerText();
+
+test('Back restores the view; a later open from the home list fits instead of reusing it', async ({ page }, info) => {
+  const a = makeDiagram(info);
+  const b = makeDiagram(info);
+  await open(page, a);
+  const fit = await zoomLabel(page);
+  await setLinkFromInspector(page, a, 'intake', b.base);
+  await page.locator('.fm-zoom-level').click(); // 100%, not the fit zoom
+  await expect(page.locator('.fm-zoom-level')).toHaveText('100%');
+  expect(fit).not.toBe('100%');
+
+  await node(page, 'intake').locator('[data-testid="link-badge"]').click();
+  await expect(page).toHaveURL(new RegExp(`file=${encodeURIComponent(b.file)}`));
+  await expect(page.locator('[data-node-id]').first()).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp(`file=${encodeURIComponent(a.file)}`));
+  await expect(page.locator('.fm-zoom-level')).toHaveText('100%'); // restored (from the bfcache or the entry)
+
+  // Home, then open A from the list: an ordinary open fits.
+  await page.goto('/');
+  await page.locator(`a[data-file="${a.file}"]`).click();
+  await expect(page.locator('[data-node-id]').first()).toBeVisible();
+  await expect(page.locator('.fm-zoom-level')).toHaveText(fit);
+  expect(await page.evaluate((f) => JSON.parse(sessionStorage.getItem('flowmap.viewport') ?? '{}')[f] ?? null, a.file)).toBeNull();
+});
+
+test('a stale remembered view is never applied to an ordinary open, and is consumed by it', async ({ page }, info) => {
+  const a = makeDiagram(info);
+  await open(page, a);
+  const fit = await zoomLabel(page);
+  await page.goto('/');
+  await page.evaluate((f) => sessionStorage.setItem('flowmap.viewport', JSON.stringify({ [f]: { x: -4000, y: -3000, zoom: 3 } })), a.file);
+  await page.locator(`a[data-file="${a.file}"]`).click();
+  await expect(page.locator('[data-node-id]').first()).toBeVisible();
+  await expect(page.locator('.fm-zoom-level')).toHaveText(fit);
+  expect(await page.evaluate(() => sessionStorage.getItem('flowmap.viewport'))).toBe('{}');
+});
+
+test('a restore from the back/forward cache discards the open diagram\'s remembered view', async ({ page }, info) => {
+  const a = makeDiagram(info);
+  await open(page, a);
+  const left = await page.evaluate((f) => {
+    sessionStorage.setItem('flowmap.viewport', JSON.stringify({ [f]: { x: 1, y: 2, zoom: 1 } }));
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+    return sessionStorage.getItem('flowmap.viewport');
+  }, a.file);
+  expect(left).toBe('{}');
+});

@@ -231,3 +231,63 @@ test('a 100-node diagram opens in under 2 s', async ({ page }, info) => {
   expect(frames.length).toBe(30);
   expect(perMove).toBeLessThan(40);
 });
+
+// UI2: a long legend wraps into rows under the diagram (as the export's does), so it stays in view after Fit; a diagram
+// with no legend entries draws no legend at all.
+test('a long legend wraps under the diagram and Fit brings all of it into view; no entries, no legend', async ({ page }, info) => {
+  const rules = Array.from({ length: 14 }, (_, i) => `  - match: {id: a}\n    legend: "Legend entry number ${i}"\n    style: {fill: "#ffeeaa"}`).join('\n');
+  const d = makeDiagram(info, { mmd: 'flowchart LR\n  a["A"] --> b["B"]\n', config: `version: 1\nstyles:\n${rules}\n`, layout: null });
+  await open(page, d);
+  const items = page.getByTestId('legend-item');
+  await expect(items).toHaveCount(14);
+  const canvas = (await page.getByTestId('canvas').boundingBox())!;
+  const boxes = await items.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON() as DOMRect));
+  const lanes = (await page.locator('[data-node-id="b"]').boundingBox())!;
+  // More than one row, and no entry runs past the diagram's right-hand side by more than one entry's width.
+  expect(new Set(boxes.map((b) => Math.round(b.top))).size).toBeGreaterThan(1);
+  for (const b of boxes) {
+    expect(b.left).toBeGreaterThanOrEqual(canvas.x);
+    expect(b.right).toBeLessThanOrEqual(canvas.x + canvas.width);
+    expect(b.bottom).toBeLessThanOrEqual(canvas.y + canvas.height);
+  }
+  expect(Math.max(...boxes.map((b) => b.right))).toBeLessThan(lanes.x + lanes.width + 400);
+
+  const empty = makeDiagram(info, { mmd: 'flowchart LR\n  a["A"] --> b["B"]\n', config: null, layout: null });
+  await open(page, empty);
+  await expect(page.getByTestId('legend')).toHaveCount(0);
+});
+
+// A11: Space+drag pans from anywhere, also when the press lands on a handle that takes its own drags (a lane's size or
+// length handle, a block's resize handle); nothing is resized and no file changes.
+test('Space+drag starting on a lane size, lane length or block resize handle pans instead of resizing', async ({ page }, info) => {
+  const d = makeDiagram(info);
+  const before = d.read();
+  await open(page, d);
+  const handles = [
+    page.locator('[data-lane-resize="requester"]'),
+    page.locator('[data-lane-length-resize]'),
+    node(page, 'r01').locator('[data-resize="se"]'), // shown once the block is selected (below)
+  ];
+  for (const h of handles) {
+    // The block's resize handles show once it's selected (last, as the inspector then covers the right-hand side).
+    if (h === handles[2]) await node(page, 'r01').click();
+    await expect(h).toHaveCount(1);
+    const box = (await h.boundingBox())!;
+    const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    const n0 = (await node(page, 'r01').boundingBox())!;
+    await page.mouse.move(from.x, from.y);
+    await page.keyboard.down(' ');
+    await expect(page.getByTestId('canvas')).toHaveAttribute('data-space-pan', 'true');
+    await page.mouse.down();
+    await page.mouse.move(from.x - 40, from.y - 30, { steps: 5 });
+    await page.mouse.up();
+    await page.keyboard.up(' ');
+    const n1 = (await node(page, 'r01').boundingBox())!;
+    expect(Math.round(n1.x - n0.x)).toBe(-40);
+    expect(Math.round(n1.y - n0.y)).toBe(-30);
+    expect(Math.round(n1.width)).toBe(Math.round(n0.width)); // not resized
+    expect(Math.round(n1.height)).toBe(Math.round(n0.height));
+  }
+  await page.waitForTimeout(400); // a resize would have been written by now
+  expect(d.read()).toEqual(before);
+});

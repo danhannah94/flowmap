@@ -16,7 +16,8 @@ import { fetchDiagram, listDiagrams, putDiagram, samePreset, sameVersions, subsc
 import { derive, originMove, sameFiles, withHints, type Derived } from './derive';
 import { fitViewport, zoomAround, type Point, type Rect, type Viewport } from '../canvas/viewport';
 import { notesRowBottom, withAnnotations } from '../notes/geometry';
-import { takeViewport } from './viewportCache';
+import { viewportForOpen } from './viewportCache';
+import { legendLayout } from '../../core/legend';
 
 export type ThemeName = 'light' | 'dark';
 export type SaveStatus = 'saved' | 'saving' | 'error';
@@ -99,7 +100,8 @@ export interface State {
    *  config). Empty while the config names none. */
   presets: PresetFiles;
   /** A15: the diagrams the server lists (§8.2, reused from the home page's API), for the Inspector's link picker and
-   *  the `W-link-missing`/`W-link-traversal` checks; null until fetched (checked afresh each time a diagram opens). */
+   *  the `W-link-missing`/`W-link-traversal` checks; null until fetched. Fetched when a diagram opens and kept current
+   *  by the push channel's `diagrams` events. */
   diagramList: string[] | null;
   derived: Derived | null;
   /** What the canvas draws: the current derived document, or the last one that could be laid out (read-only). */
@@ -247,8 +249,8 @@ export class Store {
       this.disk = snap;
       this.set({ presets: snap.presets ?? {} });
       // A15: a diagram left through a followed link remembered its viewport (viewportCache.ts); Back restores it
-      // instead of fitting. Read-and-forget, so opening the same diagram again later fits normally.
-      const stored = takeViewport(file);
+      // instead of fitting. Read-and-forget, and applied only through the history, so any other open fits normally.
+      const stored = viewportForOpen(file);
       this.fitPending = !stored;
       this.setFiles(snap.files, { keepSelection: false });
       this.set({
@@ -259,11 +261,13 @@ export class Store {
         file,
         (s) => this.onExternal(s),
         () => void this.recheck(),
+        (files) => this.set({ diagramList: files }),
       );
       this.maybeFit();
-      // A15: refreshed on every open (including a followed link's navigation), best-effort — a stale list at worst
-      // shows one link warning a beat late, never a wrong "missing".
-      void listDiagrams().then((files) => this.set({ diagramList: files }), () => {});
+      // A15: fetched on every open (including a followed link's navigation), then kept current by the push channel's
+      // `diagrams` events (a diagram created, deleted, moved or renamed with its folder, in this tab or another), so a
+      // link rewritten by a move (A17) is checked against the list that has its new target.
+      this.refreshDiagramList();
     } catch (e) {
       this.set({ status: 'failed', loadError: (e as Error).message });
     }
@@ -357,8 +361,20 @@ export class Store {
     this.replaceFromDisk(snap, this.dirty);
   }
 
+  /** Re-reads the served root's diagram list (best-effort: a failure keeps the list there is). */
+  private refreshDiagramList(): void {
+    const file = this.state.file;
+    void listDiagrams().then(
+      (files) => {
+        if (this.state.file === file) this.set({ diagramList: files });
+      },
+      () => {},
+    );
+  }
+
   /** After the push channel reconnects, compare with the disk in case an event was missed. */
   private async recheck(): Promise<void> {
+    this.refreshDiagramList();
     try {
       const snap = await fetchDiagram(this.state.file);
       this.onExternal(snap);
@@ -825,19 +841,19 @@ export const ZOOM_CONTROLS = { width: 136, height: 56 };
 export const TITLE_BAND = 64;
 export const LEGEND_GAP = 28;
 
-export function legendRows(count: number, width: number): number {
-  if (count === 0) return 0;
-  const perRow = Math.max(1, Math.floor(Math.max(width, 320) / 260));
-  return Math.ceil(count / perRow);
+/** How wide the legend may run before it wraps: the diagram's width (at least 320, as the export's minimum). */
+export function legendWidth(layout: LayoutResult): number {
+  return Math.max(layout.width, 320);
 }
 
 function contentBounds(shown: Derived | null): Rect | null {
   const layout = shown?.layout;
   if (!layout) return null;
-  const legend = shown!.doc.legend.length;
-  // The legend sits below the diagram and the default row of notes (as the canvas draws it, Decorations.tsx).
+  const legend = shown!.doc.legend;
+  // The legend sits below the diagram and the default row of notes, wrapped into rows (as the canvas draws it,
+  // Decorations.tsx, and as the export does).
   const below = Math.max(layout.height, notesRowBottom(shown));
-  const bottom = below + (legend ? LEGEND_GAP + legendRows(legend, layout.width) * 30 : 0);
+  const bottom = below + (legend.length ? LEGEND_GAP + legendLayout(legend, legendWidth(layout)).totalHeight : 0);
   // v1.1: notes and the title may be anywhere, including left of or above everything (UI41–UI43).
   return withAnnotations({ x: 0, y: -TITLE_BAND, width: Math.max(layout.width, 320), height: bottom + TITLE_BAND }, layout);
 }

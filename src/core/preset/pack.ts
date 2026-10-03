@@ -172,8 +172,14 @@ function readPack(js: unknown, ref: string, p: Problem[]): PresetPack | null {
   return { ref, name, kinds, byName };
 }
 
-/** Read a pack file's text (YAML, which includes JSON). A pack that can't be read at all gives no pack and a warning. */
+/** Read a pack file's text (YAML, which includes JSON). A pack that can't be read at all gives no pack and a warning.
+ *  Every warning is about the pack file's own content, so each carries `file: ref` (shown as its location). */
 export function parsePackText(text: string, ref: string): { pack: PresetPack | null; warnings: Problem[] } {
+  const { pack, warnings } = readPackText(text, ref);
+  return { pack, warnings: warnings.map((w) => ({ ...w, file: ref })) };
+}
+
+function readPackText(text: string, ref: string): { pack: PresetPack | null; warnings: Problem[] } {
   const warnings: Problem[] = [];
   const doc = parseDocument(text, { uniqueKeys: true });
   const [firstError] = doc.errors;
@@ -218,12 +224,12 @@ export function resolvePreset(ref: string | null, files: PresetFiles | undefined
     const pack = builtinPack(c.name);
     if (pack) return { pack, warnings: [] };
     const known = Object.keys(BUILTIN_PACKS).join(', ');
-    return { pack: null, warnings: [warn('W-preset-unknown', `Unknown preset "${ref}" (built-in presets: ${known}; a file path ends in .yaml)`)] };
+    return { pack: null, warnings: [warn('W-preset-unknown', `Unknown preset "${ref}" (built-in presets: ${known}; a value containing "/" or ending in .yaml, .yml or .json is a pack file path, relative to the diagram's folder)`)] };
   }
   if (!files || !Object.hasOwn(files, ref)) return { pack: null, warnings: [] };
   const text = files[ref];
   if (text === null || text === undefined) {
-    return { pack: null, warnings: [warn('W-preset-unknown', `Preset file "${ref}" could not be read (is the path relative to the diagram, inside the served folder?)`)] };
+    return { pack: null, warnings: [warn('W-preset-unknown', `Preset file "${ref}" could not be read (the path is relative to the diagram's folder and must stay inside the served folder; moving the diagram doesn't update it, so a moved diagram's pack path may need changing)`)] };
   }
   return parsePackText(text, ref);
 }

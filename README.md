@@ -43,8 +43,9 @@ The other commands (each takes the path to a `.mmd`; its config and layout files
 | `flowmap validate <file.mmd> [--json]` | Checks all three files and lists errors and warnings with their codes and lines. Exits 1 on errors. |
 | `flowmap fmt <file.mmd> [--check] [--stdout]` | Rewrites the `.mmd` in canonical form. `--check` only reports; `--stdout` prints instead of writing. |
 | `flowmap layout <file.mmd> [--json]` | Prints the computed layout (every lane, block and line, in pixels). |
-| `flowmap export <file.mmd> --format svg\|png [--theme light\|dark] [--out <path>]` | Writes a picture to `exports/<name>.svg` or `.png` beside the `.mmd` (light theme by default). |
+| `flowmap export <file.mmd> --format svg\|png [--theme light\|dark] [--out <path>] [--root <dir>]` | Writes a picture to `exports/<name>.svg` or `.png` beside the `.mmd` (light theme by default). `--root` is the folder links are relative to (default: the `.mmd`'s own folder). |
 | `flowmap serve <dir> [--port 4870]` | Runs the editor. |
+| `flowmap --help`, `flowmap --version` | Prints the usage, or the version. |
 
 PNG export renders in headless Chromium through Playwright, which downloads its browser separately. If the browser
 isn't installed, `flowmap export --format png` (and the editor's PNG button) stops with a message giving the exact
@@ -87,8 +88,9 @@ diagrams (New diagram) are created in the folder you're in.
 To move a diagram into a folder, drag its row onto the folder (or onto a breadcrumb segment, to move it up), or use
 **Move to…** in its own menu, which opens a small dialog to browse to the destination and confirm. Moving a diagram
 takes its `.mmd`, `.flow.yaml` and `.layout.json` (whichever exist) with it, plus anything else beside it sharing its
-base name; it doesn't rewrite `link:` references to it from other diagrams (a separate feature) that point at its old
-path.
+base name, and rewrites every other diagram's `link:` that pointed at its old path, so links keep working (the home
+screen says how many it updated). A relative `preset:` pack path in the moved diagram's own config is not rewritten:
+if the diagram moved to a different depth, update that path (the warnings list shows `W-preset-unknown` until you do).
 
 Opening a diagram inside a folder, then going back to the list (the flowmap logo, top left), returns you to that
 diagram's own folder, not always the root — and the editor's file name shows the full path, so you always know where
@@ -300,8 +302,11 @@ it. Following a link uses the app's own navigation, so Back returns to the diagr
 come back too, if you got there by following a link). `flowmap validate` and the warnings list flag a link whose
 target doesn't exist (`W-link-missing`) or that climbs out of the served folder with a `..` segment
 (`W-link-traversal`, which the editor also refuses to follow); linking a block to its own diagram is fine. SVG
-export wraps a linked block in `<a href="<target>.svg">` so an exported set of diagrams stays clickable (PNG export
-is a flat image, so this doesn't apply there).
+export wraps a linked block in a link to the target's own SVG export, so an exported set of diagrams stays clickable:
+the link is relative from this export (`exports/` beside the diagram) to the target's (`exports/` beside it), e.g.
+`../services/exports/compute.svg`. The editor's export buttons know the served folder; from the command line, pass
+`--root <folder>` when the diagram is in a subfolder of the set (PNG export is a flat image, so none of this applies
+there).
 
 **Lanes.** Add a lane from the toolbar and name it. Double-click a lane's header to rename it. The header's menu
 (the `···` button that appears on hover) can also change the lane's id, move it up or down, or delete it. Drag a lane

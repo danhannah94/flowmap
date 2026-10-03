@@ -222,6 +222,15 @@ export function Canvas() {
       /* synthetic pointers can't be captured; moves still bubble here */
     }
   };
+  // A11: Space+drag (and the middle button) pan from anywhere, including the handles that take their own press (a
+  // lane's size or length handle, a block's resize handles, a note): the canvas claims such a press in the capture
+  // phase, before any of them sees it. Controls (an open editor, a button) keep theirs.
+  const onPointerDownCapture = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!(e.button === 1 || (e.button === 0 && space.current))) return;
+    if (hitTest(e.target).kind === 'control') return;
+    onPointerDown(e);
+    e.stopPropagation();
+  };
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     store.notePointer(ctx.local(e));
     const cur = gesture.current;
@@ -279,6 +288,7 @@ export function Canvas() {
         backgroundSize: `${grid}px ${grid}px`,
         backgroundPosition: `${viewport.x}px ${viewport.y}px`,
       }}
+      onPointerDownCapture={onPointerDownCapture}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

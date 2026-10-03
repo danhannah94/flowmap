@@ -5,6 +5,7 @@ import { linkProblems } from '../links';
 import type { State } from '../store/store';
 import { shallow, useStore, useStoreState } from '../store/hooks';
 import { loadDismissed, pruneDismissed, saveDismissed, warningKey } from './dismissedWarnings';
+import { problemSource } from './problemSource';
 
 /**
  * Extra content inside a problem row, by code (UI27 adds `orphan-delete` buttons for the W-…-unknown-… warnings).
@@ -94,7 +95,7 @@ export function ErrorBanner() {
           return (
             <li key={i} data-code={p.code} className={`fm-problem fm-${level}`}>
               <span className="fm-problem-code">{p.code}</span>
-              <span className="fm-problem-where">{p.line !== null ? `line ${p.line}` : fileOf(p.code)}</span>
+              <span className="fm-problem-where">{p.line !== null ? `line ${p.line}` : problemSource(p)}</span>
               <span className="fm-problem-msg">{p.message}</span>
               {Extra ? <Extra problem={p} /> : null}
               {level === 'warning' ? (
@@ -115,12 +116,6 @@ export function ErrorBanner() {
       </ul>
     </section>
   );
-}
-
-function fileOf(code: string): string {
-  if (code === 'E-layout' || code === 'W-layout-unknown-node') return '.layout.json';
-  if (code.startsWith('E-config') || code.startsWith('W-config') || code === 'W-style') return '.flow.yaml';
-  return '.mmd';
 }
 
 export function Notices() {
