@@ -15,6 +15,7 @@ import { folderOf, homeHref } from './home/paths';
 import { installKeyboard } from './keyboard';
 import { StoreContext, useStore, useStoreState } from './store/hooks';
 import { Store } from './store/store';
+import { discardOnBfcacheRestore } from './store/viewportCache';
 
 export function App() {
   const store = useMemo(() => new Store(), []);
@@ -47,6 +48,7 @@ function Editor({ file }: { file: string }) {
   useEffect(() => {
     void store.open(file);
     const uninstall = installKeyboard(store);
+    const uninstallBfcache = discardOnBfcacheRestore(file);
     const beforeUnload = (e: BeforeUnloadEvent) => {
       if (store.dirty) {
         void store.flush();
@@ -57,6 +59,7 @@ function Editor({ file }: { file: string }) {
     document.title = `${file.replace(/\.mmd$/i, '')} · flowmap`;
     return () => {
       uninstall();
+      uninstallBfcache();
       window.removeEventListener('beforeunload', beforeUnload);
       store.close();
     };

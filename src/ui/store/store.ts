@@ -16,7 +16,7 @@ import { fetchDiagram, listDiagrams, putDiagram, samePreset, sameVersions, subsc
 import { derive, originMove, sameFiles, withHints, type Derived } from './derive';
 import { fitViewport, zoomAround, type Point, type Rect, type Viewport } from '../canvas/viewport';
 import { notesRowBottom, withAnnotations } from '../notes/geometry';
-import { takeViewport } from './viewportCache';
+import { viewportForOpen } from './viewportCache';
 
 export type ThemeName = 'light' | 'dark';
 export type SaveStatus = 'saved' | 'saving' | 'error';
@@ -248,8 +248,8 @@ export class Store {
       this.disk = snap;
       this.set({ presets: snap.presets ?? {} });
       // A15: a diagram left through a followed link remembered its viewport (viewportCache.ts); Back restores it
-      // instead of fitting. Read-and-forget, so opening the same diagram again later fits normally.
-      const stored = takeViewport(file);
+      // instead of fitting. Read-and-forget, and applied only through the history, so any other open fits normally.
+      const stored = viewportForOpen(file);
       this.fitPending = !stored;
       this.setFiles(snap.files, { keepSelection: false });
       this.set({
