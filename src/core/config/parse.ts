@@ -10,7 +10,7 @@ import {
   type ConfigLane, type ConfigNote, type FlowConfig, type MatchCondition, type NodeMeta, type StyleRule,
 } from './model';
 
-const TOP_KEYS = new Set(['version', 'title', 'show_title', 'lanes', 'styles', 'nodes', 'notes']);
+const TOP_KEYS = new Set(['version', 'title', 'show_title', 'preset', 'lanes', 'styles', 'nodes', 'notes']);
 const NOTE_KEYS = new Set(['text', 'font_size', 'bold', 'color']);
 const RULE_KEYS = new Set(['legend', 'match', 'style']);
 const LANE_KEYS = new Set(['id']);
@@ -56,7 +56,7 @@ function readConfig(js: unknown, p: Problems): FlowConfig {
   const config = emptyConfig();
   if (js === null || js === undefined) return config;
   if (!isPlainObject(js)) {
-    p.errors.push(err('Config must be a map of keys (version, title, show_title, lanes, styles, nodes, notes)'));
+    p.errors.push(err('Config must be a map of keys (version, title, show_title, preset, lanes, styles, nodes, notes)'));
     return config;
   }
   for (const key of Object.keys(js)) {
@@ -69,6 +69,11 @@ function readConfig(js: unknown, p: Problems): FlowConfig {
   if (title !== undefined && title !== null) {
     if (isScalarValue(title)) config.title = scalarString(title);
     else p.errors.push(err('Config "title" must be text'));
+  }
+  const preset = js.preset;
+  if (preset !== undefined && preset !== null) {
+    if (typeof preset === 'string' && preset.trim() !== '') config.preset = preset.trim();
+    else p.errors.push(err('Config "preset" must be text: a built-in preset name or a path to a preset file'));
   }
   const lanes = js.lanes;
   if (lanes !== undefined && lanes !== null) {
@@ -242,7 +247,7 @@ function readColor(v: unknown): ThemedColor | undefined {
   return c;
 }
 
-function readStyle(raw: Record<string, unknown>, where: string, p: Problems): ResolvedStyle {
+export function readStyle(raw: Record<string, unknown>, where: string, p: Problems): ResolvedStyle {
   const style: ResolvedStyle = {};
   const bad = (prop: string, why: string) => p.warnings.push(warn('W-style', `${where}: ${why} "${prop}" (ignored)`));
   for (const [prop, v] of Object.entries(raw)) {

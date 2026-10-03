@@ -44,6 +44,13 @@ export function replaceNodeEntry(files: Files, id: string, yamlText: string): Op
   });
 }
 
+// ---- A20 Preset pack
+
+/** A20: use a preset pack (a built-in name such as `cloud`, or a path to a pack file); empty or null stops using one. */
+export function setPreset(files: Files, ref: string | null): OpResult {
+  return configOp(files, (doc) => doc.setPreset(ref));
+}
+
 // ---- UI25 Styles panel
 
 export function addRule(files: Files): OpResult {

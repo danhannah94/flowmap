@@ -1,10 +1,13 @@
 // Reading, writing and validating the three files beside a `.mmd` (design.md §2, §8.2, amendment A16). No parsing
 // of their contents happens here — the server treats `.mmd`/`.flow.yaml`/`.layout.json` as opaque text; only the
-// CLI's `src/core` parses them. Node built-ins only.
+// CLI's `src/core` parses them. Node built-ins only. (One narrow exception, amendment A20: `readPresetFiles` reads
+// the `preset:` key of a `.flow.yaml`, through `parseConfig`, to know which pack file to read beside the diagram.)
 import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, readdir, realpath, rename, rmdir, stat, unlink, writeFile } from 'node:fs/promises';
-import { basename, dirname, join, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
+import { parseConfig } from '../core/config/parse.js';
+import { presetFileOf, type PresetFiles } from '../core/preset/pack.js';
 import { contentHash } from './hash.js';
 
 export type FileKey = 'mmd' | 'config' | 'layout';
@@ -19,11 +22,18 @@ export interface DiagramVersions {
   mmd: string | null;
   config: string | null;
   layout: string | null;
+  /** A20: a hash of the preset pack file's text (or its absence), present only while the diagram's config names a
+   *  pack file. Not one of the three files: a PUT's conflict check ignores it (`versionsEqual`), the watcher and the
+   *  UI use it to notice that the pack changed (`snapshotsEqual`). */
+  preset?: string | null;
 }
 
 export interface DiagramSnapshot {
   files: DiagramFiles;
   versions: DiagramVersions;
+  /** A20: the text of the pack file the config's `preset:` names (null: could not be read), keyed by the reference as
+   *  written. Present only while the config names a pack file. */
+  presets?: PresetFiles;
 }
 
 /** A PUT's desired end state for the three files: each a string to write, or `null` to delete. */
@@ -318,6 +328,44 @@ export async function moveDiagram(dir: string, mmdFile: string, toDir: string): 
   return { ok: true, file: toDir ? `${toDir}/${base}.mmd` : `${base}.mmd` };
 }
 
+/** The most a preset pack file may weigh (a pack is a few kilobytes); a bigger file is treated as unreadable. */
+export const MAX_PRESET_BYTES = 256 * 1024;
+
+/**
+ * A20: the text of the pack file a diagram's config names with `preset:` (design.md §4.1), read from beside the
+ * diagram. Undefined when the config names no pack file (none, or a built-in). The result is keyed by the reference as
+ * written; a file that is missing, too big, not a file, or (when `root` is given) outside `root`, even through a
+ * symlink, is null. `root` is the served folder for the server; the CLI has none and trusts the path, as it trusts
+ * every other path it is given.
+ */
+export async function readPresetFiles(root: string | null, mmdAbs: string, configText: string | null): Promise<PresetFiles | undefined> {
+  if (configText === null) return undefined;
+  const config = parseConfig(configText).config;
+  const path = presetFileOf(config);
+  if (!path || !config?.preset) return undefined;
+  const key = config.preset;
+  const abs = resolve(dirname(mmdAbs), path);
+  try {
+    if (root !== null) {
+      const rel = relative(resolve(root), abs);
+      if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) return { [key]: null };
+      await resolveInRoot(root, rel.split(sep).join('/'));
+    }
+    const info = await stat(abs);
+    if (!info.isFile() || info.size > MAX_PRESET_BYTES) return { [key]: null };
+    return { [key]: await readFile(abs, 'utf8') };
+  } catch {
+    return { [key]: null };
+  }
+}
+
+/** A snapshot's version of its pack file: undefined when the config names none. */
+function presetVersion(presets: PresetFiles | undefined): string | null | undefined {
+  if (!presets) return undefined;
+  const text = Object.values(presets)[0];
+  return text === null || text === undefined ? null : contentHash(text);
+}
+
 export async function readDiagram(dir: string, mmdFile: string): Promise<DiagramSnapshot> {
   const names = diagramFileNames(mmdFile);
   const [mmd, config, layout] = await Promise.all([
@@ -325,13 +373,20 @@ export async function readDiagram(dir: string, mmdFile: string): Promise<Diagram
     readOptional(join(dir, names.config)),
     readOptional(join(dir, names.layout)),
   ]);
+  return snapshotOf({ mmd, config, layout }, await readPresetFiles(dir, join(dir, names.mmd), config));
+}
+
+function snapshotOf(files: DiagramFiles, presets: PresetFiles | undefined): DiagramSnapshot {
+  const preset = presetVersion(presets);
   return {
-    files: { mmd, config, layout },
+    files,
     versions: {
-      mmd: mmd === null ? null : contentHash(mmd),
-      config: config === null ? null : contentHash(config),
-      layout: layout === null ? null : contentHash(layout),
+      mmd: files.mmd === null ? null : contentHash(files.mmd),
+      config: files.config === null ? null : contentHash(files.config),
+      layout: files.layout === null ? null : contentHash(files.layout),
+      ...(preset !== undefined ? { preset } : {}),
     },
+    ...(presets ? { presets } : {}),
   };
 }
 
@@ -352,8 +407,14 @@ export async function deleteIfExists(path: string): Promise<void> {
   }
 }
 
+/** The three files' versions match (what a PUT's conflict check compares). */
 export function versionsEqual(a: DiagramVersions, b: DiagramVersions): boolean {
   return a.mmd === b.mmd && a.config === b.config && a.layout === b.layout;
+}
+
+/** Everything a viewer shows matches: the three files, and (A20) the preset pack file the config names. */
+export function snapshotsEqual(a: DiagramVersions, b: DiagramVersions): boolean {
+  return versionsEqual(a, b) && (a.preset ?? null) === (b.preset ?? null);
 }
 
 export interface PutResult {
@@ -456,10 +517,5 @@ export async function applyPut(
   // result — which would then have the watcher (see watcher.ts endWrite) silently adopt that external content as
   // "ours" and never broadcast it.
   const files: DiagramFiles = { mmd: patch.mmd, config: patch.config, layout: patch.layout };
-  const versions: DiagramVersions = {
-    mmd: files.mmd === null ? null : contentHash(files.mmd),
-    config: files.config === null ? null : contentHash(files.config),
-    layout: files.layout === null ? null : contentHash(files.layout),
-  };
-  return { conflict: false, snapshot: { files, versions } };
+  return { conflict: false, snapshot: snapshotOf(files, await readPresetFiles(dir, paths.mmd, patch.config)) };
 }

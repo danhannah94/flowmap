@@ -214,7 +214,16 @@ export interface ResolvedStyle {
   badge?: string;
 }
 
+/** A20: the icon a block (or a legend entry) shows: the glyph's path strings on the 24 x 24 grid (`src/core/preset`). */
+export interface ResolvedIcon {
+  /** The glyph's name for a built-in glyph, or `custom` for a pack's own paths. Carried as `data-icon` in the DOM. */
+  name: string;
+  paths: readonly string[];
+}
+
 export interface LegendItem {
   text: string;
   style: ResolvedStyle;
+  /** A20: set for an entry that comes from a preset pack's kind with an icon. */
+  icon?: ResolvedIcon;
 }

@@ -10,6 +10,7 @@ import { checkLinks, linkTargetsByNode } from '../core/config';
 import { loadDocument } from '../core/document';
 import { format as formatMmd, parse as parseMmd } from '../core/mmd';
 import { renderSvg } from '../core/svg';
+import { readPresetFiles } from '../server/files';
 import { serve } from '../server/index';
 import type { Problem } from '../core/types';
 
@@ -98,11 +99,17 @@ async function readRequired(path: string): Promise<string> {
   }
 }
 
-async function loadDoc(paths: DiagramPaths) {
+/**
+ * `root` is the served folder when the server asks for an export: a preset pack file (A20, §4.1) must then be inside
+ * it, as it must be for the editor. A command given a path directly has no root and reads the pack file where the
+ * path says.
+ */
+async function loadDoc(paths: DiagramPaths, root: string | null = null) {
   const mmdText = await readRequired(paths.mmd);
   const configText = await readOptional(paths.config);
   const layoutText = await readOptional(paths.layoutFile);
-  return loadDocument(mmdText, configText, layoutText, basename(paths.mmd));
+  const presetFiles = await readPresetFiles(root, paths.mmd, configText);
+  return loadDocument(mmdText, configText, layoutText, basename(paths.mmd), presetFiles);
 }
 
 /**
@@ -283,9 +290,10 @@ async function exportDiagram(
   theme: 'light' | 'dark',
   out?: string,
   onProblem?: (line: string) => void,
+  root: string | null = null,
 ): Promise<string> {
   const paths = diagramPaths(mmdPath);
-  const doc = await loadDoc(paths);
+  const doc = await loadDoc(paths, root);
   if (doc.layout === null) throw new ExportRefused('the .mmd file has errors; fix them before exporting');
   if (onProblem) {
     for (const e of doc.problems.errors) if (!MMD_CODES.has(e.code)) onProblem(`error ${formatProblem(e)}`);
@@ -296,6 +304,7 @@ async function exportDiagram(
     graph: doc.graph,
     layout: doc.layout.result,
     styles: doc.styles,
+    icons: doc.icons,
     legend: doc.legend,
     notes: doc.notes,
     theme,
@@ -351,7 +360,7 @@ async function cmdServe(argv: string[]): Promise<void> {
   const handle = await serve({
     dir,
     port,
-    exportFn: (mmdPath, format, theme) => exportDiagram(mmdPath, format, theme),
+    exportFn: (mmdPath, format, theme) => exportDiagram(mmdPath, format, theme, undefined, undefined, dir),
   });
 
   // Run until stopped, then close the server (SSE connections and the directory watcher included).

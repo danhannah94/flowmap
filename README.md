@@ -71,7 +71,7 @@ A diagram is up to three files with the same base name, side by side. Only the `
 | File | Owns | Who writes it |
 |---|---|---|
 | `<name>.mmd` | What the process is: lanes, steps, decisions, lines, labels. A strict subset of Mermaid flowchart syntax, so GitHub renders it too. | Both. The editor always writes canonical form (`flowmap fmt`), so diffs stay small. |
-| `<name>.flow.yaml` | How it looks and what we know: the title, lane order, per-step metadata (who said it, how sure we are, quotes, open questions) and style rules that turn that metadata into looks, with a legend. | Both. The editor changes only the lines it edits; comments and formatting elsewhere survive byte for byte. |
+| `<name>.flow.yaml` | How it looks and what we know: the title, lane order, per-step metadata (who said it, how sure we are, quotes, open questions) and style rules that turn that metadata into looks, with a legend, and optionally a preset pack of icons by `kind`. | Both. The editor changes only the lines it edits; comments and formatting elsewhere survive byte for byte. |
 | `<name>.layout.json` | Where things are: the positions you pinned by dragging, relative to their lane, any lane sizes you set by dragging a lane's edge, and the lanes' length if you drag their far end. | The editor (hand edits are allowed but rare). |
 
 Why three and not two: the layout file changes on every drag, so keeping it apart means the human-edited config never
@@ -109,6 +109,60 @@ the Unassigned lane until you move them. `flowmap validate` still notes each blo
 
 ![A flowchart without lanes, light theme](docs/screenshots/flowchart-light.png)
 ![The same flowchart, dark theme](docs/screenshots/flowchart-dark.png)
+
+## Architecture icons: preset packs
+
+An architecture sketch reads faster when a block shows what kind of component it is. A **preset pack** gives each
+kind an icon, a look and a legend label, so a diagram names the pack instead of repeating style rules. Set the block's
+`kind` in the `.flow.yaml`, and name a pack with `preset`:
+
+```yaml
+version: 1
+title: Order system
+preset: cloud                 # the built-in "Cloud architecture" pack
+nodes:
+  gateway: {kind: api-gateway}
+  create: {kind: function}
+  orders: {kind: queue}
+  db: {kind: database}
+  receipts: {kind: object-storage}
+  pay: {kind: external-service}
+```
+
+Each of those blocks gets a small round icon tag on its top edge and the pack's fill and border (light and dark
+variants), and the legend lists each kind in use. [`examples/cloud-architecture`](examples/cloud-architecture) is a
+complete example; this is its export:
+
+![An order system drawn with the cloud pack, light theme](docs/screenshots/architecture-light.png)
+![The same diagram, dark theme](docs/screenshots/architecture-dark.png)
+
+The built-in `cloud` pack is provider-neutral: generic roles, original line icons, no vendor logos. Its kinds are
+`function`, `service`, `object-storage`, `database`, `cache`, `queue`, `topic`, `api-gateway`, `load-balancer`, `cdn`,
+`external-service`, `user`, `identity`, `scheduler` and `monitoring`, with short aliases such as `db`, `bucket` and
+`saas`. Your own style rules and a block's own colours still win over the pack, and the icons are drawn inline, so
+they work offline in the editor, the SVG and the PNG.
+
+**Your own pack.** `preset` can also be a path, relative to the diagram, to a YAML file (it has to be inside the folder
+you serve). Share it across diagrams by pointing each at the same file:
+
+```yaml
+# packs/team.yaml
+name: Team pack
+kinds:
+  job:
+    label: Background job            # the legend text (leave it out for no legend entry)
+    aliases: [cron-job]
+    icon: queue                      # one of the built-in icons...
+    style: {fill: {light: "#fde7c8", dark: "#5a3a10"}}
+  report:
+    label: Report
+    icon: {paths: ["M5 3h10l4 4v14H5z", "M9 12h6", "M9 16h6"]}   # ...or your own line art on a 24 x 24 grid
+```
+
+Then `preset: packs/team.yaml`. In the editor, the Styles panel has a Preset pack field (type a name or a path, or click
+a built-in) and the editor follows edits to the pack file as you save it. An unknown pack or a block `kind` the pack
+doesn't have is a warning (`W-preset-unknown`, `W-preset-invalid`, `W-preset-kind`), and the diagram still draws. The
+format is in [`docs/design.md`](docs/design.md) section 4.1.
 
 ## Using the editor
 
@@ -176,7 +230,8 @@ Add, edit or delete fields as text, a list, a map or raw YAML; values that the s
 one-click choices. With several blocks selected, set or remove a field on all of them. The Styles panel lists the
 rules in order with their legend text and a swatch; add, reorder and delete rules, and edit their conditions and
 looks (fill, border colour, style and width, text colour, font style, badge, each with light and dark colours). A
-badge is a small tag on the top edge of the block, never over its label.
+badge is a small tag on the top edge of the block, never over its label. The panel's Preset pack field chooses a
+preset pack for icons and looks by `kind` (see Architecture icons above).
 Config entries for things that no longer exist show in the warnings list with a button to delete them.
 
 **Undo.** Every edit, to any of the three files, is one undo step: Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z, or the toolbar

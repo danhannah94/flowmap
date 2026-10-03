@@ -16,6 +16,7 @@ import type { Command } from '../commands/types';
 import { shallow, useStore, useStoreState } from '../store/hooks';
 import type { Store } from '../store/store';
 import { icons } from './icons';
+import { PresetField } from './PresetField';
 import { configLock } from './Inspector';
 import { sidePanels } from './Panels';
 import { AutoTextarea, ColorField, CommitInput, IconButton, ico, StyleSwatch } from './evidence/controls';
@@ -75,6 +76,7 @@ export function StylesPanel() {
         Rules apply top to bottom; a later rule overrides earlier properties. Rules with legend text appear in the legend.
       </p>
       {lock ? <div className="fm-ev-pad"><Lock reason={lock} /></div> : null}
+      <PresetField />
       {!disabled && rules.length === 0 ? (
         <div className="fm-ev-empty-card">
           <strong>No rules yet.</strong> Add one to turn evidence into looks, for example a dashed border when
