@@ -99,7 +99,8 @@ export interface State {
    *  config). Empty while the config names none. */
   presets: PresetFiles;
   /** A15: the diagrams the server lists (§8.2, reused from the home page's API), for the Inspector's link picker and
-   *  the `W-link-missing`/`W-link-traversal` checks; null until fetched (checked afresh each time a diagram opens). */
+   *  the `W-link-missing`/`W-link-traversal` checks; null until fetched. Fetched when a diagram opens and kept current
+   *  by the push channel's `diagrams` events. */
   diagramList: string[] | null;
   derived: Derived | null;
   /** What the canvas draws: the current derived document, or the last one that could be laid out (read-only). */
@@ -259,11 +260,13 @@ export class Store {
         file,
         (s) => this.onExternal(s),
         () => void this.recheck(),
+        (files) => this.set({ diagramList: files }),
       );
       this.maybeFit();
-      // A15: refreshed on every open (including a followed link's navigation), best-effort — a stale list at worst
-      // shows one link warning a beat late, never a wrong "missing".
-      void listDiagrams().then((files) => this.set({ diagramList: files }), () => {});
+      // A15: fetched on every open (including a followed link's navigation), then kept current by the push channel's
+      // `diagrams` events (a diagram created, deleted, moved or renamed with its folder, in this tab or another), so a
+      // link rewritten by a move (A17) is checked against the list that has its new target.
+      this.refreshDiagramList();
     } catch (e) {
       this.set({ status: 'failed', loadError: (e as Error).message });
     }
@@ -357,8 +360,20 @@ export class Store {
     this.replaceFromDisk(snap, this.dirty);
   }
 
+  /** Re-reads the served root's diagram list (best-effort: a failure keeps the list there is). */
+  private refreshDiagramList(): void {
+    const file = this.state.file;
+    void listDiagrams().then(
+      (files) => {
+        if (this.state.file === file) this.set({ diagramList: files });
+      },
+      () => {},
+    );
+  }
+
   /** After the push channel reconnects, compare with the disk in case an event was missed. */
   private async recheck(): Promise<void> {
+    this.refreshDiagramList();
     try {
       const snap = await fetchDiagram(this.state.file);
       this.onExternal(snap);

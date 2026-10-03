@@ -209,12 +209,15 @@ export async function requestExport(file: string, format: 'svg' | 'png', theme: 
 
 /**
  * Subscribe to external changes of one diagram (server-sent events, `event: changed`). `onReconnect` fires when the
- * channel comes back after a drop, when an event may have been missed.
+ * channel comes back after a drop, when an event may have been missed. `onDiagrams` gets the served root's whole
+ * diagram list (as `listDiagrams` gives it) whenever a diagram elsewhere is created, deleted, moved or renamed with
+ * its folder (`event: diagrams`), so the editor's link checks (A15) never go stale.
  */
 export function subscribeChanges(
   file: string,
   onChanged: (snap: Snapshot) => void,
   onReconnect: () => void,
+  onDiagrams?: (files: string[]) => void,
 ): () => void {
   const es = new EventSource(`/api/events?${q(file)}`);
   let dropped = false;
@@ -223,6 +226,14 @@ export function subscribeChanges(
       onChanged(JSON.parse((ev as MessageEvent<string>).data) as Snapshot);
     } catch (e) {
       console.error('flowmap: bad change event', e);
+    }
+  });
+  es.addEventListener('diagrams', (ev) => {
+    try {
+      const { files } = JSON.parse((ev as MessageEvent<string>).data) as { files: string[] };
+      if (Array.isArray(files)) onDiagrams?.(files);
+    } catch (e) {
+      console.error('flowmap: bad diagrams event', e);
     }
   });
   es.addEventListener('error', () => {

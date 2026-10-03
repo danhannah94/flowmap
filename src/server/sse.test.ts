@@ -1,4 +1,4 @@
-import { readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -192,6 +192,49 @@ describe('flowmap server: SSE (design.md UI29)', () => {
     await waitFor(() => capture.events.some((e) => e.event === 'changed' && e.data.includes('written externally mid-burst')), 1000);
 
     await burst;
+    capture.stop();
+  });
+
+  it('a diagram added elsewhere sends every open editor a "diagrams" event with the new list (A15 link checks)', async () => {
+    const capture = captureSse(`${base}/api/events?file=purchase-request.mmd`);
+    await sleep(50);
+    await mkdir(join(dir, 'services'));
+    await writeFile(join(dir, 'services', 'compute.mmd'), 'flowchart LR\n  a["A"]\n', 'utf8');
+    await waitFor(() => capture.events.some((e) => e.event === 'diagrams'), 1000);
+    const last = capture.events.filter((e) => e.event === 'diagrams').at(-1)!;
+    expect((JSON.parse(last.data) as { files: string[] }).files).toEqual(['purchase-request.mmd', 'services/compute.mmd']);
+    // No "changed" event: the open diagram's own files didn't change.
+    expect(capture.events.some((e) => e.event === 'changed')).toBe(false);
+    capture.stop();
+  });
+
+  it('a folder rename sends the list with the moved diagram\'s new path', async () => {
+    await mkdir(join(dir, 'services'));
+    await writeFile(join(dir, 'services', 'compute.mmd'), 'flowchart LR\n  a["A"]\n', 'utf8');
+    await sleep(100); // the watcher's listing now includes services/compute.mmd
+    const capture = captureSse(`${base}/api/events?file=purchase-request.mmd`);
+    await sleep(50);
+    const res = await fetch(`${base}/api/folder`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dir: 'services', name: 'platform' }),
+    });
+    expect(res.status).toBe(200);
+    await waitFor(
+      () => capture.events.some((e) => e.event === 'diagrams' && e.data.includes('platform/compute.mmd')),
+      1000,
+    );
+    capture.stop();
+  });
+
+  it('editing an existing diagram\'s files sends no "diagrams" event (the set of diagrams is unchanged)', async () => {
+    const capture = captureSse(`${base}/api/events?file=purchase-request.mmd`);
+    await sleep(50);
+    const mmdPath = join(dir, 'purchase-request.mmd');
+    await writeFile(mmdPath, `${await readFile(mmdPath, 'utf8')}\n%% edit\n`, 'utf8');
+    await waitFor(() => capture.events.some((e) => e.event === 'changed'), 1000);
+    await sleep(100);
+    expect(capture.events.some((e) => e.event === 'diagrams')).toBe(false);
     capture.stop();
   });
 
