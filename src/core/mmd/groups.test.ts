@@ -238,3 +238,80 @@ describe('A19 property: random nested diagrams', () => {
     });
   }
 });
+
+// ---- A19 with A18: styled edges and groups -------------------------------------------------------------------------
+
+describe('A19 with A18: styled edges between and inside groups', () => {
+  // Edges written inside groups (declaring their nodes there, long label forms included) and edges between nodes in
+  // different groups at different depths, one of each style.
+  const STYLED = lr(
+    'subgraph acct [Account]',
+    '  gw["Gateway"]',
+    '  subgraph net [Network]',
+    '    lb["LB"] == hot path ==> app',
+    '    subgraph sub-a [Subnet A]',
+    '      app["App"] -. event .-> q[("Queue")]',
+    '    end',
+    '  end',
+    '  subgraph sub-b [Subnet B]',
+    '    db[("DB")]',
+    '  end',
+    'end',
+    'gw <-->|sync| db',
+    'app -.-> db',
+  );
+  const CANONICAL = lr(
+    '',
+    '  subgraph acct [Account]',
+    '    gw["Gateway"]',
+    '    subgraph net [Network]',
+    '      lb["LB"]',
+    '      subgraph sub-a [Subnet A]',
+    '        app["App"]',
+    '        q[("Queue")]',
+    '      end',
+    '    end',
+    '    subgraph sub-b [Subnet B]',
+    '      db[("DB")]',
+    '    end',
+    '  end',
+    '',
+    '  lb ==>|hot path| app',
+    '  app -.->|event| q',
+    '  gw <-->|sync| db',
+    '  app -.-> db',
+  );
+
+  it('an edge line inside a group declares its nodes there and keeps its style; canonical form round-trips', () => {
+    const { diagram } = ok(STYLED);
+    expect(declaredNodes(diagram).map((e) => [e.node.id, e.lane, e.group])).toEqual([
+      ['gw', 'acct', null], ['lb', 'acct', 'net'], ['app', 'acct', 'sub-a'], ['q', 'acct', 'sub-a'], ['db', 'acct', 'sub-b'],
+    ]);
+    expect(diagram.edges.map((e) => [e.source, e.target, e.style ?? 'solid', e.label])).toEqual([
+      ['lb', 'app', 'thick', 'hot path'],
+      ['app', 'q', 'dashed', 'event'],
+      ['gw', 'db', 'bidirectional', 'sync'],
+      ['app', 'db', 'dashed', null],
+    ]);
+    const once = format(diagram);
+    expect(once).toBe(CANONICAL);
+    const again = ok(once);
+    expect(format(again.diagram)).toBe(once);
+    expect(again.diagram.edges).toEqual(diagram.edges.map((e) => ({ ...e, line: expect.any(Number) })));
+    // The graph keeps both: grouped nodes, and the styles on edges whose ids the style doesn't change.
+    const graph = toGraph(again.diagram);
+    expect(graph.nodes.map((n) => [n.id, n.group])).toEqual([
+      ['gw', undefined], ['lb', 'net'], ['app', 'sub-a'], ['q', 'sub-a'], ['db', 'sub-b'],
+    ]);
+    expect(graph.edges.map((e) => [e.id, e.style])).toEqual([
+      ['lb->app', 'thick'], ['app->q', 'dashed'], ['gw->db', 'bidirectional'], ['app->db', 'dashed'],
+    ]);
+  });
+
+  it('a styled arrow to or from a group id is still E-syntax', () => {
+    const base = ['  subgraph a [A]', '    subgraph g [G]', '      x["X"]', '    end', '  end'];
+    for (const edge of ['x -.-> g', 'g ==> x', 'x <--> g', 'x -. to group .-> g']) {
+      expect(errors(lr(...base, `  ${edge}`)), edge).toEqual([['E-syntax', 7]]);
+    }
+  });
+});

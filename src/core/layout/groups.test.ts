@@ -4,10 +4,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadDocument } from '../document';
-import type { Graph, GraphGroup, LayoutResult, NodePin, Pin } from '../types';
+import type { Graph, GraphGroup, LayoutFile, LayoutResult, NodePin, Pin } from '../types';
 import { UNASSIGNED } from '../types';
 import { layout, layoutDiagram } from './index';
-import { checkLayout, randomGraph, rng } from './testkit';
+import { atPortAt, checkLayout, randomGraph, randomShaping, rng } from './testkit';
 
 const ROOT = join(import.meta.dirname, '../../..');
 const GROUPS_MMD = readFileSync(join(ROOT, 'fixtures/syntax/groups.canonical.mmd'), 'utf8');
@@ -202,4 +202,87 @@ describe('A19 layout: random grouped diagrams (C5 with groups)', () => {
       });
     }
   }
+});
+
+// ---- A19 with A22: line ends at an offset, and spread_ends, on blocks inside groups ----------------------------------
+
+describe('A19 with A22: offsets and spreading on grouped blocks', () => {
+  /** Lines between blocks in different groups (and depths), each end at a stored offset along a set side. */
+  const OFFSETS: NonNullable<LayoutFile['edges']> = {
+    'app1->db': { source_side: 'bottom', source_at: 0.25, target_side: 'top', target_at: 0.75 },
+    'lb->app2': { source_side: 'bottom', source_at: 0.8, target_side: 'top', target_at: 0.1 },
+    'db->audit': { source_side: 'right', source_at: 0.33 },
+  };
+
+  for (const dir of ['LR', 'TB'] as const) {
+    it(`${dir}: each end is at its offset port, reported as stored, and L1–L13 still hold (unpinned and pinned)`, () => {
+      const mmd = GROUPS_MMD.replace('flowchart TB', `flowchart ${dir}`);
+      for (const pins of [{}, { app1: { lane: 'acct', group: 'sub-a', along: 300, across: 420 } }] as Record<string, NodePin>[]) {
+        const f: LayoutFile = { version: 1, nodes: pins, edges: OFFSETS };
+        const doc = loadDocument(mmd, null, JSON.stringify(f), 'groups.mmd');
+        expect(doc.problems.errors).toEqual([]);
+        const res = doc.layout!.result;
+        expect(res.nodes.find((n) => n.id === 'app1')!.pinned).toBe('app1' in pins);
+        expect(checkLayout(doc.graph, pins, res, { file: f })).toEqual([]);
+        expect(checkGroups(doc.graph, res, pins)).toEqual([]);
+        for (const [id, entry] of Object.entries(OFFSETS)) {
+          const e = res.edges.find((x) => x.id === id)!;
+          expect([e.source_at, e.target_at], id).toEqual([entry.source_at, entry.target_at]);
+          for (const end of ['source', 'target'] as const) {
+            const at = end === 'source' ? entry.source_at : entry.target_at;
+            if (at === undefined) continue;
+            const n = res.nodes.find((x) => x.id === (end === 'source' ? e.source : e.target))!;
+            const p = end === 'source' ? e.points[0]! : e.points[e.points.length - 1]!;
+            expect(atPortAt(n.kind, n, end === 'source' ? e.source_side : e.target_side, p, at), `${id} ${end}`).toBe(true);
+            // The end sits on its block, so it is inside the block's group box too (containment, L13).
+            const b = res.groups!.find((g) => g.id === n.group)!;
+            expect(p[0]! >= b.x && p[0]! <= b.x + b.width && p[1]! >= b.y && p[1]! <= b.y + b.height, `${id} ${end} in ${b.id}`).toBe(true);
+          }
+        }
+        // Offsets move only line ends: blocks and group boxes are where they are without them.
+        const plain = loadDocument(mmd, null, JSON.stringify({ version: 1, nodes: pins }), 'groups.mmd').layout!.result;
+        expect(res.nodes).toEqual(plain.nodes);
+        expect(res.groups).toEqual(plain.groups);
+      }
+    });
+  }
+
+  it('spread_ends spreads the ends sharing a side of a grouped block, and leaves blocks and groups alone', () => {
+    // db (in sub-b) has two lines coming in from above and one going out: give them all the same sides.
+    const sides: NonNullable<LayoutFile['edges']> = {
+      'app1->db': { target_side: 'top' }, 'app2->db': { target_side: 'top' }, 'db->audit': { source_side: 'top' },
+    };
+    const f: LayoutFile = { version: 1, nodes: {}, edges: sides, spread_ends: true };
+    const doc = loadDocument(GROUPS_MMD, null, JSON.stringify(f), 'groups.mmd');
+    const res = doc.layout!.result;
+    expect(checkLayout(doc.graph, {}, res, { file: f })).toEqual([]);
+    expect(checkGroups(doc.graph, res)).toEqual([]);
+    const ats = ['app1->db', 'app2->db'].map((id) => res.edges.find((e) => e.id === id)!.target_at);
+    const out = res.edges.find((e) => e.id === 'db->audit')!.source_at;
+    expect([...ats, out].filter((a) => a !== undefined).sort()).toEqual([0.25, 0.75]); // 0.5 isn't reported
+    const off = loadDocument(GROUPS_MMD, null, JSON.stringify({ ...f, spread_ends: false }), 'groups.mmd').layout!.result;
+    expect(res.nodes).toEqual(off.nodes);
+    expect(res.groups).toEqual(off.groups);
+  });
+
+  it('random grouped diagrams with set sides, offsets and spreading satisfy L1–L13 (both directions)', () => {
+    let groupedOffsetEnds = 0;
+    for (let k = 0; k < 12; k++) {
+      const seed = 7300 + k;
+      const graph = groupedGraph(seed, 12 + ((k * 7) % 40), k % 2 ? 'TB' : 'LR');
+      // No pins: randomShaping's pins don't name groups, so they would go stale on grouped blocks.
+      const s = randomShaping(seed, graph, { pinned: 0, sided: 0.6, offsets: 0.6, spread: k % 3 !== 0 });
+      const out = layoutDiagram({ graph, file: s.file, notes: s.notes, title: s.title });
+      expect(checkLayout(graph, {}, out.result, { file: s.file, notes: s.notes, title: s.title }), `seed ${seed}`).toEqual([]);
+      expect(checkGroups(graph, out.result), `seed ${seed}`).toEqual([]);
+      expect(layoutDiagram({ graph, file: s.file, notes: s.notes, title: s.title }).result).toEqual(out.result); // L10
+      const grouped = new Set(out.result.nodes.filter((n) => n.group).map((n) => n.id));
+      for (const e of out.result.edges) {
+        if (e.source_at !== undefined && grouped.has(e.source)) groupedOffsetEnds++;
+        if (e.target_at !== undefined && grouped.has(e.target)) groupedOffsetEnds++;
+      }
+    }
+    // The run exercises the interaction: many line ends at an offset on blocks inside groups.
+    expect(groupedOffsetEnds).toBeGreaterThan(20);
+  }, 60000);
 });

@@ -143,3 +143,38 @@ describe('writers keep an offset with its side', () => {
     expect(off.edges).toEqual(base.edges);
   });
 });
+
+describe('A22 with A19: offsets and grouped pins in one file', () => {
+  const BOTH = `{
+  "version": 1,
+  "nodes": {
+    "app": { "lane": "acct", "group": "sub-a", "along": 300, "across": 140, "width": 160, "height": 60 },
+    "gw": { "lane": "acct", "along": 40, "across": 20 }
+  },
+  "spread_ends": true,
+  "edges": {
+    "gw->app": { "source_side": "right", "source_at": 0.25, "target_side": "left", "target_at": 0.75 }
+  }
+}
+`;
+
+  test('reads both, and writes them back byte for byte in their key orders', () => {
+    const r = parseLayoutFile(BOTH);
+    expect(r.problems.errors).toEqual([]);
+    expect(r.file!.nodes.app).toEqual({ lane: 'acct', group: 'sub-a', along: 300, across: 140, width: 160, height: 60 });
+    expect(r.file!.edges!['gw->app']).toEqual({ source_side: 'right', source_at: 0.25, target_side: 'left', target_at: 0.75 });
+    expect(serializeLayoutFile(r.file!)).toBe(BOTH);
+  });
+
+  test('a document with groups applies the grouped pin and the offsets together', () => {
+    const mmd = [
+      'flowchart LR', '', '  subgraph acct [Account]', '    gw["Gateway"]', '    subgraph sub-a [Subnet A]', '      app["App"]',
+      '    end', '  end', '', '  gw --> app', '',
+    ].join('\n');
+    const d = loadDocument(mmd, null, BOTH, 'x.mmd');
+    expect(d.problems.errors).toEqual([]);
+    const res = d.layout!.result;
+    expect(res.nodes.find((n) => n.id === 'app')).toMatchObject({ group: 'sub-a', pinned: true });
+    expect(res.edges[0]).toMatchObject({ source_at: 0.25, target_at: 0.75 });
+  });
+});
