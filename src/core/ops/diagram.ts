@@ -1,5 +1,5 @@
-// Diagram operations (design.md §8.2 UI22, UI23).
-import { flipDirection } from '../layoutfile';
+// Diagram operations (design.md §8.2 UI22, UI23; amendment A22: spreading line ends).
+import { flipDirection, setSpreadEnds as setSpreadEndsInLayout } from '../layoutfile';
 import type { Direction } from '../types';
 import { refuse, run, type Files, type OpResult } from './context';
 
@@ -24,6 +24,19 @@ export function setDirection(files: Files, direction: Direction): OpResult {
     ctx.d.direction = direction;
     // A broken layout file can't be read: refuse only if it may hold something the flip rotates.
     ctx.editLayout(['source_side', 'target_side', 'notes', 'title'], (file) => flipDirection(file));
+    return {};
+  });
+}
+
+/**
+ * A22: spread the line ends that share a side evenly along it (`on`: writes `"spread_ends": true` in the layout file),
+ * or turn that off again (removes the key, the default). Setting what is already set changes nothing.
+ */
+export function setSpreadEnds(files: Files, on: boolean): OpResult {
+  return run(files, (ctx) => {
+    if (typeof on !== 'boolean') refuse('Spreading line ends is on or off');
+    if (on) ctx.requireLayout();
+    ctx.editLayout(on ? 'always' : ['spread_ends'], (file) => setSpreadEndsInLayout(file, on));
     return {};
   });
 }

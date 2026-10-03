@@ -4,12 +4,12 @@
 // that has nothing to write never creates a file (UI28).
 export {
   parseLayoutFile, checkRanges, checkPinRanges, checkLayoutRefs, effectivePins, effectivePlacements, firstLaneOf,
-  isLabelAt, MIN_SIZE, MIN_LANE_SIZE, MIN_LANE_LENGTH,
+  isLabelAt, isSideAt, MIN_SIZE, MIN_LANE_SIZE, MIN_LANE_LENGTH,
   type LayoutParse, type NodeLane, type Placements, type PlacementTargets,
 } from './parse';
 export {
   setPin, setPins, removePin, removePins, setSize, setSizes, removeNodeEntries, nodeEntry,
-  setLaneSize, keepLaneEntries, removeLaneEntries, setLaneLength,
+  setLaneSize, keepLaneEntries, removeLaneEntries, setLaneLength, setSpreadEnds,
   updateEdge, updateEdges, setEdgeSide, setEdgePoints, setLabelAt, resetEdge, removeEdgeEntries,
   rekeyEdges, rekeyEdgesByPosition, splitEdgeId,
   renameNode, renameNodeEntry, renamePinNode, renameLane, renameLaneInPins, dropPointsInLanes, movePointsToLane, reexpressOldFirstLane,

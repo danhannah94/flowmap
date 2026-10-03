@@ -8,7 +8,7 @@
 import type { LayoutEdgeEntry, LayoutFile, LayoutLaneEntry, LayoutNodeEntry, Pin, Side, Size, XY } from '../types';
 import { pinOf, sizeOf } from '../types';
 import {
-  isCoord, isLabelAt, isLaneLengthValue, isLaneSizeValue, isSide, isSizeValue, MIN_LANE_LENGTH, MIN_LANE_SIZE, MIN_SIZE, put,
+  isCoord, isLabelAt, isSideAt, isLaneLengthValue, isLaneSizeValue, isSide, isSizeValue, MIN_LANE_LENGTH, MIN_LANE_SIZE, MIN_SIZE, put,
 } from './parse';
 
 type Entries<T> = Record<string, T>;
@@ -18,13 +18,14 @@ function emptyFile(): LayoutFile {
 }
 
 /**
- * Build a file in canonical shape: key order version, nodes, lanes, lane_length, edges, notes, title, hints; empty maps
- * left out.
+ * Build a file in canonical shape: key order version, nodes, lanes, lane_length, spread_ends, edges, notes, title,
+ * hints; empty maps left out.
  */
 function build(parts: {
   nodes: Entries<LayoutNodeEntry>;
   lanes?: Entries<LayoutLaneEntry>;
   lane_length?: number;
+  spread_ends?: boolean;
   edges?: Entries<LayoutEdgeEntry>;
   notes?: Entries<XY>;
   title?: XY;
@@ -33,6 +34,7 @@ function build(parts: {
   const out: LayoutFile = { version: 1, nodes: parts.nodes };
   if (parts.lanes && Object.keys(parts.lanes).length) out.lanes = parts.lanes;
   if (parts.lane_length !== undefined) out.lane_length = parts.lane_length;
+  if (parts.spread_ends !== undefined) out.spread_ends = parts.spread_ends;
   if (parts.edges && Object.keys(parts.edges).length) out.edges = parts.edges;
   if (parts.notes && Object.keys(parts.notes).length) out.notes = parts.notes;
   if (parts.title) out.title = parts.title;
@@ -41,7 +43,7 @@ function build(parts: {
 }
 
 const partsOf = (f: LayoutFile) => ({
-  nodes: f.nodes, lanes: f.lanes, lane_length: f.lane_length, edges: f.edges, notes: f.notes, title: f.title, hints: f.hints,
+  nodes: f.nodes, lanes: f.lanes, lane_length: f.lane_length, spread_ends: f.spread_ends, edges: f.edges, notes: f.notes, title: f.title, hints: f.hints,
 });
 
 /** Map every entry of a section; `undefined` from `fn` drops the entry; a returned key renames it (in place). */
@@ -194,17 +196,32 @@ export function setLaneLength(file: LayoutFile | null, length: number | null): L
   return build({ ...partsOf(base), lane_length: length === null ? undefined : length + 0 });
 }
 
+// ---- spreading line ends (A22) --------------------------------------------------------------------------------
+
+/**
+ * A22: turn spreading line ends on (writes `"spread_ends": true`) or off (removes the key: off is the default, so it
+ * is never written as `false`). Creates the file only when turning it on.
+ */
+export function setSpreadEnds(file: LayoutFile | null, on: boolean): LayoutFile | null {
+  if (!file && !on) return null;
+  const base = file ?? emptyFile();
+  return build({ ...partsOf(base), spread_ends: on ? true : undefined });
+}
+
 // ---- edge entries ---------------------------------------------------------------------------------------------
 
 /** A change to an edge entry: a value sets that field, null removes it, a missing key leaves it as it is. */
 export interface EdgePatch {
   source_side?: Side | null;
+  /** A22: the source end's offset along its side; removing `source_side` removes it too. */
+  source_at?: number | null;
   target_side?: Side | null;
+  target_at?: number | null;
   points?: Pin[] | null;
   label_at?: number | null;
 }
 
-const EDGE_ORDER = ['source_side', 'target_side', 'points', 'label_at'] as const;
+const EDGE_ORDER = ['source_side', 'source_at', 'target_side', 'target_at', 'points', 'label_at'] as const;
 
 function checkPatch(p: EdgePatch): void {
   for (const k of ['source_side', 'target_side'] as const) {
@@ -218,6 +235,10 @@ function checkPatch(p: EdgePatch): void {
   if (p.label_at !== undefined && p.label_at !== null && !isLabelAt(p.label_at)) {
     throw new Error(`invalid label_at ${JSON.stringify(p.label_at)}: a number from 0 to 1 with at most two decimals`);
   }
+  for (const k of ['source_at', 'target_at'] as const) {
+    const v = p[k];
+    if (v !== undefined && v !== null && !isSideAt(v)) throw new Error(`invalid ${k} ${JSON.stringify(v)}: a number from 0 to 1 with at most two decimals`);
+  }
 }
 
 /** Apply a patch to an entry; the result has the fixed key order, or is undefined when empty. */
@@ -229,6 +250,9 @@ function patchEntry(entry: LayoutEdgeEntry | undefined, patch: EdgePatch): Layou
     if (v === null) delete merged[k];
     else merged[k] = k === 'points' ? (v as Pin[]).map((p) => ({ lane: p.lane, along: p.along + 0, across: p.across + 0 })) : v;
   }
+  // A22: an offset is along its side, so it goes with it (a reconnect or a reset that removes a side removes it).
+  if (merged.source_side === undefined) delete merged.source_at;
+  if (merged.target_side === undefined) delete merged.target_at;
   const out: LayoutEdgeEntry = {};
   for (const k of EDGE_ORDER) if (merged[k] !== undefined) Object.assign(out, { [k]: merged[k] });
   return Object.keys(out).length ? out : undefined;
@@ -254,9 +278,14 @@ export function updateEdges(file: LayoutFile | null, patches: Iterable<[string, 
   return build({ ...partsOf(base), edges });
 }
 
-/** Set or (null) remove one side of a line (UI38). */
-export function setEdgeSide(file: LayoutFile | null, edgeId: string, end: 'source' | 'target', side: Side | null): LayoutFile | null {
-  return updateEdge(file, edgeId, end === 'source' ? { source_side: side } : { target_side: side });
+/**
+ * Set or (null) remove one side of a line (UI38). (A22) `at` sets that end's offset along the side, or with null (or
+ * left out) removes it: the end attaches at the side's midline port.
+ */
+export function setEdgeSide(
+  file: LayoutFile | null, edgeId: string, end: 'source' | 'target', side: Side | null, at: number | null = null,
+): LayoutFile | null {
+  return updateEdge(file, edgeId, end === 'source' ? { source_side: side, source_at: at } : { target_side: side, target_at: at });
 }
 
 /** Set a line's bend points (it becomes manual), or with null remove them (automatic again) (UI36). */
@@ -269,7 +298,7 @@ export function setLabelAt(file: LayoutFile | null, edgeId: string, labelAt: num
   return updateEdge(file, edgeId, { label_at: labelAt });
 }
 
-/** UI36 "Reset line": remove the line's points and both sides (`label_at` stays). */
+/** UI36 "Reset line": remove the line's points and both sides, with their offsets (A22) (`label_at` stays). */
 export function resetEdge(file: LayoutFile | null, edgeId: string): LayoutFile | null {
   return updateEdge(file, edgeId, { points: null, source_side: null, target_side: null });
 }
