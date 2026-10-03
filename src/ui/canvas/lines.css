@@ -125,6 +125,40 @@
   }
 }
 
+/* A22: the snap points along a side (data-port-tick) and where a drop along a side attaches (data-port-drop). */
+.fm-port-tick {
+  --d: min(calc(6px / var(--zoom, 1)), 20px);
+  position: absolute;
+  width: var(--d);
+  height: var(--d);
+  margin: calc(var(--d) / -2) 0 0 calc(var(--d) / -2);
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 55%, var(--canvas-bg));
+  pointer-events: none;
+  z-index: 2;
+  animation: fm-port-in 0.12s ease-out;
+}
+
+.fm-port-tick[data-active='true'] {
+  background: var(--accent);
+  transform: scale(1.6);
+}
+
+.fm-port-drop {
+  --d: min(calc(11px / var(--zoom, 1)), 36px);
+  position: absolute;
+  width: var(--d);
+  height: var(--d);
+  margin: calc(var(--d) / -2) 0 0 calc(var(--d) / -2);
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 min(calc(4px / var(--zoom, 1)), 12px) color-mix(in srgb, var(--accent) 28%, transparent);
+  pointer-events: none;
+  z-index: 3;
+}
+
 /* ---- a selected line: drawn above the blocks, with its handles ------------------------------------------------- */
 
 .fm-edges-top {

@@ -33,6 +33,7 @@ export const ICONS = {
   bendAdd: icon('M3 18h6V8h12', 'M9 8h.01', 'M17 15v6', 'M14 18h6'),
   bendRemove: icon('M3 18h6V8h12', 'M14 18h6'),
   line: icon('M3 17h6V7h12', 'M18 4l3 3-3 3'),
+  spread: icon('M4 4v16', 'M4 7h9l4 -3', 'M4 12h16', 'M4 17h9l4 3'),
   label: icon('M3 12h4', 'M17 12h4', 'M7 8h10v8H7z'),
   note: icon('M5 4h14v11l-5 5H5z', 'M14 20v-5h5', 'M8 9h8', 'M8 12.5h5'),
   size: icon('M4 7V5h9v2', 'M8.5 5v14', 'M7 19h3', 'M14 12v-1h6v1', 'M17 11v8', 'M16 19h2'),
@@ -119,6 +120,8 @@ defineMenuItem({
   on: 'canvas', name: 'show-title', label: 'Show title', icon: ICONS.show, section: 1, order: 2,
   when: (ctx) => titleHidden(ctx.store.getState()),
 });
+// A22: spread the line ends that share a side along it (a tick while on).
+defineMenuItem({ on: 'canvas', name: 'spread-ends', label: 'Spread line ends', icon: ICONS.spread, section: 1, order: 3 });
 SHAPE_KINDS.forEach((kind, i) => {
   defineMenuItem({
     on: 'canvas', name: `add-${kind}`, label: SHAPE_NAMES[kind], icon: <ShapeIcon kind={kind} width={30} height={20} />,

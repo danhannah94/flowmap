@@ -1,13 +1,16 @@
-// The line items of the context menu (design.md §8.2 UI40, UI36, UI37). Their slots, labels and "shows when" rules are
+// The line items of the context menu (design.md §8.2 UI40, UI36, UI37; and A22's canvas `spread-ends` toggle). Their slots, labels and "shows when" rules are
 // in contextmenu/items.tsx (`add-bend` off a bend point, `remove-bend` on one, `reset-line` when the line is manual or
 // has a side, `reset-label` when it has `label_at`); this module gives them their behaviour. The menu knows which bend
 // point was right-clicked from `data-bend` (lineHandles.tsx).
-import { addBend, removeBend, resetLabelAt, resetLine } from '../../core/ops';
+import { addBend, removeBend, resetLabelAt, resetLine, setSpreadEnds } from '../../core/ops';
 import { registerMenuHandler, type MenuContext } from '../contextmenu/registry';
 import type { Store } from '../store/store';
 
 /** The current layout with its frame, as the shaping ops take it. */
 const layoutOf = (store: Store) => store.getState().shown?.doc.layout ?? null;
+
+/** A22: whether the layout file spreads line ends along their sides. */
+const spreadEndsOn = (store: Store): boolean => store.getState().derived?.doc.layoutFile?.spread_ends === true;
 
 /** Shaping edits write the layout file: refused while it has errors (UI31), like any other drag. */
 const disabled = ({ store }: MenuContext<'line'>): string | null =>
@@ -15,6 +18,13 @@ const disabled = ({ store }: MenuContext<'line'>): string | null =>
 
 /** Register the line items' handlers (done on import; exported so a test or a later refactor can call it again). */
 export function registerLineMenuItems(): void {
+  // A22: the canvas's `spread-ends` toggles `spread_ends` in the layout file (ticked while on).
+  registerMenuHandler('canvas', 'spread-ends', {
+    disabled: ({ store }) =>
+      store.readOnlyReason() ?? (store.getState().derived?.layoutBroken ? 'The layout file has errors; fix it first' : null),
+    checked: ({ store }) => spreadEndsOn(store),
+    run: ({ store }) => void store.apply(setSpreadEnds, !spreadEndsOn(store)),
+  });
   // UI36: a point on the line nearest the right-click, in path order; kept even in a straight row.
   registerMenuHandler('line', 'add-bend', {
     disabled,
