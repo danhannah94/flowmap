@@ -649,7 +649,10 @@ The tests parse the SVG as XML. Layout and drawing are otherwise the implementat
   title and every note wherever they are placed.
 - Each note (v1.1) is a `<g data-note-id="<id>">` holding its text, one `<text>` or `<tspan>` per line. Each `<text>`
   carries `font-size="<n>"` and `fill="#rrggbb"`, plus `font-weight="bold"` only when bold.
-- Each lane is a `<g data-lane-id="<id>">` containing a `<text>` with the lane label.
+- Each lane is a `<g data-lane-id="<id>">` containing a `<text>` with the lane label. A lane label that a block,
+  its icon tag or badge, or a group box would paint over is also drawn on top of the blocks and lines, in a
+  `<g data-role="lane-label" data-lane="<id>">` (the same text, in the same place, with a halo in the lane's colour),
+  and the lane's own `<text>` is then `visibility="hidden"`; the layout is unchanged.
 - (A19) Each group is a `<g data-group-id="<id>">` holding a `<rect>` (its box, as in the layout JSON) and a
   `<text>` with its label, drawn after the lanes and before the nodes, outer groups before inner ones.
 - Each node is a `<g data-node-id="<id>" data-kind="<shape kind>">`. Its first shape child (`rect`, `polygon` or

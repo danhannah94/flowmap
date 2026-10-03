@@ -7,7 +7,7 @@ import { getTheme, resolveStyle, type ResolvedNodeStyle, type Theme, type ThemeN
 import { GLYPH_GRID, GLYPH_STROKE } from '../preset/glyphs';
 import {
   BADGE_FONT, GROUP_FONT, ICON_CHIP, ICON_GLYPH, LABEL_FONT, TITLE_FONT, badgeBox, iconBox, noteLineHeight, noteLines, textArea, textWidth,
-  titleSize, wrapLabel,
+  textWidthAt, titleSize, wrapLabel,
 } from '../measure';
 
 export interface RenderSvgOptions {
@@ -155,7 +155,68 @@ function renderIcon(icon: ResolvedIcon, node: LayoutResult['nodes'][number], res
   ].join('');
 }
 
-function renderLane(lane: LayoutResult['lanes'][number], index: number, theme: Theme, laneFree: boolean): string {
+/** Where a lane's label sits: its left inset and baseline from the lane's top-left corner, and its font size. */
+const LANE_LABEL_X = 12;
+const LANE_LABEL_BASELINE = 20;
+const LANE_LABEL_SIZE = 12;
+
+interface Box {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/** The box a lane label's text covers (plus a little padding), in diagram coordinates. */
+function laneLabelBox(lane: LayoutResult['lanes'][number]): Box {
+  const x = lane.x + LANE_LABEL_X;
+  const y = lane.y + LANE_LABEL_BASELINE;
+  return { x0: x - 4, y0: y - LANE_LABEL_SIZE - 2, x1: x + textWidthAt(lane.label, LANE_LABEL_SIZE, true) + 4, y1: y + 3.5 };
+}
+
+const overlaps = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+
+/**
+ * What is drawn after the lanes and could cover a lane's label (the export's lane label is horizontal at the lane's
+ * top-left, beyond the layout's header strip): every block, its icon tag and badge (both stand out above the block's
+ * top edge), and every group box.
+ */
+function coveringBoxes(layout: LayoutResult, styles: Record<string, ResolvedStyle>, icons: Record<string, ResolvedIcon> | undefined, theme: Theme): Box[] {
+  const out: Box[] = [];
+  for (const n of layout.nodes) {
+    out.push({ x0: n.x, y0: n.y, x1: n.x + n.width, y1: n.y + n.height });
+    if (icons?.[n.id]) {
+      const b = iconBox(n.kind, n.width, n.height);
+      const ring = ICON_CHIP / 2 + 1.5;
+      const cx = n.x + b.x + ICON_CHIP / 2;
+      const cy = n.y + b.y + ICON_CHIP / 2;
+      out.push({ x0: cx - ring, y0: cy - ring, x1: cx + ring, y1: cy + ring });
+    }
+    const badge = resolveStyle(styles[n.id], theme).badge;
+    if (badge) {
+      const b = badgeBox(n.kind, n.width, n.height, badge);
+      out.push({ x0: n.x + b.x, y0: n.y + b.y, x1: n.x + b.x + b.width, y1: n.y + b.y + b.height });
+    }
+  }
+  for (const g of layout.groups ?? []) out.push({ x0: g.x, y0: g.y, x1: g.x + g.width, y1: g.y + g.height });
+  return out;
+}
+
+/**
+ * A lane label something else would cover (a block's icon tag, say), drawn again on top of the blocks and lines with a
+ * halo in the lane's own colour (an outline painted under the letters), so it always reads while what is under it
+ * still shows between the letters. Its place is unchanged (the layout is untouched); the lane's own
+ * `<g data-lane-id>` keeps the label too (hidden, as A4 does), so §7.1's structure is the same.
+ */
+function renderLaneLabelOnTop(lane: LayoutResult['lanes'][number], index: number, theme: Theme): string {
+  return [
+    `<g data-role="lane-label" data-lane="${escapeXml(lane.id)}">`,
+    `<text x="${num(lane.x + LANE_LABEL_X)}" y="${num(lane.y + LANE_LABEL_BASELINE)}" font-size="${LANE_LABEL_SIZE}" font-weight="600" fill="${theme.laneLabel}" stroke="${theme.laneFill[index % 2]}" stroke-width="4" stroke-linejoin="round" paint-order="stroke">${escapeXml(lane.label)}</text>`,
+    '</g>',
+  ].join('');
+}
+
+function renderLane(lane: LayoutResult['lanes'][number], index: number, theme: Theme, laneFree: boolean, labelOnTop = false): string {
   if (laneFree) {
     // Amendment A4: a diagram without subgraphs is a plain flowchart: no band, no header. The lane's group and its
     // label stay in the file (hidden) so the §7.1 structure still lists every lane of `flowmap layout`.
@@ -165,7 +226,7 @@ function renderLane(lane: LayoutResult['lanes'][number], index: number, theme: T
   return [
     `<g data-lane-id="${escapeXml(lane.id)}">`,
     `<rect x="${num(lane.x)}" y="${num(lane.y)}" width="${num(lane.width)}" height="${num(lane.height)}" fill="${fill}" stroke="${theme.laneBorder}" stroke-width="1"/>`,
-    `<text x="${num(lane.x + 12)}" y="${num(lane.y + 20)}" font-size="12" font-weight="600" fill="${theme.laneLabel}">${escapeXml(lane.label)}</text>`,
+    `<text${labelOnTop ? ' visibility="hidden"' : ''} x="${num(lane.x + LANE_LABEL_X)}" y="${num(lane.y + LANE_LABEL_BASELINE)}" font-size="${LANE_LABEL_SIZE}" font-weight="600" fill="${theme.laneLabel}">${escapeXml(lane.label)}</text>`,
     '</g>',
   ].join('');
 }
@@ -348,11 +409,17 @@ export function renderSvg(options: RenderSvgOptions): string {
 
   parts.push(`<g transform="translate(${num(ox)}, ${num(oy)})">`);
   const laneFree = isLaneFree(layout.lanes);
-  layout.lanes.forEach((lane, index) => parts.push(renderLane(lane, index, theme, laneFree)));
+  // A lane label that a block, its icon tag or badge, or a group box would paint over is drawn on top instead (below).
+  const covering = laneFree ? [] : coveringBoxes(layout, styles, options.icons, theme);
+  const labelOnTop = layout.lanes.map((lane) => covering.some((c) => overlaps(laneLabelBox(lane), c)));
+  layout.lanes.forEach((lane, index) => parts.push(renderLane(lane, index, theme, laneFree, labelOnTop[index])));
   // A19: groups over the lanes and under everything else, outer before inner (file order).
   for (const group of layout.groups ?? []) parts.push(renderGroup(group, theme));
   for (const node of layout.nodes) parts.push(renderNode(node, styles[node.id], theme, options.linkHrefs?.[node.id], options.icons?.[node.id]));
   for (const edge of layout.edges) parts.push(renderEdge(edge, theme));
+  layout.lanes.forEach((lane, index) => {
+    if (labelOnTop[index]) parts.push(renderLaneLabelOnTop(lane, index, theme));
+  });
   // Notes and the title take no part in the layout rules and may sit over anything: drawn last, on top.
   for (const note of notes) parts.push(renderNote(note, noteStyle.get(note.id), theme));
   if (titleBox) parts.push(renderTitle(titleBox, theme));

@@ -38,6 +38,7 @@ vi.mock('../measure', () => ({
   SHAPE_GEOMETRY: { subprocessBar: 10, databaseRy: 8, ioSkew: 14, documentWave: 6, roundMax: 28 },
   roundRadius: (height: number) => Math.min(height / 2, 28),
   textWidth: stubTextWidth,
+  textWidthAt: (text: string) => stubTextWidth(text),
   wrapLabel: stubWrapLabel,
   textArea: stubTextArea,
   nodeSize: stubNodeSize,
