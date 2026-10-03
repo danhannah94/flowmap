@@ -35,7 +35,7 @@ export function HomePage() {
   const handleDeleteDiagram = async (file: string) => {
     const ok = await store.confirm({
       message: `Delete ${baseNameOf(file)}?`,
-      detail: 'It moves to .flowmap-trash in this folder.',
+      detail: 'It moves to .flowmap-trash in the folder flowmap is serving.',
       yes: 'Delete',
       no: 'Cancel',
       danger: true,

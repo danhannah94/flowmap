@@ -1,4 +1,4 @@
-import { readFile, readdir } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -202,6 +202,23 @@ describe('flowmap server: JSON API', () => {
 
     const getRes = await fetch(`${base}/api/diagram?file=purchase-request.mmd`);
     expect(getRes.status).toBe(404);
+  });
+
+  it('DELETE /api/diagram of a diagram inside a folder moves all its files to the trash at the served root', async () => {
+    await mkdir(join(dir, 'smoke'));
+    for (const ext of ['mmd', 'flow.yaml', 'layout.json']) {
+      await cp(join(dir, `purchase-request.${ext}`), join(dir, 'smoke', `target.${ext}`));
+    }
+    const res = await fetch(`${base}/api/diagram?file=smoke/target.mmd`, { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: true; trash: string };
+    expect(body.trash).toMatch(/^\.flowmap-trash[/\\][^/\\]+-smoke-target$/);
+    expect(await readdir(join(dir, 'smoke'))).toEqual([]);
+    expect((await readdir(join(dir, body.trash))).sort()).toEqual(['target.flow.yaml', 'target.layout.json', 'target.mmd']);
+    // It stays gone: not listed, and not openable.
+    const list = (await (await fetch(`${base}/api/diagrams`)).json()) as { files: string[] };
+    expect(list.files).not.toContain('smoke/target.mmd');
+    expect((await fetch(`${base}/api/diagram?file=smoke/target.mmd`)).status).toBe(404);
   });
 
   it('DELETE /api/diagram for a missing diagram is 404', async () => {
