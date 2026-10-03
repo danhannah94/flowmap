@@ -245,6 +245,28 @@ export function badgeWidth(text: string): number {
   return Math.ceil(textWidth(text) * (BADGE_FONT.size / LABEL_FONT.size) * 1.1) + 2 * BADGE_FONT.padX;
 }
 
+/** A20: the icon chip a preset pack gives a block (§4.1): a 20 px round tag holding a 14 px glyph. */
+export const ICON_CHIP = 20;
+export const ICON_GLYPH = 14;
+
+/**
+ * Where a block's icon chip goes, relative to the node box's top-left: the badge's mirror image, on the top edge
+ * towards the left, with its bottom never below the top of the shape's text area (so it can't cover the label, and the
+ * layout, which ignores styles, needs no room for it). It stands out above the box by at most 14 px, inside the layout's
+ * gaps (L3's 16 px and more).
+ * - Round ends (terminal, delay): where the round end starts, on the straight part of the top.
+ * - Decision: just left of the top point, so an edge entering the point stays clear of it (the badge is on the right).
+ * - Everything else: 10 px in from the left edge.
+ */
+export function iconBox(kind: ShapeKind, width: number, height: number): { x: number; y: number; size: number } {
+  const bottom = Math.min(textArea(kind, width, height).y, 6);
+  let x: number;
+  if (kind === 'decision') x = Math.round(width / 2) - 10 - ICON_CHIP;
+  else if (kind === 'terminal' || kind === 'delay') x = Math.round(roundRadius(height));
+  else x = 10;
+  return { x, y: bottom - ICON_CHIP, size: ICON_CHIP };
+}
+
 /** Longest line an edge label is allowed before it wraps. */
 export const EDGE_LABEL_MAX = 140;
 

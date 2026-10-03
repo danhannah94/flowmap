@@ -15,6 +15,8 @@ export function NodesLayer({ layout, styles, theme }: { layout: LayoutResult; st
   const sizes = useStoreState((s) => s.shown?.doc.sizes);
   const canResize = useStoreState((s) => s.selection.nodes.length === 1 && !!s.derived && !s.derived.readOnly && !s.derived.layoutBroken);
   const resizing = useResizePreview();
+  // A20: the icon the preset pack gives each node, if it has one.
+  const icons = useStoreState((s) => s.shown?.doc.icons);
   // A15: each node's link target, if it has one (the badge, and Cmd/Ctrl+click, gestures.ts).
   const configNodes = useStoreState((s) => s.shown?.doc.config?.nodes);
   const links = useMemo(() => {
@@ -52,6 +54,7 @@ export function NodesLayer({ layout, styles, theme }: { layout: LayoutResult; st
             sized={r || !!sizes?.[n.id]}
             resizable={canResize && selected.has(n.id) && editingNode !== n.id}
             link={links[n.id] ?? null}
+            icon={icons?.[n.id] ?? null}
           />
         );
       })}

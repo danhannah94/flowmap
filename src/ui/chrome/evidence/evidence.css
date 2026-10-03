@@ -253,6 +253,20 @@
   gap: 6px;
 }
 
+/* ---- A20: the Styles panel's preset pack field (reuses the link field's row, chips and head) ---- */
+
+.fm-preset-intro {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.fm-preset-using {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .fm-links-menu {
   min-width: 240px;
   padding: 8px 10px 4px;

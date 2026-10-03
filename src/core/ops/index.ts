@@ -30,5 +30,5 @@ export {
   addRule, applySwatch, clearNodeLink, deleteOrphanEdgeEntry, deleteOrphanLaneEntry, deleteOrphanNodeEntry,
   deleteOrphanNoteEntry, deleteOrphanPin, deleteRule, editMatchCondition, moveRule, removeFieldFromNodes,
   removeMatchCondition, removeNodeField, replaceNodeEntry, replaceStyles, resetBlockColors, setBlockColors,
-  setFieldOnNodes, setMatchCondition, setNodeField, setNodeLink, setRuleLegend, setStyleColor, setStyleProp,
+  setFieldOnNodes, setPreset, setMatchCondition, setNodeField, setNodeLink, setRuleLegend, setStyleColor, setStyleProp,
 } from './config';

@@ -3,10 +3,11 @@
 import { Fragment, memo } from 'react';
 import { badgeBox, textArea, wrapLabel } from '../../core/measure';
 import type { ResolvedNodeStyle } from '../../core/theme';
-import type { Direction } from '../../core/types';
+import type { Direction, ResolvedIcon } from '../../core/types';
 import { followLink } from '../links';
 import { useStore } from '../store/hooks';
 import { labelPieces, type LayoutNode } from './geometry';
+import { NodeIcon } from './Icon';
 import { PortHandles } from './ports';
 import { ResizeHandles } from './ResizeHandles';
 import { OutlineOnly, Shape } from './Shape';
@@ -29,10 +30,12 @@ interface Props {
   /** A15: the block's link target (§4 `link`), or null. Draws the corner badge; Cmd/Ctrl+click (gestures.ts) also
    *  follows it. */
   link?: string | null;
+  /** A20: the icon the diagram's preset pack gives this block (`FlowDocument.icons`), or null. */
+  icon?: ResolvedIcon | null;
 }
 
 export const NodeView = memo(function NodeView({
-  node, style, direction, selected, dx, dy, dragging, editing, sized = false, resizable = false, link = null,
+  node, style, direction, selected, dx, dy, dragging, editing, sized = false, resizable = false, link = null, icon = null,
 }: Props) {
   const area = textArea(node.kind, node.width, node.height);
   const lines = wrapLabel(node.label, area.width);
@@ -96,6 +99,7 @@ export const NodeView = memo(function NodeView({
         </div>
       </div>
       {style.badge ? <Badge node={node} text={style.badge} /> : null}
+      {icon ? <NodeIcon icon={icon} kind={node.kind} width={node.width} height={node.height} style={style} title={icon.name === 'custom' ? 'Preset icon' : icon.name} /> : null}
       {node.pinned ? <div className="fm-pin" title="Pinned" aria-hidden="true" /> : null}
       {link ? <LinkBadge target={link} /> : null}
       {/* v1.1 UI38: four connection handles (top, right, bottom, left) and, while a line is dragged over, its connection points */}

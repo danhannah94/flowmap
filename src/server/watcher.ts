@@ -4,7 +4,7 @@
 import { type FSWatcher, watch } from 'node:fs';
 import type { ServerResponse } from 'node:http';
 
-import { type DiagramSnapshot, type DiagramVersions, readDiagram, versionsEqual } from './files.js';
+import { type DiagramSnapshot, type DiagramVersions, readDiagram, snapshotsEqual } from './files.js';
 
 export class DiagramWatcher {
   private readonly dir: string;
@@ -73,7 +73,7 @@ export class DiagramWatcher {
           continue;
         }
         const prev = this.known.get(mmdFile);
-        if (prev && !versionsEqual(prev, snapshot.versions)) {
+        if (prev && !snapshotsEqual(prev, snapshot.versions)) {
           this.known.set(mmdFile, snapshot.versions);
           this.broadcast(mmdFile, snapshot);
         } else if (!prev) {

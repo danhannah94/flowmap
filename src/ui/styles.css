@@ -736,6 +736,19 @@ a.fm-home:hover {
   pointer-events: none;
 }
 
+/* A20: the preset pack's icon tag on a block's top edge, towards the left (the badge's mirror image). The tag takes the
+   block's own fill and border, the glyph its text colour, and the ring (a canvas-coloured disc) sets it off whatever
+   is behind it, so it reads in both themes. Never takes the pointer: it is decoration over a block. */
+.fm-icon {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.fm-icon-ring {
+  fill: var(--canvas-bg);
+}
+
 .fm-pin {
   position: absolute;
   top: -4px;

@@ -275,6 +275,81 @@ describe('export --format svg: A15 links', () => {
   });
 });
 
+// ---- A20: preset packs on the command line (design.md §4.1) ---------------------------------------------------------
+
+describe('A20 preset packs', () => {
+  const FIX = join(ROOT, 'examples', 'cloud-architecture', 'order-pipeline.mmd');
+  const PACK = 'name: Team\nkinds:\n  job:\n    label: Background job\n    icon: queue\n    style: {fill: "#abcdef"}\n';
+
+  it('validate: the cloud-architecture fixture (built-in pack) is clean', () => {
+    const { stdout, status } = run(['validate', FIX, '--json']);
+    expect(status).toBe(0);
+    expect(JSON.parse(stdout)).toEqual({ errors: [], warnings: [] });
+  });
+
+  it('validate: an unknown pack and an unknown kind are warnings, not errors', () => {
+    const dir = tmpDir('preset-warn');
+    writeFileSync(join(dir, 'a.mmd'), 'flowchart LR\n  a["A"]\n  b["B"]\n');
+    writeFileSync(join(dir, 'a.flow.yaml'), 'preset: nope\n');
+    writeFileSync(join(dir, 'b.mmd'), 'flowchart LR\n  a["A"]\n');
+    writeFileSync(join(dir, 'b.flow.yaml'), 'preset: cloud\nnodes:\n  a: {kind: widget}\n');
+    const a = JSON.parse(run(['validate', join(dir, 'a.mmd'), '--json']).stdout) as { warnings: { code: string }[] };
+    expect(a.warnings.map((w) => w.code)).toEqual(['W-preset-unknown']);
+    const b = run(['validate', join(dir, 'b.mmd'), '--json']);
+    expect(b.status).toBe(0);
+    expect((JSON.parse(b.stdout) as { warnings: { code: string }[] }).warnings.map((w) => w.code)).toEqual(['W-preset-kind']);
+  });
+
+  it('export svg: icons and legend entries from the built-in pack are in the file', () => {
+    const dir = tmpDir('preset-svg');
+    const out = join(dir, 'o.svg');
+    expect(run(['export', FIX, '--format', 'svg', '--out', out]).status).toBe(0);
+    const svg = readFileSync(out, 'utf8');
+    expect(svg.match(/data-role="icon"/g)!.length).toBe(11 + 11);
+    expect(svg).toContain('data-icon="database"');
+    expect(svg).toContain('>Object storage</text>');
+  });
+
+  it('export svg: a pack file beside the diagram (and above it) is read', () => {
+    const dir = tmpDir('preset-file');
+    mkdirSync(join(dir, 'sub'));
+    writeFileSync(join(dir, 'team.yaml'), PACK);
+    writeFileSync(join(dir, 'sub', 'a.mmd'), 'flowchart LR\n  a["A"]\n');
+    writeFileSync(join(dir, 'sub', 'a.flow.yaml'), 'preset: ../team.yaml\nnodes:\n  a: {kind: job}\n');
+    const out = join(dir, 'o.svg');
+    const r = run(['export', join(dir, 'sub', 'a.mmd'), '--format', 'svg', '--out', out]);
+    expect(r.status).toBe(0);
+    expect(r.stderr).toBe('');
+    const svg = readFileSync(out, 'utf8');
+    expect(svg).toContain('data-icon="queue"');
+    expect(svg).toContain('fill="#abcdef"');
+    expect(svg).toContain('>Background job</text>');
+  });
+
+  it('export svg: a missing pack file warns on stderr and the picture is drawn without it', () => {
+    const dir = tmpDir('preset-missing');
+    writeFileSync(join(dir, 'a.mmd'), 'flowchart LR\n  a["A"]\n');
+    writeFileSync(join(dir, 'a.flow.yaml'), 'preset: nope.yaml\nnodes:\n  a: {kind: job}\n');
+    const out = join(dir, 'o.svg');
+    const r = run(['export', join(dir, 'a.mmd'), '--format', 'svg', '--out', out]);
+    expect(r.status).toBe(0);
+    expect(r.stderr).toContain('W-preset-unknown');
+    expect(readFileSync(out, 'utf8')).not.toContain('data-role="icon"');
+  });
+
+  it('export png: the icons are in the picture (it differs from the same diagram without the pack)', () => {
+    const dir = tmpDir('preset-png');
+    cpSync(join(ROOT, 'examples', 'cloud-architecture'), dir, { recursive: true });
+    const withPack = join(dir, 'with.png');
+    const without = join(dir, 'without.png');
+    expect(run(['export', join(dir, 'order-pipeline.mmd'), '--format', 'png', '--out', withPack]).status).toBe(0);
+    writeFileSync(join(dir, 'order-pipeline.flow.yaml'), readFileSync(join(dir, 'order-pipeline.flow.yaml'), 'utf8').replace('preset: cloud', ''));
+    expect(run(['export', join(dir, 'order-pipeline.mmd'), '--format', 'png', '--out', without]).status).toBe(0);
+    expect(readFileSync(withPack).equals(readFileSync(without))).toBe(false);
+    expect(readFileSync(withPack).subarray(1, 4).toString()).toBe('PNG');
+  }, 60_000);
+});
+
 // ---- layout (§6, §7) -------------------------------------------------------------------------------------------------
 
 describe('layout: purchase-request respects its pin', () => {

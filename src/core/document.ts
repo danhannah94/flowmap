@@ -11,9 +11,10 @@ import {
 } from './config';
 import { checkLayoutRefs, checkRanges, effectivePlacements, firstLaneOf, parseLayoutFile } from './layoutfile';
 import { layoutDiagram } from './layout';
+import { applyPreset, resolvePreset, type PresetFiles } from './preset';
 import type { LayoutOutput } from './layout';
 import type {
-  Graph, LayoutEdgeEntry, LayoutFile, LayoutInput, LegendItem, NoteInput, Pin, Problems, ResolvedStyle, Size, XY,
+  Graph, LayoutEdgeEntry, LayoutFile, LayoutInput, LegendItem, NoteInput, Pin, Problems, ResolvedIcon, ResolvedStyle, Size, XY,
 } from './types';
 
 /** A note as the diagram shows it (§4, §5 v1.1): the config's note with defaults applied, plus its stored position. */
@@ -49,6 +50,12 @@ export interface FlowDocument {
   layout: LayoutOutput | null;
   /** Every node's resolved style (empty object = theme defaults), by node id: rules, then the block's own `style`. */
   styles: Record<string, ResolvedStyle>;
+  /** A20: the icon each block gets from the preset pack (by node id); blocks without one are left out. */
+  icons: Record<string, ResolvedIcon>;
+  /** A20: the preset pack in use (its reference as written and its display name), or null when there is none or it
+   *  could not be read (the reason is in `problems`). */
+  preset: { ref: string; name: string } | null;
+  /** The legend: the preset pack's entries for the kinds the diagram uses first, then the rules' own (§4, §4.1). */
   legend: LegendItem[];
   /** The title text (config `title`, or the `.mmd` base name), whether or not it is shown. */
   title: string;
@@ -60,13 +67,15 @@ export interface FlowDocument {
 
 /**
  * Load a diagram. `configText` and `layoutText` are null when that file doesn't exist. `mmdName` is the `.mmd`
- * file's base name (or path), used as the title when there is no config or no `title` in it (§4).
+ * file's base name (or path), used as the title when there is no config or no `title` in it (§4). `presetFiles` is the
+ * text of the pack file the config's `preset:` names, when it names one (read by the host, §4.1).
  */
 export function loadDocument(
   mmdText: string,
   configText: string | null,
   layoutText: string | null,
   mmdName: string,
+  presetFiles?: PresetFiles,
 ): FlowDocument {
   const mmdParse = parse(mmdText);
   const configParse = parseConfig(configText);
@@ -90,6 +99,10 @@ export function loadDocument(
   // UI31: while the config has E-config its notes can't be read, so W-layout-unknown-note isn't reported.
   const layoutRefWarnings = checkLayoutRefs(layoutFile, graph.nodes, graph.edges.map((e) => e.id), noteIds);
 
+  // A20: the preset pack the config names (the config's errors mean default styles, so no pack then either).
+  const presetResolved = resolvePreset(config?.preset ?? null, presetFiles);
+  const presetApplied = applyPreset(presetResolved.pack, config, graph.nodes.map((n) => n.id));
+
   const problems: Problems = {
     errors: [
       ...mmdParse.problems.errors,
@@ -102,6 +115,8 @@ export function loadDocument(
       ...mmdParse.problems.warnings,
       ...configParse.problems.warnings,
       ...configRefWarnings,
+      ...presetResolved.warnings,
+      ...presetApplied.warnings,
       ...parsedLayout.problems.warnings,
       ...layoutRefWarnings,
     ],
@@ -132,7 +147,11 @@ export function loadDocument(
 
   const styles: Record<string, ResolvedStyle> = {};
   for (const node of graph.nodes) {
-    styles[node.id] = resolveStyle(config, { id: node.id, lane: node.lane, label: node.label, kind: node.kind });
+    // The pack is the lowest layer: rules, then the block's own style, override it (§4.1).
+    styles[node.id] = {
+      ...presetApplied.styles[node.id],
+      ...resolveStyle(config, { id: node.id, lane: node.lane, label: node.label, kind: node.kind }),
+    };
   }
 
   return {
@@ -148,7 +167,9 @@ export function loadDocument(
     layoutInput,
     layout: layoutOutput,
     styles,
-    legend: legend(config),
+    icons: presetApplied.icons,
+    preset: presetResolved.pack ? { ref: presetResolved.pack.ref, name: presetResolved.pack.name } : null,
+    legend: [...presetApplied.legend, ...legend(config)],
     title,
     showTitle,
     titlePosition: placements.title,

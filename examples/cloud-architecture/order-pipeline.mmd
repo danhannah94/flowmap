@@ -1,0 +1,37 @@
+flowchart LR
+%% A small order system, drawn with the built-in "cloud" preset pack (see order-pipeline.flow.yaml).
+
+  subgraph clients [Clients]
+    shopper["Shopper"]
+  end
+
+  subgraph edge [Edge]
+    site["Storefront"]
+    gateway["Public API"]
+  end
+
+  subgraph backend [Backend]
+    signin["Sign-in"]
+    create["Create order"]
+    orders["Order queue"]
+    fulfil["Fulfilment worker"]
+    pay["Card payments"]
+  end
+
+  subgraph data [Data]
+    db["Orders"]
+    sessions["Sessions"]
+    receipts["Receipts"]
+  end
+
+  shopper --> site
+  shopper --> gateway
+  gateway --> signin
+  signin --> sessions
+  gateway --> create
+  create --> db
+  create --> orders
+  create --> pay
+  orders --> fulfil
+  fulfil --> db
+  fulfil --> receipts

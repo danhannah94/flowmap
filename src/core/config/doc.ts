@@ -180,6 +180,13 @@ export class ConfigDoc {
     return this.run((src) => (blank(title) ? deleteIn(src, ['title']) : setIn(src, ['title'], title)));
   }
 
+  // ---- preset (A20)
+
+  /** A20: use a preset pack (a built-in name or a file path, written as text); empty or null removes the key. */
+  setPreset(ref: string | null): EditResult {
+    return this.run((src) => (blank(ref) ? deleteIn(src, ['preset']) : setIn(src, ['preset'], (ref as string).trim())));
+  }
+
   // ---- lanes (UI18–UI21, UI27)
 
   /** UI20: write `lanes` as exactly these lanes in this order; existing entries keep extra keys (and their text). */

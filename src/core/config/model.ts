@@ -54,10 +54,12 @@ export interface FlowConfig {
   notes: Record<string, ConfigNote>;
   /** v1.1: false only for `show_title: false`. */
   showTitle: boolean;
+  /** A20: the preset pack this diagram uses, as written (trimmed): a built-in name or a path to a pack file. */
+  preset: string | null;
 }
 
 export function emptyConfig(): FlowConfig {
-  return { version: 1, title: null, lanes: null, styles: [], nodes: {}, nodeStyles: {}, notes: {}, showTitle: true };
+  return { version: 1, title: null, lanes: null, styles: [], nodes: {}, nodeStyles: {}, notes: {}, showTitle: true, preset: null };
 }
 
 /** v1.1 note defaults (§4). */

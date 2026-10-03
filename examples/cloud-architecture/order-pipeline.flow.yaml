@@ -1,0 +1,15 @@
+version: 1
+title: Order system
+preset: cloud                # built-in pack: icons, looks and legend entries by `kind` (design.md §4.1)
+nodes:
+  shopper: {kind: user}
+  site: {kind: cdn}
+  gateway: {kind: api-gateway}
+  signin: {kind: identity}
+  create: {kind: function}
+  orders: {kind: queue}
+  fulfil: {kind: service}
+  pay: {kind: external-service}
+  db: {kind: database}
+  sessions: {kind: cache}
+  receipts: {kind: object-storage}
