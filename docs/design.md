@@ -59,10 +59,13 @@ so that both authors can round-trip it without loss. Anything outside the subset
   `linkStyle`, `click`) match as whole tokens only, so `class_a --> b` is an edge.
 - **Lanes**: `subgraph <id> [<Label>]` or `subgraph <id> ["<Label>"]` … `end` (the space before `[` is optional).
   Subgraph ids follow the node id rules below, including the reserved list. A missing label means the label is the
-  id. One level only: a subgraph inside a subgraph is `E-nested` (at the inner `subgraph` line; the inner block
-  still opens and closes, so its `end` is not a second error). A subgraph with no `end` is `E-unclosed` (at the
-  `subgraph` line). An `end` with no open subgraph is `E-syntax`. Two subgraphs with the same id, or a subgraph id
-  equal to a node id, is `E-duplicate` (at whichever of the two comes later in the file). An edge to or from a subgraph id is `E-syntax`.
+  id. A subgraph at the top level is a **lane**. (Amendment A19) A subgraph inside another subgraph is a **group**:
+  a box drawn inside its lane around the blocks declared in it, not a lane of its own. Groups nest to any depth (a
+  lane holds groups, a group holds groups), and are written exactly like lanes; everything below about subgraphs
+  applies to both. `E-nested` is no longer reported. A subgraph with no `end` is `E-unclosed` (at the
+  `subgraph` line). An `end` with no open subgraph is `E-syntax`. Two subgraphs with the same id (lanes and groups
+  alike), or a subgraph id equal to a node id, is `E-duplicate` (at whichever of the two comes later in the file). An
+  edge to or from a subgraph id is `E-syntax`.
 - **Node shapes**: eight, each with a *shape kind* name used everywhere else in this contract:
 
   | Shape kind | Mermaid syntax | Drawn as | Typical use |
@@ -124,8 +127,13 @@ nodes gets `W-no-lane`.) Its lane is `_unassigned` everywhere a lane id appears 
 JSON, the inspector, `data-lane`), and the UI shows it in the "Unassigned" lane. Listing `_unassigned` in the config's
 `lanes` is `W-config-unknown-lane`.
 
+(A19) A node's **group** is the innermost group in which it is first declared with a shape, or none when it is
+declared directly in its lane (or has no lane). Its lane is still the lane (top-level subgraph) around that group:
+everywhere a lane id appears (`match`, pins, the inspector, `data-lane`), it is the lane, never a group. A group's
+**members** are the nodes whose group it is and the groups directly inside it.
+
 Declaring the same id again with the same shape, label and class is fine and has no effect. Declaring it again with a
-different shape, label, class or lane is `E-duplicate`, reported at the later declaration.
+different shape, label, class, lane or (A19) group is `E-duplicate`, reported at the later declaration.
 
 ### 3.3 Canonical form (what every write produces)
 
@@ -143,7 +151,21 @@ In order:
    of first declaration, and `  end`. The lane label is written unquoted if every character is an ASCII letter,
    digit, space or one of `_ . , ' ? ! -`, it is not empty, it has no leading or trailing space and no two spaces
    in a row; otherwise it is quoted (`subgraph fin ["Finance & approvals"]`). A lane with no label in the input is
-   written `[<id>]`.
+   written `[<id>]`. (A19) After a subgraph's own nodes come its groups, in file order, each written the same way one
+   level deeper: its `subgraph` line and `end` at its parent's node indentation, its nodes 2 spaces further in, then
+   its own groups. There is no blank line inside a lane.
+
+   ```
+     subgraph acct [Account]
+       gw["Gateway"]
+       subgraph net [Network]
+         lb["Load balancer"]
+         subgraph sub-a ["Subnet A"]
+           app["App server"]
+         end
+       end
+     end
+   ```
 5. A blank line, then **all edges**, indented 2 spaces, in file order after expansion, one edge per line:
    `a --> b`, or `a -->|label| b` when the label passes the same unquoted-character test, else `a -->|"label"| b`.
    (A18) The arrow is the edge's style's one spelling: `-->` solid, `-.->` dashed, `==>` thick, `<-->` bidirectional,
@@ -172,10 +194,13 @@ literally contains the text `#quot;` (or `#35;`, `#92;`) is written with its `#`
   section (an edge written inside a subgraph block moves to the edge section with its comment). If the next line
   expands into several statements, the comment goes with the first edge it produces, or with the node declaration if
   it produces no edge. If the next line is dropped (a `direction` line, a repeated identical declaration), the comment
-  goes with the next kept statement. A comment above `subgraph` stays above that subgraph line.
-- A comment directly above `end` stays as the last line inside that subgraph, at node indentation (4 spaces). A
-  declaration the UI appends to a lane goes after the lane's last declaration and before such a comment.
-- A travelling comment is written at its statement's indentation (4 for a node inside a lane, 2 otherwise).
+  goes with the next kept statement. A comment above `subgraph` stays above that subgraph line (A19: for a group,
+  at its `subgraph` line's indentation).
+- A comment directly above `end` stays as the last line inside that subgraph, at its node indentation (4 spaces in a
+  lane; A19: 2 more per group level), after its groups. A declaration the UI appends to a lane or group goes after
+  its last declaration and before its groups and such a comment.
+- A travelling comment is written at its statement's indentation (4 for a node inside a lane, 2 more per group level,
+  2 otherwise).
 - A comment attached to a node or edge the UI deletes is deleted with it.
 
 `fixtures/syntax/edge-cases.mmd` and `edge-cases.canonical.mmd` exercise many of these rules in one file.
@@ -402,6 +427,13 @@ or none), or both.
   box. Width and height are integers of at least 40.
 - If `lane` no longer matches the node's lane in the `.mmd` (someone moved it in text), the pin is ignored and the
   node is placed automatically; its size still applies.
+- (A19) The pin of a node that is in a group also holds `group`: the id of the node's group when it was pinned
+  (`{"lane": "acct", "group": "sub-a", "along": 300, "across": 140}`; key order `lane`, `group`, `along`, `across`).
+  `along` and `across` are still measured in the lane's frame, not the group's: groups have no position of their own
+  (§6 L13). A pin applies only while both `lane` and `group` match the node's lane and group in the `.mmd`; a pin
+  without `group` belongs to a node declared directly in its lane. So a node moved to another group in text is placed
+  automatically, as a node moved to another lane is. `group` without the three pin keys, or not a string, is
+  `E-layout`. Group boxes are never stored.
 
 **Edges** (v1.1). Keyed by edge id (§3.4). An entry holds any of:
 - `source_side`, `target_side`: `top`, `right`, `bottom` or `left`. The line leaves or enters the node at that side's
@@ -521,6 +553,23 @@ stadiums). The result MUST satisfy:
     later moves its neighbours' ends too (against the Stability goal below). Off by default, every existing file draws
     exactly as before (the golden layouts are unchanged); a diagram that needs it, such as a sequence-style exchange
     between two blocks, turns it on once, and stored offsets give exact control of any single end either way.
+- **L13 Groups** (A19): a group's box is derived from its members, never stored or pinned.
+  - It is the smallest rectangle holding every member's box (its nodes and the boxes of the groups directly inside
+    it), grown by at least 12 px on every side and by room for its label on its top side, and at least wide enough
+    for its label. An empty group still has a box (at least 120 px by 56 px).
+  - So every node and group in a group lies wholly inside the group's box (containment holds at every depth, pinned
+    members included: a group grows to hold them, since L4 wins).
+  - The box never starts before its lane's start edge across the flow, or before 0 on the flow axis; only a pinned
+    member near that edge can make it reach there, and then its padding on that side may be less.
+  - L2 holds for group boxes too: the lane grows across its axis to hold them, with at least 12 px to spare at its far
+    edge.
+  - Automatic placement: inside a lane, the nodes declared directly in it take the first rows across the flow, then
+    each of its groups, in file order, gets its own strip after them (recursively, the same inside a group). With no
+    pinned node in a lane, its sibling group boxes don't overlap, and no node's box overlaps a group box it isn't a
+    member of. Pinned nodes are where their pins put them (as L3), and unpinned members slide away from them as in
+    L3, so a group with pinned members may overlap its neighbours.
+  - Lines may cross group boxes freely (L7 is about node boxes only); automatic lines keep off group labels where
+    they can. A diagram without groups lays out exactly as before A19.
 - **Notes and title** (v1.1) take no part in L1–L8: they may sit anywhere, over anything. Without a stored position,
   the title sits above the diagram's top-left corner and unplaced notes sit in a row below the diagram, in the
   config's order.
@@ -546,7 +595,7 @@ Which errors stop which command: errors in the `.mmd` stop every command except 
 pins respectively, and print the problem to stderr. `fmt` reads only the `.mmd`, so config and layout problems don't
 affect it.
 
-Error and warning codes: `E-header`, `E-nested`, `E-unclosed`, `E-shape`, `E-edge`, `E-duplicate`, `E-syntax`,
+Error and warning codes: `E-header`, `E-nested` (retired by A19: no longer reported), `E-unclosed`, `E-shape`, `E-edge`, `E-duplicate`, `E-syntax`,
 `E-config`, `E-layout`; `W-no-lane`, `W-direction`, `W-style`, `W-config-key`, `W-config-unknown-node`,
 `W-config-unknown-lane`, `W-layout-unknown-node`, and (v1.1) `W-layout-unknown-edge`, `W-layout-unknown-note`, and
 (amendment A15) `W-link-missing`, `W-link-traversal`, and (amendment A20) `W-preset-unknown`, `W-preset-invalid`,
@@ -586,6 +635,12 @@ an end is at its side's midline port, or (an automatic end) spread on its side a
 with its box in diagram coordinates (x and y may be negative), in the config's order. `title` is the title's box, or null when the title is
 hidden. `width` and `height` of the diagram cover the lanes; notes and the title may extend beyond them.
 
+(A19) A diagram with groups also has `groups`, one entry per group in file order (a group before the groups inside
+it): `{"id": "sub-a", "label": "Subnet A", "lane": "acct", "parent": "net", "x": 312, "y": 196, "width": 260,
+"height": 120}`, where `parent` is the enclosing group's id, or null for a group directly in its lane. A node in a
+group also carries `"group": "<id of its group>"` (after `lane`). A diagram without groups has no `groups` key and
+no node has `group`, so its output is exactly as before.
+
 ### 7.1 The SVG export (what the tests read)
 
 The tests parse the SVG as XML. Layout and drawing are otherwise the implementation's choice.
@@ -595,6 +650,8 @@ The tests parse the SVG as XML. Layout and drawing are otherwise the implementat
 - Each note (v1.1) is a `<g data-note-id="<id>">` holding its text, one `<text>` or `<tspan>` per line. Each `<text>`
   carries `font-size="<n>"` and `fill="#rrggbb"`, plus `font-weight="bold"` only when bold.
 - Each lane is a `<g data-lane-id="<id>">` containing a `<text>` with the lane label.
+- (A19) Each group is a `<g data-group-id="<id>">` holding a `<rect>` (its box, as in the layout JSON) and a
+  `<text>` with its label, drawn after the lanes and before the nodes, outer groups before inner ones.
 - Each node is a `<g data-node-id="<id>" data-kind="<shape kind>">`. Its first shape child (`rect`, `polygon` or
   `path`) carries the style as presentation attributes: `fill`, `stroke`, `stroke-width`, and `stroke-dasharray`
   (absent or `none` for solid, `6 4` for dashed, `2 3` for dotted). Colours are lowercase `#rrggbb` (`#f96` is written
@@ -642,7 +699,9 @@ Deliberately text-only (the UI keeps them intact but doesn't show or edit them):
   declares it in the unlaned section);
 - repairing a file that has errors (the error banner says where to look);
 - (v1.1) a stored size smaller than the label needs (the UI's handles stop at the need), renaming a note's id,
-  removing a note's stored position (it can be moved but not un-placed), and `label_at` on an edge with no label.
+  removing a note's stored position (it can be moved but not un-placed), and `label_at` on an edge with no label;
+- (A19) adding, renaming, re-labelling, moving and deleting groups themselves. The UI draws them and moves blocks
+  into and out of them (UI11); the group subgraphs are written by hand.
 
 Section 10, Part 3 lists every operation and how parity is checked.
 
@@ -700,6 +759,14 @@ Three rules apply to every operation below:
   for Unassigned), and its pin records the new lane. A block can also be moved by choosing its lane in the
   inspector's lane select, which always includes Unassigned (the only way to reach it when no block is unlaned and
   the Unassigned lane isn't showing); moved this way, its pin is dropped.
+  - (A19) **Groups.** Inside the lane its centre lands in, a dropped block joins the innermost group whose box (as
+    drawn when the drag started) contains its centre, or the lane itself when no group box does. When that differs
+    from where it was, its declaration, with any comment attached to it, is appended as the last declaration of that
+    group (or of the lane, before its groups), and its pin records the lane and the group (§5). A block dragged out
+    of its group's box leaves the group. While dragging, the group it would join is highlighted.
+  - (A19) The inspector's group select (`group-select`, shown when the block's lane has groups or the block is in
+    one) lists the groups of the block's lane, plus "none" (the lane itself); choosing one moves the block there as above, its pin dropped. The lane select moves a block to another
+    lane's top level; choosing the block's own lane leaves it where it is, group included.
 - **UI12 Unpin**: selected blocks can be unpinned (back to automatic placement). "Re-layout all" clears every pin
   and every line's bend points after a confirmation, keeping sizes, sides, label positions, notes, the title position
   and `hints` (v1.1; see "Keeping the layout file in step").
@@ -750,7 +817,9 @@ Three rules apply to every operation below:
 - **UI21 Delete lane**: an empty lane is removed (the subgraph and its config `lanes` entry) straight away. A lane with
   blocks asks first: move its blocks to another lane or to Unassigned (each appended to its new lane with its attached
   comments, pins dropped), or delete them along with the lane (as in UI14). Comments above the lane's `subgraph` line
-  and above its `end` are deleted with it.
+  and above its `end` are deleted with it. (A19) The lane's groups go with it: "its blocks" are every block in the
+  lane and its groups (in file declaration order), moved to the target's top level; a lane holding only empty groups
+  counts as empty.
 
 **Diagram**
 
@@ -992,6 +1061,7 @@ opening first, through the listed opener).
 | Node (v1.1) | also `data-sized="true\|false"` (has a stored size); four connection handles `data-handle="source"` each with `data-port="top\|right\|bottom\|left"`, in that DOM order; when selected, resize handles `data-resize="n\|ne\|e\|se\|s\|sw\|w\|nw"`; while a line is being connected or reconnected over it, connection points `data-port-target="<side>"` (A22: plus the snap ticks `data-port-tick="<side>"` with `data-at="0.25\|0.75"`, and, when a drop would attach along a side off its port, `data-port-drop` with `data-side` and `data-at`); (amendment A15) a node with a `link` also has a `data-testid="link-badge"` child with `data-link-target="<target>"` |
 | Edge (v1.1) | also `data-manual="true\|false"` and `data-points` (the drawn line as integer diagram coordinates, `x1,y1 x2,y2 …`, equal to the layout JSON's `points`); its label is a child with `data-role="edge-label"` (draggable); when selected, one handle per segment of the merged drawn line `data-segment="<i>"` (UI36) and one per bend point `data-bend="<i>"` (0-based, from the source) |
 | Line style (A18) | `data-testid="edge-style-picker"` (UI44), one button per style with `data-edge-style`, `aria-pressed`; the line context menu's `data-menu-item="line-style"` holds the same four `data-edge-style` options with `aria-checked` |
+| Group (A19) | `data-group-id="<id>"`, `data-lane="<lane id>"`, `data-parent-group="<id>"` (absent for a group directly in its lane), integer `data-x`, `data-y`, `data-width`, `data-height` (its box, as in the layout JSON's `groups`), `data-drop-target="true"` while a dragged block would join it; its label is a child with `data-role="group-label"`. Groups let clicks through to their lane. A node in a group also has `data-group="<id of its group>"`. In the inspector, when the block's lane has groups or the block is in one: `data-field="group"` (the group id, empty for none) and `data-testid="group-select"` (a select of `""` for none and the ids of the groups in the block's lane) |
 | Snap guide (v1.1) | `data-testid="snap-guide"`, present while a snap is active during a drag |
 | Context menu (v1.1) | `data-testid="context-menu"`, items `data-menu-item="<name>"` exactly as in UI40's table; the `shape`, colour and font-size controls render inside the menu element |
 | Block colours (v1.1) | in the inspector: `data-testid="block-colors"` holding `data-prop="fill\|border_color\|text_color"` controls with `data-variant="light\|dark"` inputs, preset swatches `data-testid="swatch"` with `data-color="#rrggbb"` (light) and `data-color-dark="#rrggbb"`, and `block-colors-reset` |
@@ -1117,7 +1187,9 @@ Real-time multi-user editing; accounts; cloud anything; showing or editing `.mmd
 pass-through lines in the UI (section 8.1); multiple pages per diagram with off-page connectors (stretch); comments on
 the canvas (stretch); a generated open-questions list (stretch); draw.io export (stretch); nested lanes; Mermaid
 features outside the subset in section 3; curved lines; line colours; line styles beyond the four of A18 (dotted, combinations such as dashed and bidirectional, other arrowheads); grouping several blocks into
-one; rotating blocks.
+one; rotating blocks. (A19) Nested lanes: a subgraph inside a lane is a group (a box inside the lane), never a lane
+of its own. Editing groups themselves in the UI (adding, renaming, deleting, dragging or resizing a group as a whole),
+storing a group's size or position, and style rules that match on a block's group.
 
 ## 12. Amendments
 
@@ -1143,7 +1215,9 @@ in flight.
 | 2026-09-30 | **A14. Trackpad-friendly navigation, and a controls legend (Dan).** UI3: a trackpad's two-finger scroll pans the canvas on both axes instead of zooming; a trackpad pinch, a mouse's scroll wheel, and Cmd/Ctrl+wheel (still, unconditionally) all zoom around the cursor; a mouse's Shift+wheel pans horizontally. Space+drag and the middle button still pan (A11). Which way one wheel event goes is a heuristic (`classifyWheel`, `src/ui/canvas/wheel-intent.ts`), since no browser API says "this is a trackpad": `ctrlKey`/`metaKey` always zoom; `deltaMode` 1 or 2 (lines/pages) or a legacy `wheelDeltaY` that is a clean multiple of 120 read as a mouse; a non-zero `deltaX` in pixel mode or a fractional `deltaY` read as a trackpad; a whole-pixel, vertical-only, otherwise-unmarked delta falls back to zoom, the original behaviour. Classification is sticky for 300 ms of one continuous, genuinely ambiguous tail (a trackpad's momentum decaying to a whole-pixel delta near the end of a scroll), but a modifier key or the "Scroll to" override below is read fresh on every event and is never held over. Safari reports a trackpad pinch as `gesturestart`/`gesturechange`/`gestureend` (`scale`) instead of Ctrl+wheel; both are handled, and while one of Safari's gesture events is in progress the wheel handler stands down so the same physical pinch isn't applied twice. A "Scroll to: Auto / Pan / Zoom" choice (`localStorage` key `flowmap.scroll-preference`, degrading quietly if storage is unavailable) overrides the heuristic; Cmd/Ctrl+wheel still always zooms regardless of it. A controls legend — a small chip (`data-testid="controls-legend-toggle"`) beside the `?` shortcut button, its panel `data-testid="controls-legend"` — lists Pan, Zoom, Select, Edit and View in a few lines each, verified against the real gesture and keyboard code rather than guessed, and holds the "Scroll to" control (`data-testid="scroll-preference"`); its open/closed state is remembered in `localStorage` (`flowmap.controls-legend-open`), collapsed by default. It is not modal and doesn't replace the existing `?` shortcut list, which still has the full keyboard reference. | A plain wheel-always-zooms canvas fights a trackpad's two-finger scroll, the way most people expect to pan; and the pan/zoom/select/edit gestures were only discoverable by opening the full shortcut list. |
 | 2026-09-30 | **A15. A block can link to another diagram (Dan).** §4: a node's metadata may hold `link`, another diagram's path relative to the served root, without `.mmd`, forward slashes only (§4's new bullet has the full grammar and the two warning codes, `W-link-missing` and `W-link-traversal`, added to §7's code list). `link` is reserved like `style` (not a field row; the field form refuses it as a key) but, unlike `style`, stays a normal matchable field, so a style rule can mark linked blocks (`match: {link: present}`). Linking a block to its own diagram is allowed. **Following a link**: Cmd+click (Mac) / Ctrl+click (elsewhere) on a linked block follows it instead of extending the selection (the one exception to A11's Cmd/Ctrl-click-extends-selection rule: only on a block that has a link); a plain click always still selects. Every linked block also draws a small corner badge (`data-testid="link-badge"`, `data-link-target`, its title the target); a plain click on the badge alone follows the link regardless of the selection state. Following a link uses the app's own `?file=` navigation (not a hand-rolled route), so Back returns to the diagram it was followed from; the previous diagram's viewport (pan and zoom) is cached in `sessionStorage`, keyed by file name, the moment a link is followed, and consumed once when that diagram is next opened (by Back or otherwise) — cheap, and falling back to the normal fit when there's nothing cached. A traversing link (a `..` segment) is stored and warned but the UI refuses to follow it (a toast explains why); a link to a target that simply doesn't exist is still followed, landing on the same "couldn't open" screen a deleted diagram already shows. **Setting a link**: the inspector gets a "Links to" field (`data-testid="link-field"`, `link-input`, `link-clear`, `link-suggestion` per diagram the server lists — reusing `GET /api/diagrams`, the home page's own API — and `link-open` once set); the block context menu gets `link` ("Link to diagram…"), the same input and suggestions inside the menu. Typing accepts a pasted `.mmd` name or a backslash path, normalising both. **Validation**: `flowmap validate` checks a diagram's links against every `.mmd` under its own directory (recursively, skipping `.flowmap-trash` and `exports`) — the closest available stand-in for "the served root" at the single-file CLI, since `validate` takes no `--dir`; the UI checks against the diagram list it already fetched. **Export**: SVG wraps a linked block's `<g>` in `<a href="<target>.svg">` (§7.1); PNG is unaffected (it screenshots the SVG, and a flat raster has no links regardless). **Staying valid across a move or folder rename**: amendment A17 (§12), below. | "Hand-off" blocks in a set of stage diagrams (e.g. "Hand-off to 2 · Complete + save") should take you straight to the diagram they refer to, without leaving the editor or hunting through the home page. |
 | 2026-09-30 | **A16. Folders on the home screen (Dan).** Folders are real subdirectories of the served root, so they work with git, the CLI and editors: a diagram's id/path is its root-relative path without extension (`sales/stage-2`), and `?file=` is that path plus `.mmd` (a bare `<name>.mmd` still works unchanged). **Server**: `isValidMmdName` (§8.2's traversal rejections) now accepts any number of folder segments; every segment (of a diagram's or a folder's path alike) is still checked for `..`, a leading slash and a backslash, and additionally rejected if it's a dot-folder, `node_modules` or `exports` (already special, UI32/A10, so never reachable as a browsable folder). Every path is further resolved through the served root with symlinks followed (`resolveInRoot`/`PathTraversalError` in `src/server/files.ts`) before any read, write, move, or create/rename/delete, rejecting one that lands outside it. `GET /api/diagrams` now lists every `.mmd` under the root recursively (root-relative paths, depth-limited, `MAX_FOLDER_DEPTH` = 12), skipping dot-folders (so `.flowmap-trash`, A10, is never listed or reachable through these routes), `node_modules` and `exports` (already special, UI32/A10) at any depth. `GET /api/folder?dir=<path>` lists one folder's immediate subfolders and diagrams only (so an empty subfolder still shows, unlike the recursive list); `POST`/`PUT`/`DELETE /api/folder` create, rename (keeping a folder in its parent) and delete (only when empty, else 409 with a message) a folder. `POST /api/diagram/move` `{file, to}` moves a diagram's `.mmd`/`.flow.yaml`/`.layout.json` (whichever exist) and any other file beside it sharing its base name (an extra export, say) into folder `to`, refusing a name collision at the destination; it is one server function (`moveDiagram`) precisely so a later change could rewrite `link:` node values (the cross-diagram link feature built alongside this one) that point at the diagram's old path — that change is amendment A17 (§12), below. **Home screen**: shows the current folder's subfolders, then its diagrams; a breadcrumb (root, then each segment) remembers the folder in `?dir=`, so Back works. "New folder" creates one in the current folder; a folder's own small menu (opener + popover, the same pattern UI6/A10's per-row control uses) offers Rename and Delete (refused, with a message, unless empty); a diagram's row menu adds "Move to…" (a small dialog: breadcrumbs and subfolders to browse to, "Move here") beside Delete (A10, now inside the same menu rather than its own button). Dragging a diagram row onto a folder row or a breadcrumb segment moves it there the same way. New diagrams (UI6) are created in the current folder. The editor shows the full path in its file name and its "back to list" (the home logo, UI1) returns to the diagram's own folder, not always the root; a diagram's `?file=` keeps working with or without a folder. | Diagrams needed real folders to organise a growing set of process maps (Sales-style client work spans many stages), while staying plain files a person could also browse in Finder or edit by hand. |
+| 2026-09-30 | **A17. Moves and folder renames rewrite `link:` values.** Amends A15 and A16. After a successful `POST /api/diagram/move` (§8.2 A16), every node `link` under the served root that equals the moved diagram's old id (its root-relative path without `.mmd`) is rewritten to its new id; an exact match only, so a diagram's own outbound links never change when it moves, and a self-link (allowed, §4) is corrected like any other. After a successful `PUT /api/folder` rename, every `link` that starts with the old folder path followed by `/` gets the new folder path in its place, keeping the rest (`old/sub/stage-2` becomes `new/sub/stage-2`); the `/` makes it prefix-safe, so renaming `a` to `a2` leaves `a-other/x` and `ab/x` alone. The sweep runs over the tree in its new state, across every diagram `GET /api/diagrams` would list (the same reserved-folder and depth rules), and writes a `.flow.yaml` only when one of its links changes, through the same surgical writer as every other config edit (`ConfigDoc.rewriteLinks`, UI26), so comments and formatting elsewhere survive byte for byte. A config that fails to parse is left untouched rather than rewritten against a guess. Both routes report `rewrittenLinks: [{file, count}]`; the home screen shows "Moved. Updated N links in M diagrams." (or "Renamed. …") when any changed, and an open diagram picks the change up through the usual file watcher. Nothing else is rewritten (a preset pack path, A20, is not). There is no rename-diagram operation for it to cover. Tests: `src/server/links.test.ts`, `src/server/api.test.ts` and `tests/ui/link-rewrite.spec.ts`. | A15's links pointed at a diagram's path and A16 made that path change on every move or folder rename, which silently left every link to it stale (`W-link-missing`) until someone fixed each by hand. |
 | 2026-10-03 | **A18. Dashed, thick and bidirectional edges (issue #1).** §3.1: three more arrows are accepted, each a line style (new §3.1.1): `-.->` dashed (async, event, optional), `==>` thick (critical path) and `<-->` bidirectional (a head at each end). Labels work as for `-->` (`-.->|event|`, `-.->|"x"|`, and the long forms `-. x .->`, `== x ==>`, `<-- x -->`), and chains and `&` groups give each arrow its own style. Every other arrow, including the combinations `<-.->` and `<==>`, `-.-` and `===`, is still `E-edge`. §3.3: canonical form writes the one spelling of each style, with the label in `|…|` form. The style lives only in the `.mmd` (not the config or layout file), does not change the edge id, and does not change layout or routing: L1–L12 treat every style like `-->`. §7: `flowmap layout --json` edges gain `style` (`dashed`, `thick` or `bidirectional`; absent for solid, so a diagram of only `-->` edges has byte-identical output); §7.1: a non-solid edge's `<g>` has `data-edge-style`, dashed is `stroke-dasharray="6 4"`, thick is `stroke-width="3"` with its own `arrowhead-thick` marker (defined only when used), bidirectional has `marker-start`. §8: UI44 (line style picker `edge-style-picker`, the line context menu's `line-style` item, `data-edge-style` on every UI edge element; copy, paste and duplicate carry the style), §8.3 rows, U17 and P31. §11: "line styles" narrows to styles beyond these four. `fixtures/errors/E-edge.mmd` uses `---` now (it used `-.->`), and `docs/rulings.md` ruling 7 is annotated. Golden SVGs for each form are in `tests/golden/edge-styles/`. | Architecture diagrams need to tell synchronous calls from async or event flows, mark a critical path and show two-way links, and every arrow other than `-->` was an error. |
+| 2026-10-03 | **A19. Groups: subgraphs nested inside lanes (issue #2).** §3.1: a subgraph inside a subgraph is no longer `E-nested` (the code is retired and never reported); it is a **group**, a box drawn inside its lane around the blocks declared in it. Lanes stay the top level and stay the only bands; groups nest to any depth (a lane holds groups, a group holds groups: account > network > subnet is a lane holding two levels of group). Group ids follow the subgraph id rules, count as taken, may not repeat any lane, group or node id (`E-duplicate`), and can't be an edge end (`E-syntax`); a note id equal to one is `E-config` (§4). §3.2: a node's **group** is the innermost group it is first declared in; its lane is still the lane around it (so `match: {lane: …}`, `data-lane` and pins name the lane, never a group), and declaring it again in another group is `E-duplicate`. §3.3 canonical form: inside a subgraph, its nodes, then its groups in file order, each one level (2 spaces) deeper, then its end comments; no blank lines inside a lane. **Layout file** (§5): a pin of a node in a group also holds `"group": "<id>"` (key order `lane`, `group`, `along`, `across`); `along`/`across` stay lane-relative, and the pin applies only while lane and group both still match, so a node moved to another group in text is placed automatically, exactly as one moved to another lane is. Nothing else is stored for groups. **Layout** (§6 L13): a group's box is derived (its members' boxes, padded by at least 12 px, plus label room on its top side; an empty group is at least 120 × 56), clipped only at its lane's start edge and the flow start; the lane grows to hold it (L2). Automatic placement gives a lane's direct nodes the first rows and each group its own strip after them, recursively, so unpinned groups never overlap each other or non-members; pins stay exact and their groups grow to hold them. A diagram without groups lays out byte-for-byte as before (the leading gap on the flow axis grows only by the nesting depth when groups exist). **Output** (§7, §7.1): the layout JSON gains `groups` (`id`, `label`, `lane`, `parent`, box) and a node in a group gains `group`, both only when the diagram has groups; the SVG draws each group as `<g data-group-id>` with a `<rect>` and its label, before the nodes. **UI** (§8.2 UI11, UI21, A12; §8.3): groups are drawn with their label and let clicks through to their lane (`data-group-id`, `data-lane`, `data-parent-group`, box attributes; a grouped node has `data-group`). Dropping a block with its centre inside a group's box (the innermost, in the lane the centre lands in) moves its declaration and comments to the end of that group's declarations and pins it with that group; dropping it in its lane outside every group box moves it to the lane's top level; the target group is highlighted during the drag (`data-drop-target`). The inspector shows `data-field="group"` and a `group-select` (none, or a group of the block's lane; pin dropped, like the lane select). The lane select moves a block to another lane's top level and leaves a block alone in its own lane. Deleting a lane takes its groups with it and moves or deletes every block inside them. Paste and duplicate (A12) keep a copy in its original's group when pasted in place and that group is in the copy's lane, and a paste at the pointer joins the innermost group under each block's centre, as a drop does; the Mermaid text a copy puts on the system clipboard lists blocks under their lanes only. Creating, renaming, deleting, dragging or resizing a group itself is text-only for now (§8.1, §11). Tests: `fixtures/syntax/groups.mmd` (C1/C2), the layout containment rule over fixtures and generated diagrams, and a UI test that moves a block between groups. | Cloud and system architecture is naturally nested (account > network > subnet, environment > stack > construct); Mermaid already supports nested subgraphs, so the text stays plain Mermaid that GitHub renders. Keeping lanes as the only bands and groups as derived boxes leaves every existing diagram, pin and layout file meaning exactly what it did. |
 | 2026-10-03 | **A20. Architecture preset packs (issue #3).** New section 4.1 and the top-level config key `preset`: a diagram names a preset pack, a built-in (`cloud`, a provider-neutral "Cloud architecture" pack of 15 kinds with original line icons) or a YAML pack file relative to the diagram (inside the served folder), and every block whose metadata `kind` the pack knows gets the kind's icon (a round tag on the block's top edge, `iconBox`, shared by the editor and the export) and its style as the lowest layer under the diagram's rules and the block's own `style`; the legend gets an entry for each pack kind in use, before the diagram's own. A pack kind is `{label?, aliases?, icon?, style?}`; an icon is a built-in icon name or up to 12 safe SVG path strings (no markup). Warnings `W-preset-unknown`, `W-preset-invalid`, `W-preset-kind` (§7); `E-config` for a `preset` that isn't text. SVG export (§7.1) draws `<g data-role="icon" data-icon>` per icon, in blocks and in legend swatches, inline, so exports and PNGs need no network. `flowmap serve` sends the pack file's text with the diagram (snapshot `presets`, version `preset`, which the watcher follows without clearing undo history), refuses paths outside the served folder, and the Styles panel gets a Preset pack field (UI25, §8.3). The layout is unchanged by icons (it ignores styles). Pack paths are not rewritten when a diagram moves (A17 covers `link:` only). | Architecture sketches read faster with recognisable component types, and per-diagram style rules repeat the same encoding in every file; a shareable pack keeps the encoding in one place. |
 | 2026-10-03 | **A21. Distribution and CI.** §7: the `flowmap` command is also installed from npm as `@danhannah94/flowmap` (`npx @danhannah94/flowmap <command>`); the package ships the built CLI and UI only (`dist/`, `bin/`), and `pnpm exec flowmap` from a clone still works as before (A2). §7: when `export --format png` cannot find the Playwright headless Chromium it exits 1 with a one-line message giving the install command (`npx playwright@<version> install chromium-headless-shell`) instead of a stack trace, and `POST /api/export` answers 503 with the same message; SVG export is unaffected. GitHub Actions runs typecheck, the unit tests and the browser tests on every push to `main` and pull request, and a `v*` tag publishes to npm. | The tool could only be run from a clone, nothing checked a change before it merged, and a fresh clone failed the PNG export test with a raw Playwright error. |
 | 2026-10-03 | **A22. More connection points per block side (issue #6).** **Offsets**: §5: an edge entry may hold `source_at` / `target_at` beside `source_side` / `target_side`: where along that side the end is attached, as a fraction of the side's length from its start (the left end of a top or bottom side, the top end of a left or right side), a number from 0 to 1 with at most two decimals; absent means 0.5, the midline port, so every existing file lays out exactly as before. An offset outside 0 to 1, with more than two decimals, or without its own side is `E-layout`. §6 L12: the port at fraction `f` is on the line across the side `floor(f × length)` px from its start (in hundredths, so every implementation lands on the same pixel), where the drawn outline crosses it (a diamond's face off its vertices); an end with an offset is there within 2 px, manual or automatic. §7: the layout JSON's edges report `source_at` / `target_at` only when the file asks for them (a stored offset, or a spread position other than 0.5), so the output of every existing file is unchanged. **Setting one**: UI38: while connecting or reconnecting, a drop right at a side's outline (within 6 screen px, at most 15% of the block's smaller side inside it), not only on its port, attaches at the point along the side the pointer is level with, snapped to 0.25, 0.5 and 0.75 within 8 screen px (Alt turns that off, as UI39), else rounded to two decimals; dragging a line's end along the side it is on is the same-block case, so only that end's side and offset change. The four ports still win within their 12 px snap distance and the block's body is still "elsewhere", so a v1.1 drop does what it did unless it lands right on the outline. While dragging, the snap points show as `data-port-tick="<side>"` (`data-at`) and the drop point as `data-port-drop` (`data-side`, `data-at`). 0.5 is never written. Removing a side removes its offset (reconnecting an end to another block, Reset line, a drop elsewhere on the block); Re-layout all, copy, paste, duplicate, renames and UI23 keep offsets (UI23: a side's start rotates with it, so the value stays). UI36: becoming manual stores the reported offsets with the sides, so an end at an offset counts as at its port (`endAtPort`) and doesn't turn into a bend point, and the line doesn't move. **Spreading**: §5: `"spread_ends": true` (after `lane_length`) spreads the ends that share a side and have no offset (set side or not, manual or automatic) evenly along it, the i-th of n at `round((i + 1) / (n + 1), 2)`, ordered from the side's start by where their lines go (the other block's centre, or a manual line's nearest bend point), so they don't cross; single-point sides (a diamond's vertex, round ends) aren't spread. Not `true` or `false` is `E-layout`. UI40: the canvas menu's `spread-ends` ("Spread line ends", ticked while on) toggles it, writing `true` or removing the key. **Off by default**, because turning it on moves the ends of every line sharing a side in every existing diagram, manual lines included, and makes one added line move its neighbours' ends (against H5's stability); a diagram that needs it turns it on once, and offsets give exact control of single ends either way. U13 and P25 include a drop along a side, dragging an end along its side and the toggle (`tests/ui/ports-a22.spec.ts`). | Several lines leaving or entering the same side all met at its one midline port and overlapped, so a sequence-style diagram (two blocks exchanging several numbered messages, as in an OAuth flow) couldn't be read; bend points couldn't help, since they still converged on the same port. |

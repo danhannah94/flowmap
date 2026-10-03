@@ -3,7 +3,7 @@
 
 import { UNASSIGNED, type Graph, type GraphEdge, type GraphLane, type GraphNode } from '../types';
 import type { Diagram } from './model';
-import { declaredNodes, edgeIds, undeclaredNodes } from './model';
+import { allGroups, declaredNodes, edgeIds, undeclaredNodes } from './model';
 
 export const UNASSIGNED_LABEL = 'Unassigned';
 
@@ -24,12 +24,11 @@ export function toGraph(d: Diagram, laneOrder: readonly string[] = []): Graph {
   laneOrder.forEach(place);
   d.lanes.forEach((lane) => place(lane.id));
 
-  const nodes: GraphNode[] = declaredNodes(d).map(({ node, lane }) => ({
-    id: node.id,
-    label: node.label,
-    kind: node.shape,
-    lane: lane ?? UNASSIGNED,
-  }));
+  const nodes: GraphNode[] = declaredNodes(d).map(({ node, lane, group }) => {
+    const out: GraphNode = { id: node.id, label: node.label, kind: node.shape, lane: lane ?? UNASSIGNED };
+    if (group !== null) out.group = group; // A19: only for a node in a group, so a graph without groups is unchanged
+    return out;
+  });
   // §3.2: a never-declared node is a `step` labelled with its id, in no lane.
   for (const { id } of undeclaredNodes(d)) nodes.push({ id, label: id, kind: 'step', lane: UNASSIGNED });
   if (nodes.some((node) => node.lane === UNASSIGNED)) lanes.push({ id: UNASSIGNED, label: UNASSIGNED_LABEL });
@@ -40,5 +39,9 @@ export function toGraph(d: Diagram, laneOrder: readonly string[] = []): Graph {
     ...(edge.style && edge.style !== 'solid' ? { style: edge.style } : {}),
   }));
 
-  return { direction: d.direction, lanes, nodes, edges };
+  const graph: Graph = { direction: d.direction, lanes, nodes, edges };
+  // A19: groups, only when there are any (a graph without groups is exactly as before).
+  const groups = allGroups(d);
+  if (groups.length) graph.groups = groups.map((g) => ({ id: g.group.id, label: g.group.label, lane: g.lane, parent: g.parent }));
+  return graph;
 }

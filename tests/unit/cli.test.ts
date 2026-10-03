@@ -35,7 +35,6 @@ function tmpDir(prefix: string): string {
 
 const ERROR_CASES: { file: string; code: string; line: number | null }[] = [
   { file: 'E-header.mmd', code: 'E-header', line: 1 },
-  { file: 'E-nested.mmd', code: 'E-nested', line: 3 },
   { file: 'E-unclosed.mmd', code: 'E-unclosed', line: 2 },
   { file: 'E-shape.mmd', code: 'E-shape', line: 3 },
   { file: 'E-edge.mmd', code: 'E-edge', line: 4 },

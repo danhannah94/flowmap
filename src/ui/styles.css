@@ -525,6 +525,39 @@ a.fm-home:hover {
   color: var(--accent);
 }
 
+/* A19: a group, a box inside its lane (its label in the top-left corner). Clicks go through to the lane. */
+.fm-group {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid var(--group-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--group-fill) 60%, transparent);
+  pointer-events: none;
+}
+
+.fm-group-label {
+  position: absolute;
+  left: 10px;
+  top: 4px;
+  max-width: calc(100% - 20px);
+  font: 600 12px/16px Inter, sans-serif;
+  color: var(--lane-label);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The group a dragged block will join (UI11, A19). */
+.fm-group[data-drop-target='true'] {
+  border: 1.5px solid color-mix(in srgb, var(--accent) 80%, transparent);
+  background: var(--accent-soft);
+}
+
+.fm-group[data-drop-target='true'] .fm-group-label {
+  color: var(--accent);
+}
+
 /* Amendment A4: the one lane of a diagram without subgraphs is invisible and lets clicks through to the canvas. */
 .fm-lane.fm-lane-bare {
   box-shadow: none;

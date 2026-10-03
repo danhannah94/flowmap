@@ -46,6 +46,18 @@ export interface Graph {
   lanes: GraphLane[];
   nodes: GraphNode[];
   edges: GraphEdge[];
+  /** A19: the groups (subgraphs inside lanes), in file order, a group before those inside it. Absent when none. */
+  groups?: GraphGroup[];
+}
+
+/** A19: a group, a box inside its lane around the blocks declared in it (§3.1, §6 L13). */
+export interface GraphGroup {
+  id: string;
+  label: string;
+  /** The lane it is in. */
+  lane: string;
+  /** The group it is directly inside, or null when it is directly in its lane. */
+  parent: string | null;
 }
 
 export interface GraphLane {
@@ -60,6 +72,8 @@ export interface GraphNode {
   kind: ShapeKind;
   /** Lane id, or `_unassigned`. */
   lane: string;
+  /** A19: the innermost group it is declared in; absent when it is directly in its lane (or unlaned). */
+  group?: string;
 }
 
 export interface GraphEdge {
@@ -95,15 +109,31 @@ export interface XY {
 }
 
 /**
- * One `nodes` entry of the layout file (§5), exactly as in the JSON: a pin (`lane`, `along`, `across`, all three or
- * none), a size (`width`, `height`, both or none), or both; never empty. `pinOf` and `sizeOf` read the two halves.
+ * A node's pin (§5): a `Pin`, plus (A19) the group the node was in when pinned, absent for a node directly in its
+ * lane. The pin applies only while both the lane and the group still match the `.mmd`.
  */
-export interface LayoutNodeEntry extends Partial<Pin>, Partial<Size> {}
+export interface NodePin extends Pin {
+  group?: string;
+}
+
+/**
+ * One `nodes` entry of the layout file (§5), exactly as in the JSON: a pin (`lane`, `along`, `across`, all three or
+ * none, plus A19's optional `group` with them), a size (`width`, `height`, both or none), or both; never empty.
+ * `pinOf` and `sizeOf` read the two halves.
+ */
+export interface LayoutNodeEntry extends Partial<NodePin>, Partial<Size> {}
 
 /** The pin half of a `nodes` entry, or null when it has none. */
-export function pinOf(entry: LayoutNodeEntry | undefined): Pin | null {
+export function pinOf(entry: LayoutNodeEntry | undefined): NodePin | null {
   if (!entry || entry.lane === undefined || entry.along === undefined || entry.across === undefined) return null;
-  return { lane: entry.lane, along: entry.along, across: entry.across };
+  const pin: NodePin = { lane: entry.lane, along: entry.along, across: entry.across };
+  if (entry.group !== undefined) pin.group = entry.group;
+  return pin;
+}
+
+/** A19: whether a node pin still applies to a node in this lane and group (`group` undefined: directly in the lane). */
+export function pinMatches(pin: NodePin, lane: string, group: string | undefined | null): boolean {
+  return pin.lane === lane && (pin.group ?? null) === (group ?? null);
 }
 
 /** The size half of a `nodes` entry, or null when it has none. */
@@ -209,6 +239,16 @@ export interface LayoutResultEdge {
   target_at?: number;
 }
 
+/** A19: a group's box in the layout JSON (§7). */
+export interface LayoutGroupBox {
+  id: string;
+  label: string;
+  lane: string;
+  /** The enclosing group, or null for one directly in its lane. */
+  parent: string | null;
+  x: number; y: number; width: number; height: number;
+}
+
 /** A note or title box in diagram coordinates (x and y may be negative). */
 export interface LayoutTextBox {
   text: string;
@@ -222,9 +262,14 @@ export interface LayoutResult {
   height: number;
   lanes: { id: string; label: string; x: number; y: number; width: number; height: number }[];
   nodes: {
-    id: string; lane: string; kind: ShapeKind; label: string;
+    id: string; lane: string;
+    /** A19: the node's group; present only when it is in one. */
+    group?: string;
+    kind: ShapeKind; label: string;
     x: number; y: number; width: number; height: number; pinned: boolean;
   }[];
+  /** A19: every group's box, in file order (a group before those inside it). Present only when the diagram has groups. */
+  groups?: LayoutGroupBox[];
   edges: LayoutResultEdge[];
   /** v1.1: every note, in config order. Present whenever the caller passed `notes`. */
   notes?: ({ id: string } & LayoutTextBox)[];

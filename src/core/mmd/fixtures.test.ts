@@ -55,6 +55,20 @@ describe('fixtures/syntax (C1, C2)', () => {
       });
     }
 
+    if (expected.groups) {
+      it('puts nodes in the expected groups (A19)', () => {
+        const groups: Record<string, string[]> = {};
+        for (const node of graph.nodes) if (node.group) (groups[node.group] ??= []).push(node.id);
+        expect(groups).toEqual(expected.groups);
+      });
+    }
+
+    if (expected.group_parents) {
+      it('nests the groups as expected (A19)', () => {
+        expect(Object.fromEntries((graph.groups ?? []).map((g) => [g.id, g.parent]))).toEqual(expected.group_parents);
+      });
+    }
+
     if (expected.kinds) {
       it('reads the expected shape kinds', () => {
         const kinds = Object.fromEntries(graph.nodes.map((n) => [n.id, n.kind]));
@@ -89,7 +103,7 @@ describe('fixtures/errors (C3)', () => {
     .map((m) => ({ file: m[1]!, code: m[2]!, line: m[3] === 'null' ? null : Number(m[3]) }));
 
   it('reads the README table', () => {
-    expect(table.length).toBeGreaterThanOrEqual(8);
+    expect(table.length).toBeGreaterThanOrEqual(7);
   });
 
   // E-config is the config module's problem; the .mmd itself must be clean of errors.

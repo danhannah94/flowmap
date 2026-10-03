@@ -38,7 +38,8 @@ function fixtureFiles(): string[] {
     for (const name of readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
       const p = join(dir, name.name);
       if (name.isDirectory()) walk(p);
-      else if (name.name.endsWith('.mmd')) out.push(p);
+      // Amendment A19's group fixtures post-date v1.0 (a v1.0 file can't have groups): layout/groups.test.ts covers them.
+      else if (name.name.endsWith('.mmd') && !name.name.startsWith('groups')) out.push(p);
     }
   };
   walk(join(ROOT, 'fixtures'));

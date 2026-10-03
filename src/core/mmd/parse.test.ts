@@ -103,7 +103,7 @@ describe('§3.1 statements and semicolons', () => {
       '    end',
     );
     expect(errors(text)).toEqual([
-      ['E-shape', 2], ['E-edge', 3], ['E-duplicate', 5], ['E-syntax', 6], ['E-syntax', 7], ['E-nested', 9],
+      ['E-shape', 2], ['E-edge', 3], ['E-duplicate', 5], ['E-syntax', 6], ['E-syntax', 7],
       ['E-unclosed', 8],
     ].sort((x, y) => (x[1] as number) - (y[1] as number)));
   });
@@ -132,10 +132,11 @@ describe('§3.1 lanes', () => {
     expect(errors(lr('  subgraph ok [a [b] c]', '  end'))).toEqual([['E-syntax', 2]]);
   });
 
-  it('reports a nested subgraph at the inner line, once (its end is not a second error)', () => {
-    expect(errors(lr('  subgraph a [A]', '    subgraph b [B]', '      x["X"]', '    end', '  end'))).toEqual([
-      ['E-nested', 3],
-    ]);
+  it('A19: a nested subgraph is a group of its lane, not an error (E-nested is retired)', () => {
+    const r = ok(lr('  subgraph a [A]', '    subgraph b [B]', '      x["X"]', '    end', '  end'));
+    expect(r.diagram.lanes.map((l) => l.id)).toEqual(['a']);
+    expect(r.diagram.lanes[0]!.groups?.map((g) => g.id)).toEqual(['b']);
+    expect(r.diagram.lanes[0]!.groups?.[0]!.nodes.map((n) => n.id)).toEqual(['x']);
   });
 
   it('reports an unclosed subgraph at its subgraph line', () => {

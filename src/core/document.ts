@@ -4,7 +4,7 @@
 // `E-layout` are not (default styles and no notes, or none of the layout file's placements, respectively), and
 // their problems are still reported.
 import type { Diagram } from './mmd';
-import { parse, toGraph } from './mmd';
+import { parse, subgraphIds, toGraph } from './mmd';
 import type { FlowConfig } from './config';
 import {
   checkNoteClashes, checkReferences, diagramTitle, laneOrder, legend, NOTE_FONT_SIZE, parseConfig, resolveStyle,
@@ -82,11 +82,13 @@ export function loadDocument(
   const parsedLayout = parseLayoutFile(layoutText);
 
   const fileLaneIds = mmdParse.diagram.lanes.map((lane) => lane.id);
+  // A19: a note id may not equal any subgraph id, lanes and groups alike.
+  const fileSubgraphIds = subgraphIds(mmdParse.diagram);
   const order = laneOrder(configParse.config, fileLaneIds);
   const graph = toGraph(mmdParse.diagram, order);
 
   // v1.1 §4: a note id equal to a node or subgraph id is E-config, so the config counts as having errors.
-  const clashErrors = checkNoteClashes(configParse.config, graph.nodes.map((n) => n.id), fileLaneIds);
+  const clashErrors = checkNoteClashes(configParse.config, graph.nodes.map((n) => n.id), fileSubgraphIds);
   const config = clashErrors.length ? null : configParse.config;
 
   // §5 Values: a negative `across` outside the first displayed lane (pins and bend points) is out of range: E-layout,

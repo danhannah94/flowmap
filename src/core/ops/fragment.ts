@@ -21,7 +21,7 @@ import {
 import { emptyDiagram, findNode, format, isIdForm, isReservedId, undeclaredNodes, type Lane, type NodeDecl } from '../mmd';
 import { EDGE_STYLES, SHAPE_KINDS, SIDES, UNASSIGNED, type Direction, type EdgeStyle, type Pin, type ShapeKind, type Side, type Size, type XY } from '../types';
 import { mentions, refuse, run, type Ctx, type Files, type OpResult } from './context';
-import { blockLaneAt, checkXY, storedCorner, viewOf, type LayoutArg, type View } from './frame';
+import { blockGroupAt, blockLaneAt, checkXY, storedCorner, viewOf, type LayoutArg, type View } from './frame';
 import { positionInLane } from './nodes';
 
 /** How far a paste or duplicate is moved from its originals, along and across the flow (px), per repeat. */
@@ -35,6 +35,8 @@ export interface FragmentNode {
   className: string | null;
   /** The original lane id, or `_unassigned`. */
   lane: string;
+  /** A19: the original group id; absent when the block was directly in its lane. */
+  group?: string;
   /** Where the block was, as a pin records it (§5): `along` less T, `across` from its lane's zero line. */
   pos: { along: number; across: number };
   /** Where the block was drawn (diagram coordinates at zoom 1). */
@@ -119,6 +121,7 @@ function readFragment(ctx: Ctx, ids: readonly string[], layout: LayoutArg): Frag
       label: found?.node.label ?? id,
       className: found?.node.className ?? null,
       lane: found?.lane ?? UNASSIGNED,
+      ...(found?.group ? { group: found.group } : {}),
       pos,
       box: { x: box.x, y: box.y, width: box.width, height: box.height },
       size: sizeOf(entry),
@@ -212,19 +215,25 @@ export function pasteFragment(
       if (id.adopted) adopted.add(id.id);
       idMap.set(n.id, id.id);
       let lane: string;
+      let group: string | null;
       let pin: Pin;
       let box: PastedBlock['box'] = null;
       if ('at' in place) {
         box = { x: roundPx(n.box.x + dx), y: roundPx(n.box.y + dy), width: n.box.width, height: n.box.height };
-        lane = blockLaneAt(view.result, box.x + box.width / 2, box.y + box.height / 2);
+        const cx = box.x + box.width / 2;
+        const cy = box.y + box.height / 2;
+        lane = blockLaneAt(view.result, cx, cy);
+        group = blockGroupAt(view.result, lane, cx, cy); // A19: as a drop
         const corner = storedCorner(view, lane, box.x, box.y);
-        pin = pinFromDrop(lane, corner.along, corner.across, first);
+        pin = pinFromDrop(lane, corner.along, corner.across, first, group);
       } else {
         lane = laneExists(n.lane) ? n.lane : first;
-        pin = pinFromDrop(lane, n.pos.along + place.step, n.pos.across + place.step, first);
+        // A19: in its original's group when the copy is in that group's lane.
+        group = n.group !== undefined && ctx.findGroup(n.group)?.lane === lane ? n.group : null;
+        pin = pinFromDrop(lane, n.pos.along + place.step, n.pos.across + place.step, first, group);
       }
       const decl: NodeDecl = { id: id.id, shape: n.shape, label: n.label, className: n.className, comments: [] };
-      ctx.declsOf(lane).push(decl);
+      (group === null ? ctx.declsOf(lane) : ctx.findGroup(group)!.group.nodes).push(decl);
       pins.push([id.id, pin]);
       if (n.size) sizes.push([id.id, { width: n.size.width, height: n.size.height }]);
       blocks.push({ id: id.id, from: n.id, lane, box });
@@ -315,7 +324,7 @@ function pasteId(ctx: Ctx, n: FragmentNode, used: ReadonlySet<string>): { id: st
 
 function adoptable(ctx: Ctx, n: FragmentNode): boolean {
   const id = n.id;
-  if (!n.meta || !ctx.config || ctx.hasNode(id) || ctx.hasLane(id)) return false;
+  if (!n.meta || !ctx.config || ctx.hasNode(id) || ctx.hasLane(id) || ctx.findGroup(id)) return false;
   if (Object.hasOwn(ctx.config.notes, id)) return false;
   if (ctx.layoutBroken || (ctx.layoutIn && (Object.hasOwn(ctx.layoutIn.nodes, id) || Object.hasOwn(ctx.layoutIn.notes ?? {}, id)))) return false;
   if (!Object.hasOwn(ctx.config.nodes, id)) return false;
@@ -379,6 +388,7 @@ export function isFragment(v: unknown): v is Fragment {
     if (!(SHAPE_KINDS as readonly unknown[]).includes(n.shape) || !isStr(n.label) || n.label.trim() === '' || /[\r\n]/.test(n.label)) return false;
     if (n.className !== null && !isStr(n.className)) return false;
     if (!isStr(n.lane) || (n.lane !== UNASSIGNED && !isIdForm(n.lane))) return false;
+    if (n.group !== undefined && !(isStr(n.group) && isIdForm(n.group))) return false;
     if (!isObj(n.pos) || !isNum(n.pos.along) || !isNum(n.pos.across)) return false;
     if (!isObj(n.box) || !['x', 'y', 'width', 'height'].every((k) => isNum((n.box as Record<string, unknown>)[k]))) return false;
     if (n.size !== null && !(isObj(n.size) && Number.isInteger(n.size.width) && Number.isInteger(n.size.height)

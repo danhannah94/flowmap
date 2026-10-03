@@ -16,7 +16,8 @@ interface Case { name: string; mmd: string; config: string | null; layout: strin
 function fixtureCases(): Case[] {
   const out: Case[] = [];
   for (const dir of ['fixtures/purchase-request', 'fixtures/syntax', 'fixtures/errors']) {
-    for (const f of readdirSync(join(ROOT, dir)).filter((x) => x.endsWith('.mmd')).sort()) {
+    // Amendment A19's group fixtures post-date v1.0 (a v1.0 file can't have groups); groups.test.ts files cover them.
+    for (const f of readdirSync(join(ROOT, dir)).filter((x) => x.endsWith('.mmd') && !x.startsWith('groups')).sort()) {
       const base = join(ROOT, dir, f.replace(/\.mmd$/, ''));
       const opt = (p: string) => (existsSync(p) ? readFileSync(p, 'utf8') : null);
       out.push({ name: `${dir}/${f}`, mmd: readFileSync(join(ROOT, dir, f), 'utf8'), config: opt(`${base}.flow.yaml`), layout: opt(`${base}.layout.json`), mmdName: f });

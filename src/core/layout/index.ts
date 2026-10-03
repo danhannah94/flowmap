@@ -21,10 +21,13 @@
 // real x/y for LR or TB.
 
 import type {
-  Direction, Graph, LayoutEdgeEntry, LayoutInput, LayoutResult, LayoutResultEdge, LayoutTextBox, Pin, ShapeKind, Side as RealSide,
+  Direction, Graph, LayoutEdgeEntry, LayoutGroupBox, LayoutInput, LayoutResult, LayoutResultEdge, LayoutTextBox, Pin, ShapeKind,
+  Side as RealSide,
 } from '../types';
-import { UNASSIGNED, isLaneFree, pinOf, sizeOf } from '../types';
-import { effectiveSize, edgeLabelSize, noteSize, roundRadius, SHAPE_GEOMETRY, TITLE_FONT, titleSize } from '../measure';
+import { UNASSIGNED, isLaneFree, pinMatches, pinOf, sizeOf } from '../types';
+import {
+  effectiveSize, edgeLabelSize, groupLabelWidth, noteSize, roundRadius, SHAPE_GEOMETRY, TITLE_FONT, titleSize,
+} from '../measure';
 import { alongSide, MID_AT, portPoint } from '../shapes';
 import { facingAbstract, pointAtFraction } from './geometry';
 
@@ -54,6 +57,13 @@ const CLEAR = 24; // clearance kept between an unpinned node and a pinned one (L
 const PIN_PAD = 16; // room a lane keeps after a pinned node
 const LABEL_REACH = 58; // label centres stay this close to the source box (L8 allows 60)
 const ALT_SIDE = 90; // router cost of using a side other than the planned one
+// A19 groups (§6 L13): padding around a group's members (L13 requires 12), extra room on its top side for its label,
+// the gap between sibling group strips (L3's 16 and then some), and the smallest box of an empty group (real px).
+export const GROUP_PAD = 14;
+export const GROUP_HEAD = 22;
+const GROUP_GAP = 20;
+const GROUP_MIN_W = 120;
+const GROUP_MIN_H = 56;
 
 /** Length along the flow of the lane-label strip in a layout: LANE_HEADER, or 0 for a lane-free diagram (A4). */
 export function headerLength(layout: Pick<LayoutResult, 'lanes'>): number {
@@ -117,6 +127,10 @@ interface N {
   kind: ShapeKind;
   laneId: string;
   lane: number;
+  /** A19: the node's container: its group's index in `conts`, or its lane's (the first L entries are the lanes). */
+  k: number;
+  /** The container's id: the group id, or the lane id (what hints key rows by). */
+  kId: string;
   sa: number; // size along the flow
   sc: number; // size across the flow
   pinned: boolean;
@@ -181,6 +195,28 @@ export function layoutDiagram(input: LayoutInput): LayoutOutput {
   // Amendment A4: no subgraphs means no lane labels, so no header strip; the first column moves up to the start.
   const head = isLaneFree(laneList) ? 0 : LANE_HEADER;
 
+  // ---- A19 containers: every lane (indices 0..L-1, in display order), then every group (file order, a group before
+  // the groups inside it). A node sits in its group's container, or its lane's when it has none.
+  const conts: Cont[] = laneList.map((l, li) => ({ id: l.id, label: l.label, lane: li, parent: -1, depth: 0, children: [] }));
+  const contIdx = new Map<string, number>(laneList.map((l, li) => [l.id, li]));
+  for (const g of graph.groups ?? []) {
+    const li = laneIdx.get(g.lane);
+    if (li === undefined || g.lane === UNASSIGNED || contIdx.has(g.id)) continue;
+    const parent = g.parent === null ? li : contIdx.get(g.parent);
+    if (parent === undefined || conts[parent]!.lane !== li) continue;
+    contIdx.set(g.id, conts.length);
+    conts[parent]!.children.push(conts.length);
+    conts.push({ id: g.id, label: g.label, lane: li, parent, depth: conts[parent]!.depth + 1, children: [] });
+  }
+  const maxDepth = conts.reduce((m, c) => Math.max(m, c.depth), 0);
+  // A group's top side holds its label: across the flow for LR (top is across), along it for TB (top is along).
+  const headA = dir === 'TB' ? GROUP_HEAD : 0;
+  const headC = dir === 'TB' ? 0 : GROUP_HEAD;
+  const containerOf = (lane: number, group: string | undefined): number => {
+    const k = group === undefined ? undefined : contIdx.get(group);
+    return k !== undefined && k >= laneList.length && conts[k]!.lane === lane ? k : lane;
+  };
+
   // ---- Nodes.
   const byId = new Map<string, number>();
   const nodes: N[] = graph.nodes.map((gn, i) => {
@@ -188,9 +224,12 @@ export function layoutDiagram(input: LayoutInput): LayoutOutput {
     const entry = Object.prototype.hasOwnProperty.call(fileNodes, gn.id) ? fileNodes[gn.id] : undefined;
     const size = effectiveSize(gn.label, gn.kind, sizeOf(entry)); // §5: max(stored, what the label needs)
     const pin = pinOf(entry);
-    const pinned = !!pin && pin.lane === gn.lane && Number.isFinite(pin.along) && Number.isFinite(pin.across);
+    // §5, A19: a pin applies while its lane and its group (none for a node directly in its lane) still match.
+    const pinned = !!pin && pinMatches(pin, gn.lane, gn.group) && Number.isFinite(pin.along) && Number.isFinite(pin.across);
+    const lane = laneIdx.get(gn.lane)!;
+    const k = containerOf(lane, gn.group);
     return {
-      i, id: gn.id, label: gn.label, kind: gn.kind, laneId: gn.lane, lane: laneIdx.get(gn.lane)!,
+      i, id: gn.id, label: gn.label, kind: gn.kind, laneId: gn.lane, lane, k, kId: conts[k]!.id,
       sa: dir === 'LR' ? size.width : size.height,
       sc: dir === 'LR' ? size.height : size.width,
       pinned,
@@ -233,13 +272,17 @@ export function layoutDiagram(input: LayoutInput): LayoutOutput {
     ],
     laneList[0]?.id,
   );
-  const FIRST = head + LEAD + shift.along; // along position of the first column
+  // A19: with groups, the first column moves along by the room the deepest nesting needs before it (padding, and in
+  // TB the label strip, per level), so every group box starts after the lane header. 0 without groups.
+  const groupLead = maxDepth * (GROUP_PAD + headA);
+  const FIRST = head + LEAD + shift.along + groupLead; // along position of the first column
   const n = nodes.length;
 
   // ---- Ranks.
+  // Hints key a node's row by its container (A19): its lane, or its group.
   const hintOf = (v: N) => {
     const h = hints?.n[v.id];
-    return h && h[0] === v.laneId ? h : undefined;
+    return h && h[0] === v.kId ? h : undefined;
   };
   const hintRank = nodes.map((v) => hints?.n[v.id]?.[1]);
   const ie: IndexedEdge[] = edges.map((e) => ({ s: e.s, t: e.t }));
@@ -264,7 +307,7 @@ export function layoutDiagram(input: LayoutInput): LayoutOutput {
     let bestKey: number[] = [];
     for (const k of fwdOut[u.i]!) {
       const t = nodes[edges[k]!.t]!;
-      if (t.pinned || u.pinned || t.lane !== u.lane) continue;
+      if (t.pinned || u.pinned || t.k !== u.k) continue;
       const key = [t.rank === u.rank + 1 ? 1 : 0, height[t.i]!, -k];
       if (best < 0 || cmp(key, bestKey) > 0) {
         best = t.i;
@@ -285,20 +328,20 @@ export function layoutDiagram(input: LayoutInput): LayoutOutput {
     const group = byRank.get(r)!.map((v) => {
       const h = hintOf(v);
       if (h && h[2] >= 0) return { v, want: h[2], strength: 3 };
-      const preds = fwdIn[v.i]!.map((k) => nodes[edges[k]!.s]!).filter((u) => !u.pinned && u.lane === v.lane && u.row >= 0);
+      const preds = fwdIn[v.i]!.map((k) => nodes[edges[k]!.s]!).filter((u) => !u.pinned && u.k === v.k && u.row >= 0);
       const owner = preds.find((u) => mainSucc[u.i] === v.i);
       if (owner) return { v, want: owner.row, strength: 2 };
       if (preds.length) return { v, want: preds[0]!.row, strength: 1 };
       for (const k of fwdOut[v.i]!) {
         const t = nodes[edges[k]!.t]!;
         const th = hintOf(t);
-        if (!t.pinned && t.lane === v.lane && th && th[2] >= 0) return { v, want: th[2], strength: 1 };
+        if (!t.pinned && t.k === v.k && th && th[2] >= 0) return { v, want: th[2], strength: 1 };
       }
       return { v, want: 0, strength: 0 };
     });
     group.sort((a, b) => b.strength - a.strength || a.want - b.want || a.v.i - b.v.i);
     for (const { v, want } of group) {
-      const key = v.lane + ':' + r;
+      const key = v.k + ':' + r;
       let occ = occupied.get(key);
       if (!occ) occupied.set(key, (occ = new Set()));
       let row = want;
@@ -334,47 +377,54 @@ export function layoutDiagram(input: LayoutInput): LayoutOutput {
       const lw = (dir === 'LR' ? edgeLabelSize(e.label).width : edgeLabelSize(e.label).height) + 28;
       need[s.rank] = Math.max(need[s.rank]!, Math.min(LABEL_REACH * 2, lw));
     }
-    if (t.rank > s.rank && (t.lane !== s.lane || rowOf(t) !== rowOf(s))) bends[s.rank]!++;
+    if (t.rank > s.rank && (t.k !== s.k || rowOf(t) !== rowOf(s))) bends[s.rank]!++;
   }
   const gapW = need.map((g, r) => Math.min(160, Math.max(g, 24 + 12 * bends[r]!)));
   if (sizesValid) hints!.gaps.forEach((g, r) => r <= maxRank && (gapW[r] = Math.max(gapW[r]!, g)));
   const colStart = new Array<number>(maxRank + 2).fill(FIRST);
   for (let r = 0; r <= maxRank; r++) colStart[r + 1] = colStart[r]! + (colW[r]! > 0 ? colW[r]! + gapW[r]! : 0);
 
-  // ---- Rows across the flow, per lane.
+  // ---- Rows across the flow, per container (a lane, or A19 a group), measured from where its rows start.
   const L = laneList.length;
-  const rowH: number[][] = Array.from({ length: L }, () => []);
+  const C = conts.length;
+  const rowH: number[][] = Array.from({ length: C }, () => []);
   for (const v of nodes) {
     if (v.pinned) continue;
-    const rh = rowH[v.lane]!;
+    const rh = rowH[v.k]!;
     while (rh.length <= v.row) rh.push(0);
     rh[v.row] = Math.max(rh[v.row]!, v.sc);
   }
   if (sizesValid) {
-    laneList.forEach((l, li) => {
-      const hr = hints!.rows[l.id];
+    conts.forEach((c, ci) => {
+      const hr = hints!.rows[c.id];
       if (!hr) return;
-      const rh = rowH[li]!;
+      const rh = rowH[ci]!;
       hr.forEach((h, r) => {
         while (rh.length <= r) rh.push(0);
         rh[r] = Math.max(rh[r]!, h);
       });
       // Trailing rows kept only by hints are dropped: they would just leave empty space at the lane's end.
-      while (rh.length && !nodes.some((v) => !v.pinned && v.lane === li && v.row === rh.length - 1)) rh.pop();
+      while (rh.length && !nodes.some((v) => !v.pinned && v.k === ci && v.row === rh.length - 1)) rh.pop();
     });
   }
   const rowStart = rowH.map((rh) => {
     const out: number[] = [];
-    let c = LANE_PAD;
+    let c = 0;
     for (const h of rh) {
       out.push(c);
       c += h > 0 ? h + ROW_GAP : 0;
     }
     return out;
   });
+  /** Where a container's rows end, measured like `rowStart` (0 when it has none). */
+  const rowsEnd = rowH.map((rh, ci) => (rh.length ? rowStart[ci]![rh.length - 1]! + rh[rh.length - 1]! : 0));
 
-  // ---- Lane-local placement, pins, and collisions with pins.
+  // ---- Lane-local placement, pins, and collisions with pins. A19: inside a lane, its own nodes take the first rows,
+  // then each group (file order) gets a strip of its own after them, recursively; a group's box (L13) is its
+  // members' boxes padded, with room for its label on its top side.
   const laneThick = new Array<number>(L).fill(MIN_LANE);
+  /** A19: each group's box, abstract (a: along; c: across, from its lane's start edge once U is added). */
+  const gbox: ({ a0: number; a1: number; c0: number; c1: number } | null)[] = conts.map(() => null);
   for (let li = 0; li < L; li++) {
     const members = nodes.filter((v) => v.lane === li);
     const placed: { a: number; c: number; sa: number; sc: number }[] = [];
@@ -385,18 +435,79 @@ export function layoutDiagram(input: LayoutInput): LayoutOutput {
       placed.push({ a: v.x, c: v.c, sa: v.sa, sc: v.sc });
       laneThick[li] = Math.max(laneThick[li]!, v.c + v.sc + PIN_PAD);
     }
-    const free = members.filter((v) => !v.pinned).sort((a, b) => a.rank - b.rank || a.row - b.row || a.i - b.i);
-    for (const v of free) {
-      v.x = colStart[v.rank]! + Math.floor((colW[v.rank]! - v.sa) / 2);
-      const want = rowStart[li]![v.row]! + Math.floor((rowH[li]![v.row]! - v.sc) / 2);
-      v.c = slide(v.x, v.sa, v.sc, want, placed);
-      placed.push({ a: v.x, c: v.c, sa: v.sa, sc: v.sc });
-      laneThick[li] = Math.max(laneThick[li]!, v.c + v.sc + LANE_PAD);
+    // A group's box from its members (L13): placed after them, since pinned members count too.
+    const placeGroup = (gi: number, top: number): { a0: number; a1: number; c0: number; c1: number } => {
+      placeContainer(gi, top + GROUP_PAD + headC);
+      const g = conts[gi]!;
+      let a0 = Infinity;
+      let a1 = -Infinity;
+      let c0 = Infinity;
+      let c1 = -Infinity;
+      for (const v of members) {
+        if (v.k !== gi) continue;
+        a0 = Math.min(a0, v.x);
+        a1 = Math.max(a1, v.x + v.sa);
+        c0 = Math.min(c0, v.c);
+        c1 = Math.max(c1, v.c + v.sc);
+      }
+      for (const ci of g.children) {
+        const b = gbox[ci]!;
+        a0 = Math.min(a0, b.a0);
+        a1 = Math.max(a1, b.a1);
+        c0 = Math.min(c0, b.c0);
+        c1 = Math.max(c1, b.c1);
+      }
+      const minA = dir === 'TB' ? GROUP_MIN_H : GROUP_MIN_W;
+      const minC = dir === 'TB' ? GROUP_MIN_W : GROUP_MIN_H;
+      let box: { a0: number; a1: number; c0: number; c1: number };
+      if (a0 === Infinity) {
+        // An empty group: its smallest box, where a group's content would start.
+        const start = FIRST - GROUP_PAD - headA;
+        box = { a0: start, a1: start + minA, c0: top, c1: top + minC };
+      } else {
+        box = { a0: a0 - GROUP_PAD - headA, a1: a1 + GROUP_PAD, c0: c0 - GROUP_PAD - headC, c1: c1 + GROUP_PAD };
+        box.a1 = Math.max(box.a1, box.a0 + minA);
+        box.c1 = Math.max(box.c1, box.c0 + minC);
+      }
+      // Wide enough for its label, which runs along the real x axis: along the flow for LR, across it for TB.
+      const labelNeed = groupLabelWidth(g.label) + 2 * GROUP_PAD;
+      if (dir === 'TB') box.c1 = Math.max(box.c1, box.c0 + labelNeed);
+      else box.a1 = Math.max(box.a1, box.a0 + labelNeed);
+      // Never before the lane's start edge (across) or the flow start (along): only a pinned member gets it there.
+      box.c0 = Math.max(box.c0, li === 0 ? -shift.across : 0);
+      box.a0 = Math.max(box.a0, 0);
+      gbox[gi] = box;
+      laneThick[li] = Math.max(laneThick[li]!, box.c1 + LANE_PAD);
+      return box;
+    };
+    // A container's own unpinned nodes in its rows from `top`, then its groups, each in a strip after what is already
+    // there. Without groups this is exactly the lane placement before A19.
+    function placeContainer(ci: number, top: number): void {
+      let end = -Infinity;
+      const free = members.filter((v) => !v.pinned && v.k === ci).sort((a, b) => a.rank - b.rank || a.row - b.row || a.i - b.i);
+      for (const v of free) {
+        v.x = colStart[v.rank]! + Math.floor((colW[v.rank]! - v.sa) / 2);
+        const want = top + rowStart[ci]![v.row]! + Math.floor((rowH[ci]![v.row]! - v.sc) / 2);
+        v.c = slide(v.x, v.sa, v.sc, want, placed);
+        placed.push({ a: v.x, c: v.c, sa: v.sa, sc: v.sc });
+        laneThick[li] = Math.max(laneThick[li]!, v.c + v.sc + LANE_PAD);
+        end = Math.max(end, v.c + v.sc);
+      }
+      let cursor = free.length ? Math.max(top + rowsEnd[ci]!, end) + GROUP_GAP : top;
+      for (const gi of conts[ci]!.children) cursor = placeGroup(gi, cursor).c1 + GROUP_GAP;
     }
+    placeContainer(li, LANE_PAD);
     // The first lane's across-zero line sits U after its start edge, so the lane grows toward its start.
     const u = li === 0 ? shift.across : 0;
     if (u > 0) {
       for (const v of members) v.c += u;
+      for (let gi = L; gi < C; gi++) {
+        const b = gbox[gi];
+        if (b && conts[gi]!.lane === li) {
+          b.c0 += u;
+          b.c1 += u;
+        }
+      }
       laneThick[li] = laneThick[li]! + u;
     }
   }
@@ -431,6 +542,10 @@ export function layoutDiagram(input: LayoutInput): LayoutOutput {
     v.y = laneStart[v.lane]! + v.c;
     totalA = Math.max(totalA, v.x + v.sa + END_MARGIN);
   }
+  for (let gi = L; gi < conts.length; gi++) {
+    const b = gbox[gi];
+    if (b) totalA = Math.max(totalA, b.a1 + END_MARGIN);
+  }
   // A13: a stored lane length is a minimum, measured from the flow axis's zero line (T after the start), so the far
   // edge keeps its place relative to everything else when T changes. A lane-free diagram (A4) has no bands, so it
   // doesn't apply there (the file keeps it for when lanes come back).
@@ -451,7 +566,20 @@ export function layoutDiagram(input: LayoutInput): LayoutOutput {
       })
       : null,
   );
-  const routed = routeEdges(nodes, edges, boxes, mainSucc, height, back, dir, totalA, totalC, laneStart.slice(1), head, bendPts, file?.spread_ends === true);
+  // A19: each group's label strip, which automatic lines keep off where they can (abstract coordinates).
+  const groupLabels: RBox[] = [];
+  for (let gi = L; gi < conts.length; gi++) {
+    const b = gbox[gi]!;
+    const w = groupLabelWidth(conts[gi]!.label) + 8;
+    const x0 = b.a0 + (dir === 'TB' ? 2 : 6);
+    const y0 = laneStart[conts[gi]!.lane]! + b.c0 + (dir === 'TB' ? 6 : 2);
+    // The label runs along real x: abstract x for LR, abstract y for TB.
+    groupLabels.push(dir === 'TB' ? { x: x0, y: y0, w: GROUP_HEAD - 2, h: w } : { x: x0, y: y0, w, h: GROUP_HEAD - 2 });
+  }
+  const routed = routeEdges(
+    nodes, edges, boxes, mainSucc, height, back, dir, totalA, totalC, laneStart.slice(1), head, bendPts,
+    file?.spread_ends === true, groupLabels,
+  );
 
   // ---- Output in real coordinates.
   const P = (x: number, y: number): [number, number] => (dir === 'LR' ? [x, y] : [y, x]);
@@ -467,7 +595,7 @@ export function layoutDiagram(input: LayoutInput): LayoutOutput {
     nodes: nodes.map((v) => {
       const [x, y] = P(v.x, v.y);
       return {
-        id: v.id, lane: v.laneId, kind: v.kind, label: v.label, x, y,
+        id: v.id, lane: v.laneId, ...(v.k >= L ? { group: v.kId } : {}), kind: v.kind, label: v.label, x, y,
         width: dir === 'LR' ? v.sa : v.sc, height: dir === 'LR' ? v.sc : v.sa, pinned: v.pinned,
       };
     }),
@@ -486,6 +614,23 @@ export function layoutDiagram(input: LayoutInput): LayoutOutput {
       };
     }),
   };
+
+  // A19: group boxes (§7), only when the diagram has groups, so a diagram without them is output exactly as before.
+  if (conts.length > L) {
+    const groupsOut: LayoutGroupBox[] = [];
+    for (let gi = L; gi < conts.length; gi++) {
+      const g = conts[gi]!;
+      const b = gbox[gi]!;
+      const [x, y] = P(b.a0, laneStart[g.lane]! + b.c0);
+      const along = b.a1 - b.a0;
+      const across = b.c1 - b.c0;
+      groupsOut.push({
+        id: g.id, label: g.label, lane: laneList[g.lane]!.id, parent: g.parent >= L ? conts[g.parent]!.id : null, x, y,
+        width: dir === 'LR' ? along : across, height: dir === 'LR' ? across : along,
+      });
+    }
+    result.groups = groupsOut;
+  }
 
   // ---- Notes and the title (§6 "Notes and title"): outside L1–L8, in real x/y; the frame shifts them (T along the
   // flow, U across), stored or default. Defaults: the title above the diagram's top-left corner; unplaced notes in a
@@ -518,11 +663,11 @@ export function layoutDiagram(input: LayoutInput): LayoutOutput {
   // ---- Hints out: ranks and rows of every node (pinned nodes keep the row they had), sizes as used.
   const hn: Hints['n'] = {};
   for (const v of nodes) {
-    const prevRow = hints?.n[v.id]?.[0] === v.laneId ? hints.n[v.id]![2] : -1;
-    hn[v.id] = [v.laneId, v.rank, v.pinned ? prevRow : v.row];
+    const prevRow = hints?.n[v.id]?.[0] === v.kId ? hints.n[v.id]![2] : -1;
+    hn[v.id] = [v.kId, v.rank, v.pinned ? prevRow : v.row];
   }
   const hr: Hints['rows'] = {};
-  laneList.forEach((l, li) => (hr[l.id] = rowH[li]!.slice()));
+  conts.forEach((c, ci) => (hr[c.id] = rowH[ci]!.slice()));
   const hintsOut: Hints = { v: 1, dir, n: hn, cols: colW.slice(), gaps: gapW.slice(), rows: hr };
   return { result, hints: hintsOut, translation: { along: shift.along, across: shift.across }, laneNeeds, laneLengthNeed };
 }
@@ -541,6 +686,20 @@ function slide(a: number, sa: number, sc: number, want: number, placed: { a: num
   const sorted = [...cands].filter((c) => c >= LANE_PAD).sort((x, y) => Math.abs(x - want) - Math.abs(y - want) || x - y);
   for (const c of sorted) if (!hits(c)) return c;
   return Math.max(...near.map((p) => p.c + p.sc + CLEAR)); // below everything: always free
+}
+
+/** A19: a lane or a group, as the layout nests them. */
+interface Cont {
+  id: string;
+  label: string;
+  /** Its lane's index. */
+  lane: number;
+  /** The container it is directly inside (-1 for a lane). */
+  parent: number;
+  /** 0 for a lane, 1 for a group directly in its lane, and so on. */
+  depth: number;
+  /** Its groups, in file order. */
+  children: number[];
 }
 
 function cmp(a: number[], b: number[]): number {
@@ -568,7 +727,7 @@ type Side = Dir;
 function routeEdges(
   nodes: N[], edges: E[], boxes: RBox[], mainSucc: number[], height: number[], back: boolean[], dir: Direction,
   totalA: number, totalC: number, laneBorders: number[], headerEnd: number, bends: ([number, number][] | null)[],
-  spread: boolean,
+  spread: boolean, groupLabels: RBox[] = [],
 ): Map<number, Routed> {
   const cy = (b: RBox) => b.y + b.h / 2;
   const cx = (b: RBox) => b.x + b.w / 2;
@@ -811,7 +970,13 @@ function routeEdges(
     xs.push(x);
     ys.push(y);
   }
+  // A19: tracks just outside each group label, so lines can pass it rather than through it.
+  for (const g of groupLabels) {
+    xs.push(g.x - 4, g.x + g.w + 4);
+    ys.push(g.y - 4, g.y + g.h + 4);
+  }
   const router = new Router(boxes, { width: totalA, height: totalC, laneBorders, headerEnd, xs, ys });
+  for (const g of groupLabels) router.addLabel(g);
   // Built only if needed: a set side's port can face out of the diagram (a block pinned at its start edge).
   let outside: Router | null = null;
 

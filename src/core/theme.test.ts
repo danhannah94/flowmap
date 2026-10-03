@@ -16,6 +16,8 @@ describe('getTheme', () => {
         theme.laneFill[1],
         theme.laneBorder,
         theme.laneLabel,
+        theme.groupFill,
+        theme.groupBorder,
         theme.titleColor,
         theme.nodeFill,
         theme.nodeBorder,

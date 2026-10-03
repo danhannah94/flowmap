@@ -5,7 +5,10 @@ import { isLaneFree, type Graph, type LayoutResult, type LayoutTextBox, type Leg
 import { shapeGeometry, type DecorationShape, type OutlineShape } from '../shapes';
 import { getTheme, resolveStyle, type ResolvedNodeStyle, type Theme, type ThemeName } from '../theme';
 import { GLYPH_GRID, GLYPH_STROKE } from '../preset/glyphs';
-import { BADGE_FONT, ICON_CHIP, ICON_GLYPH, LABEL_FONT, TITLE_FONT, badgeBox, iconBox, noteLineHeight, noteLines, textArea, textWidth, titleSize, wrapLabel } from '../measure';
+import {
+  BADGE_FONT, GROUP_FONT, ICON_CHIP, ICON_GLYPH, LABEL_FONT, TITLE_FONT, badgeBox, iconBox, noteLineHeight, noteLines, textArea, textWidth,
+  titleSize, wrapLabel,
+} from '../measure';
 
 export interface RenderSvgOptions {
   /** The title's text. Where it goes (and whether it shows) is `layout.title`; a layout without a `title` key (a
@@ -42,6 +45,9 @@ const LEGEND_ITEM_GAP_X = 24;
 const LEGEND_ITEM_GAP_Y = 12;
 const EDGE_LABEL_PAD_X = 6;
 const MIN_CONTENT_WIDTH = 320;
+/** A19: where a group's label sits inside its box (left inset, and the baseline from the top), as the UI draws it. */
+const GROUP_LABEL_INSET = 10;
+const GROUP_LABEL_BASELINE = 17;
 
 function num(value: number): number {
   const rounded = Math.round(value * 100) / 100;
@@ -159,6 +165,16 @@ function renderLane(lane: LayoutResult['lanes'][number], index: number, theme: T
     `<g data-lane-id="${escapeXml(lane.id)}">`,
     `<rect x="${num(lane.x)}" y="${num(lane.y)}" width="${num(lane.width)}" height="${num(lane.height)}" fill="${fill}" stroke="${theme.laneBorder}" stroke-width="1"/>`,
     `<text x="${num(lane.x + 12)}" y="${num(lane.y + 20)}" font-size="12" font-weight="600" fill="${theme.laneLabel}">${escapeXml(lane.label)}</text>`,
+    '</g>',
+  ].join('');
+}
+
+/** A19 (§7.1): a group as `<g data-group-id>`: its box, rounded, and its label in the box's top-left corner. */
+function renderGroup(group: NonNullable<LayoutResult['groups']>[number], theme: Theme): string {
+  return [
+    `<g data-group-id="${escapeXml(group.id)}">`,
+    `<rect x="${num(group.x)}" y="${num(group.y)}" width="${num(group.width)}" height="${num(group.height)}" rx="8" ry="8" fill="${theme.groupFill}" fill-opacity="0.6" stroke="${theme.groupBorder}" stroke-width="1"/>`,
+    `<text x="${num(group.x + GROUP_LABEL_INSET)}" y="${num(group.y + GROUP_LABEL_BASELINE)}" font-size="${GROUP_FONT.size}" font-weight="${GROUP_FONT.weight}" fill="${theme.laneLabel}">${escapeXml(group.label)}</text>`,
     '</g>',
   ].join('');
 }
@@ -332,6 +348,8 @@ export function renderSvg(options: RenderSvgOptions): string {
   parts.push(`<g transform="translate(${num(ox)}, ${num(oy)})">`);
   const laneFree = isLaneFree(layout.lanes);
   layout.lanes.forEach((lane, index) => parts.push(renderLane(lane, index, theme, laneFree)));
+  // A19: groups over the lanes and under everything else, outer before inner (file order).
+  for (const group of layout.groups ?? []) parts.push(renderGroup(group, theme));
   for (const node of layout.nodes) parts.push(renderNode(node, styles[node.id], theme, options.links?.[node.id], options.icons?.[node.id]));
   for (const edge of layout.edges) parts.push(renderEdge(edge, theme));
   // Notes and the title take no part in the layout rules and may sit over anything: drawn last, on top.

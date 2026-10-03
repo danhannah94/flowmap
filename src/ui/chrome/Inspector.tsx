@@ -4,7 +4,7 @@
 // core operation through `store.apply`; config edits are off while the config has errors (UI26, UI31).
 import { useMemo, useState, type ReactNode } from 'react';
 import { BLOCK_STYLE_KEY, ConfigDoc, LINK_KEY, matchFields, ruleMatches, type FlowConfig, type NodeMeta } from '../../core/config';
-import { moveNodesToLane, removeNodeField, replaceNodeEntry } from '../../core/ops';
+import { moveNodesToGroup, moveNodesToLane, removeNodeField, replaceNodeEntry } from '../../core/ops';
 import { UNASSIGNED, type GraphNode } from '../../core/types';
 import { editNodeLabel } from '../actions';
 import { editNodeId } from '../commands/blocks';
@@ -69,6 +69,14 @@ function SingleBlock({ id }: { id: string }) {
   const store = useStore();
   const node = useStoreState((s) => s.shown?.doc.graph.nodes.find((n) => n.id === id) ?? null, shallow);
   const lanes = useStoreState((s) => s.shown?.doc.graph.lanes.filter((l) => l.id !== UNASSIGNED) ?? [], sameLanes);
+  // A19: the groups of the block's lane (for the group select), in file order.
+  const groups = useStoreState(
+    (s) => {
+      const lane = s.shown?.doc.graph.nodes.find((n) => n.id === id)?.lane;
+      return (s.shown?.doc.graph.groups ?? []).filter((g) => g.lane === lane).map((g) => ({ id: g.id, label: g.label }));
+    },
+    sameLanes,
+  );
   const config = useStoreState((s) => s.derived?.doc.config ?? null);
   const configText = useStoreState((s) => s.files?.config ?? null);
   const lock = useStoreState(configLock);
@@ -132,6 +140,27 @@ function SingleBlock({ id }: { id: string }) {
             <code className="fm-ev-code fm-ev-code-quiet" data-field="lane" title="Lane id">{node.lane}</code>
           </span>
         </div>
+        {groups.length || node.group ? (
+          <div className="fm-ev-kv">
+            <label className="fm-ev-k" htmlFor="fm-group-select">Group</label>
+            <span className="fm-ev-v">
+              <select
+                id="fm-group-select"
+                data-testid="group-select"
+                className="fm-ev-select fm-ev-grow"
+                value={node.group ?? ''}
+                disabled={readOnly}
+                onChange={(e) => store.apply(moveNodesToGroup, [id], { lane: node.lane, group: e.target.value || null })}
+              >
+                <option value="">None</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>{g.label}</option>
+                ))}
+              </select>
+              <code className="fm-ev-code fm-ev-code-quiet" data-field="group" title="Group id">{node.group ?? ''}</code>
+            </span>
+          </div>
+        ) : null}
         <div className="fm-ev-kv">
           <span className="fm-ev-k">Shape</span>
           <span className="fm-ev-v">

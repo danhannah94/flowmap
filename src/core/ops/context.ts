@@ -25,8 +25,8 @@ import {
 import { pinTranslation, type LayoutOutput, type Translation } from '../layout';
 import { loadDocument } from '../document';
 import {
-  declaredNodes, edgeIds, findNode, format, isIdForm, isReservedId, parse, toGraph, undeclaredNodes,
-  type Diagram, type Edge, type NodeDecl,
+  allGroups, declaredNodes, edgeIds, findNode, format, isIdForm, isReservedId, parse, subgraphIds, toGraph, undeclaredNodes,
+  type Container, type Diagram, type Edge, type NodeDecl,
 } from '../mmd';
 import { UNASSIGNED, type Graph, type LayoutFile } from '../types';
 
@@ -100,7 +100,7 @@ export class Ctx {
     const cfg = parseConfig(input.config);
     this.orderConfig = cfg.config;
     // §4 (v1.1): a note id equal to a node or subgraph id is E-config, so the config counts as having errors (UI31).
-    const clash = checkNoteClashes(cfg.config, this.nodeOrder(), this.d.lanes.map((l) => l.id)).length > 0;
+    const clash = checkNoteClashes(cfg.config, this.nodeOrder(), subgraphIds(this.d)).length > 0;
     this.config = clash ? null : cfg.config;
     this.configBroken = this.config === null;
     const lay = parseLayoutFile(input.layout);
@@ -202,6 +202,17 @@ export class Ctx {
     return this.d.lanes.some((l) => l.id === id);
   }
 
+  /** A19: the node's group (the innermost group it is declared in), or undefined when it has none. */
+  groupOf(id: string): string | undefined {
+    return findNode(this.d, id)?.group ?? undefined;
+  }
+
+  /** A19: a group by id, with its lane, or undefined. */
+  findGroup(id: string): { group: Container; lane: string } | undefined {
+    const found = allGroups(this.d).find((g) => g.group.id === id);
+    return found && { group: found.group, lane: found.lane };
+  }
+
   requireLane(id: string, opts: { unassigned?: boolean } = {}): void {
     if (id === UNASSIGNED && opts.unassigned) return;
     if (!this.hasLane(id)) refuse(`There is no lane "${id}"`);
@@ -217,7 +228,8 @@ export class Ctx {
 
   /** Remove a node's declaration (with its comments) and return it; undefined for a never-declared node. */
   removeDecl(id: string): NodeDecl | undefined {
-    for (const list of [this.d.unlaned, ...this.d.lanes.map((l) => l.nodes)]) {
+    const lists = [this.d.unlaned, ...this.d.lanes.map((l) => l.nodes), ...allGroups(this.d).map((g) => g.group.nodes)];
+    for (const list of lists) {
       const i = list.findIndex((n) => n.id === id);
       if (i >= 0) return list.splice(i, 1)[0];
     }
@@ -275,7 +287,7 @@ export class Ctx {
    * config or layout file. For a file with errors, any whole-word mention of the id counts (conservative).
    */
   isTaken(id: string): boolean {
-    if (this.hasNode(id) || this.hasLane(id)) return true;
+    if (this.hasNode(id) || subgraphIds(this.d).includes(id)) return true; // A19: group ids too
     if (this.config && (Object.hasOwn(this.config.nodes, id) || Object.hasOwn(this.config.notes, id))) return true;
     if (this.configBroken && this.configText !== null && mentions(this.configText, id)) return true;
     if (this.layoutIn && (Object.hasOwn(this.layoutIn.nodes, id) || Object.hasOwn(this.layoutIn.notes ?? {}, id))) return true;
