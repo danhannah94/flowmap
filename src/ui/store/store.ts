@@ -10,8 +10,9 @@
 // - An external `changed` event does the same (and `edit-dropped` too if an edit was still unsaved). Pan/zoom are
 //   kept; the selection keeps ids that still exist.
 import type { Files, OpResult } from '../../core/ops';
+import type { PresetFiles } from '../../core/preset';
 import type { LayoutResult, ShapeKind } from '../../core/types';
-import { fetchDiagram, listDiagrams, putDiagram, sameVersions, subscribeChanges, type Snapshot, type Versions } from '../api';
+import { fetchDiagram, listDiagrams, putDiagram, samePreset, sameVersions, subscribeChanges, type Snapshot, type Versions } from '../api';
 import { derive, originMove, sameFiles, withHints, type Derived } from './derive';
 import { fitViewport, zoomAround, type Point, type Rect, type Viewport } from '../canvas/viewport';
 import { notesRowBottom, withAnnotations } from '../notes/geometry';
@@ -94,6 +95,9 @@ export interface State {
   /** The `.mmd` file name being edited (`?file=`). */
   file: string;
   files: Files | null;
+  /** A20: the text of the preset pack file the config names, as the server last read it (keyed as written in the
+   *  config). Empty while the config names none. */
+  presets: PresetFiles;
   /** A15: the diagrams the server lists (§8.2, reused from the home page's API), for the Inspector's link picker and
    *  the `W-link-missing`/`W-link-traversal` checks; null until fetched (checked afresh each time a diagram opens). */
   diagramList: string[] | null;
@@ -155,6 +159,7 @@ function initialState(): State {
     loadError: null,
     file: '',
     files: null,
+    presets: {},
     diagramList: null,
     derived: null,
     shown: null,
@@ -240,6 +245,7 @@ export class Store {
     try {
       const snap = await fetchDiagram(file);
       this.disk = snap;
+      this.set({ presets: snap.presets ?? {} });
       // A15: a diagram left through a followed link remembered its viewport (viewportCache.ts); Back restores it
       // instead of fitting. Read-and-forget, so opening the same diagram again later fits normally.
       const stored = takeViewport(file);
@@ -308,6 +314,7 @@ export class Store {
     if (gen !== this.generation) return; // the disk replaced everything while this was in flight
     if (outcome.kind === 'saved') {
       this.disk = { files, versions: outcome.versions };
+      this.adoptPresets(outcome.presets);
       if (!sameFiles(this.state.files!, files)) this.scheduleSave();
       else if (!this.saveTimer) this.set({ save: 'saved', saveError: null });
     } else if (outcome.kind === 'conflict') {
@@ -325,7 +332,15 @@ export class Store {
 
   private onExternal(snap: Snapshot): void {
     if (!this.disk || this.state.status !== 'ready') return;
-    if (sameVersions(snap.versions, this.disk.versions)) return; // nothing new (or an echo of our own save)
+    if (sameVersions(snap.versions, this.disk.versions)) {
+      // Nothing new in the three files (or an echo of our own save). A20: but the preset pack file may have changed
+      // (edited by hand or by the AI): that only redraws, as it changes no file this editor holds, so history stays.
+      if (!samePreset(snap.versions, this.disk.versions)) {
+        this.disk = { ...this.disk, versions: { ...this.disk.versions, preset: snap.versions.preset } };
+        this.adoptPresets(snap.presets);
+      }
+      return;
+    }
     // The `.mmd` itself is gone (deleted from the list, or by hand): there's nothing left to derive a document
     // from, so this can't go through `replaceFromDisk` (which assumes the file is still there). Show the same
     // "couldn't open" state `open()` shows for a file that never existed, instead of crashing on a null `.mmd`.
@@ -360,6 +375,7 @@ export class Store {
     this.inFlight = false;
     this.firstUnsavedAt = 0;
     this.disk = snap;
+    this.set({ presets: snap.presets ?? {} });
     this.setFiles(snap.files, { keepSelection: true });
     const editing = this.state.editing;
     const editTargetGone = editing?.target.id !== undefined && editing.target.kind === 'node'
@@ -375,8 +391,19 @@ export class Store {
     if (dropped) this.notify('edit-dropped', 'Your last edit was not saved: the file changed on disk first.', 'warn');
   }
 
+  /**
+   * A20: the server read the preset pack file the saved config names (or the pack file changed on disk): redraw with
+   * its text if that differs from what was drawn. Not an edit, so it adds no undo step.
+   */
+  private adoptPresets(presets: PresetFiles | undefined): void {
+    const next = presets ?? {};
+    if (JSON.stringify(next) === JSON.stringify(this.state.presets)) return;
+    this.set({ presets: next });
+    if (this.state.files) this.setFiles(this.state.files, { keepSelection: true });
+  }
+
   private setFiles(files: Files, opts: { keepSelection: boolean }): void {
-    const d = derive(files, this.state.file);
+    const d = derive(files, this.state.file, this.state.presets);
     const shown = d.layout ? d : this.state.shown;
     const selection = opts.keepSelection ? pruneSelection(this.state.selection, shown?.layout ?? null) : EMPTY_SELECTION;
     // The layout's translation of negative pins changed (a drop before or above everything, its undo, an unpin): the

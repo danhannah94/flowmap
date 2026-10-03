@@ -1,10 +1,11 @@
 // The SVG export (design.md §7.1). Pure: takes a Graph, a LayoutResult, resolved per-node styles and
 // a legend, and returns an SVG document as a string. No fs — the CLI and the UI both write the bytes
 // this returns. Layout and drawing details beyond §7.1's structural contract are this module's choice.
-import { isLaneFree, type Graph, type LayoutResult, type LayoutTextBox, type LegendItem, type NoteInput, type ResolvedStyle } from '../types';
+import { isLaneFree, type Graph, type LayoutResult, type LayoutTextBox, type LegendItem, type NoteInput, type ResolvedIcon, type ResolvedStyle } from '../types';
 import { shapeGeometry, type DecorationShape, type OutlineShape } from '../shapes';
 import { getTheme, resolveStyle, type ResolvedNodeStyle, type Theme, type ThemeName } from '../theme';
-import { BADGE_FONT, LABEL_FONT, TITLE_FONT, badgeBox, noteLineHeight, noteLines, textArea, textWidth, titleSize, wrapLabel } from '../measure';
+import { GLYPH_GRID, GLYPH_STROKE } from '../preset/glyphs';
+import { BADGE_FONT, ICON_CHIP, ICON_GLYPH, LABEL_FONT, TITLE_FONT, badgeBox, iconBox, noteLineHeight, noteLines, textArea, textWidth, titleSize, wrapLabel } from '../measure';
 
 export interface RenderSvgOptions {
   /** The title's text. Where it goes (and whether it shows) is `layout.title`; a layout without a `title` key (a
@@ -25,6 +26,9 @@ export interface RenderSvgOptions {
    *  Omitted (or a node missing here) draws that node exactly as before. PNG export takes no special handling: it
    *  screenshots this SVG, and a static raster has no links either way. */
   links?: Record<string, string>;
+  /** A20: the preset pack's icon for each node that has one (`FlowDocument.icons`). Drawn as a small round tag on the
+   *  node's top edge, towards the left (`iconBox`); omitted (or a node missing here) draws that node as before. */
+  icons?: Record<string, ResolvedIcon>;
 }
 
 const MARGIN = 24;
@@ -115,6 +119,35 @@ function renderBadge(badge: string, node: LayoutResult['nodes'][number], theme: 
   ].join('');
 }
 
+/**
+ * A20: a glyph from the 24 x 24 grid, stroked in `color`, drawn `size` px wide with its top-left at (x, y). Stroke-only
+ * and one colour, so it reads wherever its colour contrasts with what is behind it.
+ */
+function renderGlyph(icon: ResolvedIcon, x: number, y: number, size: number, color: string): string {
+  const paths = icon.paths.map((d) => `<path d="${escapeXml(d)}"/>`).join('');
+  return `<g transform="translate(${num(x)}, ${num(y)}) scale(${num(size / GLYPH_GRID)})" fill="none" stroke="${color}" stroke-width="${GLYPH_STROKE}" stroke-linecap="round" stroke-linejoin="round">${paths}</g>`;
+}
+
+/**
+ * A20: the preset pack's icon as a round tag on the node's top edge (`iconBox`, shared with the UI): the block's own
+ * fill and border for the tag, a ring in the canvas colour to set it off the lane behind, and the glyph in the block's
+ * text colour, the one colour that contrasts with the block's fill in either theme.
+ */
+function renderIcon(icon: ResolvedIcon, node: LayoutResult['nodes'][number], resolved: ResolvedNodeStyle, theme: Theme): string {
+  const b = iconBox(node.kind, node.width, node.height);
+  const r = ICON_CHIP / 2;
+  const cx = node.x + b.x + r;
+  const cy = node.y + b.y + r;
+  const pad = (ICON_CHIP - ICON_GLYPH) / 2;
+  return [
+    `<g data-role="icon" data-icon="${escapeXml(icon.name)}">`,
+    `<circle cx="${num(cx)}" cy="${num(cy)}" r="${r + 1.5}" fill="${theme.canvasBackground}"/>`,
+    `<circle cx="${num(cx)}" cy="${num(cy)}" r="${r}" fill="${resolved.fill}" stroke="${resolved.stroke}" stroke-width="1.25"/>`,
+    renderGlyph(icon, node.x + b.x + pad, node.y + b.y + pad, ICON_GLYPH, resolved.textColor),
+    '</g>',
+  ].join('');
+}
+
 function renderLane(lane: LayoutResult['lanes'][number], index: number, theme: Theme, laneFree: boolean): string {
   if (laneFree) {
     // Amendment A4: a diagram without subgraphs is a plain flowchart: no band, no header. The lane's group and its
@@ -130,7 +163,7 @@ function renderLane(lane: LayoutResult['lanes'][number], index: number, theme: T
   ].join('');
 }
 
-function renderNode(node: LayoutResult['nodes'][number], style: ResolvedStyle | undefined, theme: Theme, linkTarget?: string): string {
+function renderNode(node: LayoutResult['nodes'][number], style: ResolvedStyle | undefined, theme: Theme, linkTarget?: string, icon?: ResolvedIcon): string {
   const resolved = resolveStyle(style, theme);
   const geometry = shapeGeometry(node.kind, { x: node.x, y: node.y, width: node.width, height: node.height });
   const localArea = textArea(node.kind, node.width, node.height);
@@ -143,6 +176,7 @@ function renderNode(node: LayoutResult['nodes'][number], style: ResolvedStyle | 
   for (const decoration of geometry.decorations) parts.push(renderDecoration(decoration, resolved));
   parts.push(renderLabelLines(lines, area, resolved));
   if (resolved.badge) parts.push(renderBadge(resolved.badge, node, theme));
+  if (icon) parts.push(renderIcon(icon, node, resolved, theme));
   parts.push('</g>');
   const group = parts.join('');
   // A15 §7.1: wrap a linked block so exported sets stay clickable (the `<g>` itself is unchanged, so every existing
@@ -199,6 +233,11 @@ function renderLegend(legend: LegendItem[], theme: Theme, x: number, y: number, 
     const resolved = resolveStyle(item.style, theme);
     parts.push('<g data-testid="legend-item">');
     parts.push(`<rect x="${num(ix)}" y="${num(iy)}" width="${LEGEND_SWATCH_W}" height="${LEGEND_SWATCH_H}" rx="3" ry="3" ${presentationAttrs(resolved)}/>`);
+    // A20: a preset pack's entry shows its glyph on the swatch, centred, in the style's text colour.
+    if (item.icon) {
+      const g = LEGEND_SWATCH_H - 4;
+      parts.push(renderGlyph(item.icon, ix + (LEGEND_SWATCH_W - g) / 2, iy + 2, g, resolved.textColor).replace('<g ', `<g data-role="icon" data-icon="${escapeXml(item.icon.name)}" `));
+    }
     parts.push(
       `<text x="${num(ix + LEGEND_SWATCH_W + 8)}" y="${num(iy + LEGEND_SWATCH_H * 0.72)}" font-size="12" fill="${theme.legendText}">${escapeXml(item.text)}</text>`,
     );
@@ -281,7 +320,7 @@ export function renderSvg(options: RenderSvgOptions): string {
   parts.push(`<g transform="translate(${num(ox)}, ${num(oy)})">`);
   const laneFree = isLaneFree(layout.lanes);
   layout.lanes.forEach((lane, index) => parts.push(renderLane(lane, index, theme, laneFree)));
-  for (const node of layout.nodes) parts.push(renderNode(node, styles[node.id], theme, options.links?.[node.id]));
+  for (const node of layout.nodes) parts.push(renderNode(node, styles[node.id], theme, options.links?.[node.id], options.icons?.[node.id]));
   for (const edge of layout.edges) parts.push(renderEdge(edge, theme));
   // Notes and the title take no part in the layout rules and may sit over anything: drawn last, on top.
   for (const note of notes) parts.push(renderNote(note, noteStyle.get(note.id), theme));

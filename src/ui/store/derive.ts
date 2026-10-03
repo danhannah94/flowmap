@@ -4,6 +4,7 @@
 // redo and echoes of our own saves don't lay out twice.
 import { loadDocument, type FlowDocument } from '../../core/document';
 import type { Files } from '../../core/ops';
+import type { PresetFiles } from '../../core/preset';
 import { parseLayoutFile, serializeLayoutFile, setHints } from '../../core/layoutfile';
 import type { Translation } from '../../core/layout';
 import type { LayoutResult } from '../../core/types';
@@ -29,19 +30,21 @@ export interface Derived {
 const cache = new Map<string, Derived>();
 const CACHE_MAX = 64;
 
-function key(files: Files, name: string): string {
-  return `${name}\u0000${files.mmd}\u0001${files.config ?? '\u0002'}\u0001${files.layout ?? '\u0002'}`;
+function key(files: Files, name: string, presets: PresetFiles): string {
+  // A20: the text of the pack file the config names is part of what the document is derived from.
+  const pack = Object.keys(presets).length ? JSON.stringify(presets) : '';
+  return `${name}\u0000${files.mmd}\u0001${files.config ?? '\u0002'}\u0001${files.layout ?? '\u0002'}\u0001${pack}`;
 }
 
-export function derive(files: Files, name: string): Derived {
-  const k = key(files, name);
+export function derive(files: Files, name: string, presets: PresetFiles = {}): Derived {
+  const k = key(files, name, presets);
   const hit = cache.get(k);
   if (hit) {
     cache.delete(k);
     cache.set(k, hit); // most recently used last
     return hit;
   }
-  const doc = loadDocument(files.mmd, files.config, files.layout, name);
+  const doc = loadDocument(files.mmd, files.config, files.layout, name, presets);
   const errors = doc.problems.errors;
   const out: Derived = {
     doc,

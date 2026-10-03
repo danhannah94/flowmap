@@ -184,6 +184,7 @@ same pair, in file order. Edge ids appear in `flowmap layout` output and on UI e
 ```yaml
 version: 1
 title: Purchase request approval (current state)   # shown above the diagram and in exports
+preset: cloud              # optional: a preset pack of icons and looks by kind (section 4.1)
 lanes:                     # display order. Ids match subgraph ids; labels come from the .mmd.
   - id: requester          # lanes missing here are shown after these, in file order
   - id: manager
@@ -259,8 +260,8 @@ nodes:                     # metadata per node id; any keys; all are shown in th
   - A note's position is in the layout file.
 - **Title visibility** (v1.1): `show_title: false` hides the title in the UI and in exports. Absent means shown (the
   UI never writes `show_title: true`). With no `title`, the shown title is the file's base name, as before.
-- **Top-level keys**: `version` (missing means 1; any other value is `E-config`), `title`, `show_title`, `lanes`,
-  `styles`, `nodes`, `notes`. An unknown top-level key, or an unknown key in a rule or lane entry, is warning `W-config-key`.
+- **Top-level keys**: `version` (missing means 1; any other value is `E-config`), `title`, `show_title`, `preset`
+  (amendment A20, section 4.1), `lanes`, `styles`, `nodes`, `notes`. An unknown top-level key, or an unknown key in a rule or lane entry, is warning `W-config-key`.
 - **No config, or no `title`**: the title is the `.mmd` file's base name.
 - Config entries for ids that are not in the `.mmd` are warning `W-config-unknown-node`; lanes listed that don't
   exist are `W-config-unknown-lane`. Deleting a block in the UI never deletes its config entry (it holds evidence);
@@ -278,6 +279,75 @@ nodes:                     # metadata per node id; any keys; all are shown in th
   - Renaming a node or lane id keeps the renamed key or entry in its place.
 - Invalid YAML, or a wrong type for a known key (`lanes` not a list, `nodes` not a map, a node's entry not a map, a
   rule without `match` or `style`) is error `E-config` (line null).
+
+### 4.1 Preset packs (amendment A20)
+
+Architecture sketches read faster when a block shows what kind of component it is. A **preset pack** is a shareable set
+of **kinds**, each with an icon, a look and a legend label. A diagram uses one by naming it, instead of redefining
+the same style rules in every file.
+
+```yaml
+preset: cloud                  # a built-in pack, or a path to a pack file (below)
+nodes:
+  create: {kind: function}     # the block's metadata `kind` picks the pack's "function" kind
+  orders: {kind: queue}
+  db: {kind: database}
+```
+
+- **The reference.** `preset` is text. A value that contains a `/` or ends in `.yaml`, `.yml` or `.json` is a **pack
+  file**: a path relative to the folder of the diagram's `.mmd`, written with forward slashes, never absolute (`..`
+  may climb, but the file must stay inside the folder `flowmap serve` was given; a path that leaves it, also through a
+  symlink, is unreadable, as is a file over 256 KB). Anything else is the name of a **built-in pack**. A `preset` that
+  isn't text is `E-config`. Moving a diagram or renaming a folder does not rewrite a pack path (unlike `link`, A17); the
+  broken reference shows as `W-preset-unknown` until it is fixed.
+- **The built-in pack `cloud`** ("Cloud architecture") is provider-neutral: the kinds are generic roles and the icons
+  are original line drawings, not any vendor's artwork. Kinds (aliases in brackets): `function` (`serverless`, `fn`),
+  `service` (`container`, `compute`, `server`), `object-storage` (`bucket`, `blob-storage`, `storage`), `database`
+  (`db`, `datastore`), `cache`, `queue` (`message-queue`), `topic` (`event-bus`, `pubsub`), `api-gateway` (`gateway`,
+  `api`), `load-balancer` (`lb`), `cdn`, `external-service` (`external`, `saas`, `third-party`; dashed border), `user`
+  (`actor`, `person`, `client`), `identity` (`auth`, `idp`), `scheduler` (`cron`, `timer`), `monitoring` (`metrics`,
+  `observability`, `logs`). Each kind has a light and a dark fill and border.
+- **A pack file** is YAML (so JSON works too):
+
+  ```yaml
+  version: 1                     # optional; any other value makes the pack unreadable (W-preset-invalid)
+  name: Team pack                # optional display name
+  kinds:
+    job:
+      label: Background job      # the legend text; a kind without one has no legend entry
+      aliases: [cron-job]        # other values of `kind` that mean the same
+      icon: queue                # a built-in icon name, or {paths: ["M4 4h16v16H4z", "M8 12h8"]}
+      style: {fill: {light: "#fde7c8", dark: "#5a3a10"}}   # the style properties of section 4
+  ```
+
+  An icon is stroke-only line art on a 24 x 24 grid: a built-in icon name (the `cloud` kind ids above) or `paths`, 1
+  to 12 SVG path strings of at most 600 characters each, which may hold only path commands, numbers and separators (a
+  pack can't carry markup). A pack's `style` has the same properties and the same `W-style` handling as a rule's.
+- **What a block gets.** Only the block's **metadata** `kind` selects a pack kind (an id or an alias; exact, case
+  sensitive). The block's shape kind does not: a pack never restyles every `database`-shaped block. A matching block
+  gets the kind's style, as the lowest layer: the diagram's rules, then the block's own `style` (section 4), override
+  it property by property. It also gets the kind's icon: a round tag on the block's top edge towards the left (mirror
+  image of the badge), drawn in the block's own fill and border, with the glyph in the block's text colour so it
+  contrasts with the fill in either theme. The tag is decoration: it takes no room in the layout (the layout still
+  ignores styles), and no clicks.
+- **The legend.** For each pack kind that at least one block uses and that has a `label`, in pack order, there is a
+  legend entry (the kind's look as the swatch, with the icon on it), placed before the legend entries of the diagram's
+  own rules. A kind nobody uses has none.
+- **Warnings** (never errors; the diagram is drawn without whatever couldn't be read):
+  - `W-preset-unknown`: a built-in name that doesn't exist, or a pack file that doesn't exist, isn't a file, is too
+    big, or is outside the served folder.
+  - `W-preset-invalid`: a reference that is neither a name nor a relative path; a pack file that isn't valid YAML, isn't
+    a map with a `kinds` map, or has another `version`; and, naming the kind, a kind or icon that is ignored (not a
+    map, an unknown icon name, unsafe or too many `paths`, an unknown key, an alias already taken). Bad style
+    properties in a pack are `W-style`.
+  - `W-preset-kind`: a block's `kind` that the pack doesn't have (one warning per kind, naming its blocks), unless a
+    style rule of the diagram matches on that same `kind` value, which marks it as the diagram's own.
+- **Where the pack file is read.** `flowmap validate`, `layout` and `export` read it from beside the `.mmd` (a path
+  given directly is trusted); `flowmap serve` reads it from beside the diagram inside the served folder, sends its text
+  with the diagram (the browser reads no file itself and fetches nothing), and treats a change to it like a change to
+  the diagram's own files for the live view (UI29), except that it doesn't clear undo history, since the editor holds
+  no copy of it. A pack file is never written by the editor.
+- **No config, no pack:** a config with `E-config` uses default styles (section 7), so it uses no pack either.
 
 ## 5. The `.layout.json` file
 
@@ -432,7 +502,8 @@ affect it.
 Error and warning codes: `E-header`, `E-nested`, `E-unclosed`, `E-shape`, `E-edge`, `E-duplicate`, `E-syntax`,
 `E-config`, `E-layout`; `W-no-lane`, `W-direction`, `W-style`, `W-config-key`, `W-config-unknown-node`,
 `W-config-unknown-lane`, `W-layout-unknown-node`, and (v1.1) `W-layout-unknown-edge`, `W-layout-unknown-note`, and
-(amendment A15) `W-link-missing`, `W-link-traversal`. Every error found is reported. Line numbers are 1-based lines in
+(amendment A15) `W-link-missing`, `W-link-traversal`, and (amendment A20) `W-preset-unknown`, `W-preset-invalid`,
+`W-preset-kind`. Every error found is reported. Line numbers are 1-based lines in
 the `.mmd`; problems in the config or layout file have line null. Messages are free text; codes and lines are the
 contract.
 
@@ -482,6 +553,13 @@ The tests parse the SVG as XML. Layout and drawing are otherwise the implementat
   the label.
 - The legend is a `<g data-testid="legend">` with one `<g data-testid="legend-item">` per rule that has legend text,
   in rule order. Each holds the legend text and a swatch shape styled with the same attributes as a node shape.
+  (Amendment A20) The entries of a preset pack (section 4.1) come first; each one's swatch is followed by a
+  `<g data-role="icon" data-icon="<name>">` holding the glyph.
+- (Amendment A20) A node with a preset-pack icon has, after its shape, label and badge, a
+  `<g data-role="icon" data-icon="<name>">` (`<name>` is the built-in icon's name, or `custom` for a pack's own
+  `paths`) holding the round tag (two `<circle>`s) and the glyph: a `<g>` with `fill="none"`, `stroke="#rrggbb"` (the
+  block's text colour) and one `<path>` per path string. The icons are drawn inline: the SVG, and the PNG made from it,
+  refer to nothing outside themselves.
 
 ## 8. The UI
 
@@ -629,7 +707,10 @@ Three rules apply to every operation below:
   dropdowns for border style and font style, a number for border width, text for the badge. A colour whose dark value
   is empty or equal to its light value is written as a single colour. The whole `styles` list can also be edited as
   YAML (YAML that isn't a list of rules is refused with a message). Unknown properties are kept. Changes restyle the
-  canvas at once.
+  canvas at once. (Amendment A20) Above the rules, a "Preset pack" field sets the config's `preset` (section 4.1): a
+  text input for a built-in name or a pack file path (commits on Enter or blur), a Clear button, one chip per built-in
+  pack, and, while a pack is in use, its name. Each change is one undoable operation; the field is off while the config
+  has errors (UI26).
 - **UI26 Config writes keep the file intact**: comments, key order and formatting of every part not edited survive
   byte-for-byte. New node entries are appended at the end of `nodes`, new fields at the end of their entry. If the
   config on disk has errors, config editing is off (the diagram stays editable) until the file is fixed.
@@ -818,7 +899,8 @@ opening first, through the listed opener).
 | Field form | `data-testid="field-key"` (input), `field-type` (select: `text`, `list`, `map`, `yaml`), `field-value` (textarea: text as is; a list as one item per line; a map as one `key: value` per line, split at the first `: `; YAML as is), `field-save`; suggested values are `data-testid="field-suggestion"` buttons whose text is the value |
 | Node YAML | `data-testid="node-yaml"` (textarea with the selected block's metadata entry) and `node-yaml-apply`; a refusal shows `data-testid="yaml-error"` (also used by `styles-yaml`) |
 | Styles panel | `data-testid="styles"` (opened by `styles-toggle`) with `rule-add`, `styles-yaml` (textarea with the whole `styles` list) and `styles-yaml-apply`. Each rule, in order, is `data-testid="style-rule"`, containing `rule-legend` (input), `rule-up`, `rule-down`, `rule-delete`, `match-add`, and its conditions as `data-testid="match-row"`, each with `match-field` (input), `match-op` (select: `equals`, `present`, `absent`), `match-value` (input) and `match-delete`. Each style property is a control with `data-prop="<property>"`; a colour property holds two text inputs, `data-variant="light"` and `data-variant="dark"`, that accept `#rrggbb` or `#rgb`; an empty input clears the property. Every select has an empty option and every number input may be emptied; empty clears the property |
-| Legend | `data-testid="legend"`, one `data-testid="legend-item"` child per rule that has legend text, in rule order |
+| Legend | `data-testid="legend"`, one `data-testid="legend-item"` child per rule that has legend text, in rule order (amendment A20: the preset pack's entries first; an entry with an icon also has `data-icon="<name>"`) |
+| Preset pack (amendment A20) | on a node, `data-testid="node-icon"` with `data-icon="<name>"` (an inline `<svg>` holding the tag and the glyph's `<path>`s), present only when the block has an icon; in the Styles panel, `data-testid="preset-field"` holding `preset-input` (commits on Enter or blur), `preset-clear`, `preset-suggestion` (one per built-in pack) and, while a pack is in use, `preset-using` ("Using <name>") |
 | Save indicator | `data-testid="save-status"` with text `saved`, `saving` or `error` |
 | Error banner | `data-testid="errors"`, one child per problem with `data-code="<code>"`; a child for any orphan code in UI27 contains an `orphan-delete` button |
 | Confirmation dialog | `data-testid="confirm"` with buttons `confirm-yes` and `confirm-no` |
@@ -976,3 +1058,4 @@ in flight.
 | 2026-09-30 | **A14. Trackpad-friendly navigation, and a controls legend (Dan).** UI3: a trackpad's two-finger scroll pans the canvas on both axes instead of zooming; a trackpad pinch, a mouse's scroll wheel, and Cmd/Ctrl+wheel (still, unconditionally) all zoom around the cursor; a mouse's Shift+wheel pans horizontally. Space+drag and the middle button still pan (A11). Which way one wheel event goes is a heuristic (`classifyWheel`, `src/ui/canvas/wheel-intent.ts`), since no browser API says "this is a trackpad": `ctrlKey`/`metaKey` always zoom; `deltaMode` 1 or 2 (lines/pages) or a legacy `wheelDeltaY` that is a clean multiple of 120 read as a mouse; a non-zero `deltaX` in pixel mode or a fractional `deltaY` read as a trackpad; a whole-pixel, vertical-only, otherwise-unmarked delta falls back to zoom, the original behaviour. Classification is sticky for 300 ms of one continuous, genuinely ambiguous tail (a trackpad's momentum decaying to a whole-pixel delta near the end of a scroll), but a modifier key or the "Scroll to" override below is read fresh on every event and is never held over. Safari reports a trackpad pinch as `gesturestart`/`gesturechange`/`gestureend` (`scale`) instead of Ctrl+wheel; both are handled, and while one of Safari's gesture events is in progress the wheel handler stands down so the same physical pinch isn't applied twice. A "Scroll to: Auto / Pan / Zoom" choice (`localStorage` key `flowmap.scroll-preference`, degrading quietly if storage is unavailable) overrides the heuristic; Cmd/Ctrl+wheel still always zooms regardless of it. A controls legend — a small chip (`data-testid="controls-legend-toggle"`) beside the `?` shortcut button, its panel `data-testid="controls-legend"` — lists Pan, Zoom, Select, Edit and View in a few lines each, verified against the real gesture and keyboard code rather than guessed, and holds the "Scroll to" control (`data-testid="scroll-preference"`); its open/closed state is remembered in `localStorage` (`flowmap.controls-legend-open`), collapsed by default. It is not modal and doesn't replace the existing `?` shortcut list, which still has the full keyboard reference. | A plain wheel-always-zooms canvas fights a trackpad's two-finger scroll, the way most people expect to pan; and the pan/zoom/select/edit gestures were only discoverable by opening the full shortcut list. |
 | 2026-09-30 | **A15. A block can link to another diagram (Dan).** §4: a node's metadata may hold `link`, another diagram's path relative to the served root, without `.mmd`, forward slashes only (§4's new bullet has the full grammar and the two warning codes, `W-link-missing` and `W-link-traversal`, added to §7's code list). `link` is reserved like `style` (not a field row; the field form refuses it as a key) but, unlike `style`, stays a normal matchable field, so a style rule can mark linked blocks (`match: {link: present}`). Linking a block to its own diagram is allowed. **Following a link**: Cmd+click (Mac) / Ctrl+click (elsewhere) on a linked block follows it instead of extending the selection (the one exception to A11's Cmd/Ctrl-click-extends-selection rule: only on a block that has a link); a plain click always still selects. Every linked block also draws a small corner badge (`data-testid="link-badge"`, `data-link-target`, its title the target); a plain click on the badge alone follows the link regardless of the selection state. Following a link uses the app's own `?file=` navigation (not a hand-rolled route), so Back returns to the diagram it was followed from; the previous diagram's viewport (pan and zoom) is cached in `sessionStorage`, keyed by file name, the moment a link is followed, and consumed once when that diagram is next opened (by Back or otherwise) — cheap, and falling back to the normal fit when there's nothing cached. A traversing link (a `..` segment) is stored and warned but the UI refuses to follow it (a toast explains why); a link to a target that simply doesn't exist is still followed, landing on the same "couldn't open" screen a deleted diagram already shows. **Setting a link**: the inspector gets a "Links to" field (`data-testid="link-field"`, `link-input`, `link-clear`, `link-suggestion` per diagram the server lists — reusing `GET /api/diagrams`, the home page's own API — and `link-open` once set); the block context menu gets `link` ("Link to diagram…"), the same input and suggestions inside the menu. Typing accepts a pasted `.mmd` name or a backslash path, normalising both. **Validation**: `flowmap validate` checks a diagram's links against every `.mmd` under its own directory (recursively, skipping `.flowmap-trash` and `exports`) — the closest available stand-in for "the served root" at the single-file CLI, since `validate` takes no `--dir`; the UI checks against the diagram list it already fetched. **Export**: SVG wraps a linked block's `<g>` in `<a href="<target>.svg">` (§7.1); PNG is unaffected (it screenshots the SVG, and a flat raster has no links regardless). **Staying valid across a move or folder rename**: amendment A17 (§12), below. | "Hand-off" blocks in a set of stage diagrams (e.g. "Hand-off to 2 · Complete + save") should take you straight to the diagram they refer to, without leaving the editor or hunting through the home page. |
 | 2026-09-30 | **A16. Folders on the home screen (Dan).** Folders are real subdirectories of the served root, so they work with git, the CLI and editors: a diagram's id/path is its root-relative path without extension (`sales/stage-2`), and `?file=` is that path plus `.mmd` (a bare `<name>.mmd` still works unchanged). **Server**: `isValidMmdName` (§8.2's traversal rejections) now accepts any number of folder segments; every segment (of a diagram's or a folder's path alike) is still checked for `..`, a leading slash and a backslash, and additionally rejected if it's a dot-folder, `node_modules` or `exports` (already special, UI32/A10, so never reachable as a browsable folder). Every path is further resolved through the served root with symlinks followed (`resolveInRoot`/`PathTraversalError` in `src/server/files.ts`) before any read, write, move, or create/rename/delete, rejecting one that lands outside it. `GET /api/diagrams` now lists every `.mmd` under the root recursively (root-relative paths, depth-limited, `MAX_FOLDER_DEPTH` = 12), skipping dot-folders (so `.flowmap-trash`, A10, is never listed or reachable through these routes), `node_modules` and `exports` (already special, UI32/A10) at any depth. `GET /api/folder?dir=<path>` lists one folder's immediate subfolders and diagrams only (so an empty subfolder still shows, unlike the recursive list); `POST`/`PUT`/`DELETE /api/folder` create, rename (keeping a folder in its parent) and delete (only when empty, else 409 with a message) a folder. `POST /api/diagram/move` `{file, to}` moves a diagram's `.mmd`/`.flow.yaml`/`.layout.json` (whichever exist) and any other file beside it sharing its base name (an extra export, say) into folder `to`, refusing a name collision at the destination; it is one server function (`moveDiagram`) precisely so a later change could rewrite `link:` node values (the cross-diagram link feature built alongside this one) that point at the diagram's old path — that change is amendment A17 (§12), below. **Home screen**: shows the current folder's subfolders, then its diagrams; a breadcrumb (root, then each segment) remembers the folder in `?dir=`, so Back works. "New folder" creates one in the current folder; a folder's own small menu (opener + popover, the same pattern UI6/A10's per-row control uses) offers Rename and Delete (refused, with a message, unless empty); a diagram's row menu adds "Move to…" (a small dialog: breadcrumbs and subfolders to browse to, "Move here") beside Delete (A10, now inside the same menu rather than its own button). Dragging a diagram row onto a folder row or a breadcrumb segment moves it there the same way. New diagrams (UI6) are created in the current folder. The editor shows the full path in its file name and its "back to list" (the home logo, UI1) returns to the diagram's own folder, not always the root; a diagram's `?file=` keeps working with or without a folder. | Diagrams needed real folders to organise a growing set of process maps (Sales-style client work spans many stages), while staying plain files a person could also browse in Finder or edit by hand. |
+| 2026-10-03 | **A20. Architecture preset packs (issue #3).** New section 4.1 and the top-level config key `preset`: a diagram names a preset pack, a built-in (`cloud`, a provider-neutral "Cloud architecture" pack of 15 kinds with original line icons) or a YAML pack file relative to the diagram (inside the served folder), and every block whose metadata `kind` the pack knows gets the kind's icon (a round tag on the block's top edge, `iconBox`, shared by the editor and the export) and its style as the lowest layer under the diagram's rules and the block's own `style`; the legend gets an entry for each pack kind in use, before the diagram's own. A pack kind is `{label?, aliases?, icon?, style?}`; an icon is a built-in icon name or up to 12 safe SVG path strings (no markup). Warnings `W-preset-unknown`, `W-preset-invalid`, `W-preset-kind` (§7); `E-config` for a `preset` that isn't text. SVG export (§7.1) draws `<g data-role="icon" data-icon>` per icon, in blocks and in legend swatches, inline, so exports and PNGs need no network. `flowmap serve` sends the pack file's text with the diagram (snapshot `presets`, version `preset`, which the watcher follows without clearing undo history), refuses paths outside the served folder, and the Styles panel gets a Preset pack field (UI25, §8.3). The layout is unchanged by icons (it ignores styles). Pack paths are not rewritten when a diagram moves (A17 covers `link:` only). | Architecture sketches read faster with recognisable component types, and per-diagram style rules repeat the same encoding in every file; a shareable pack keeps the encoding in one place. |

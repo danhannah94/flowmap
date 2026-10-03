@@ -2,6 +2,7 @@
 // hidden since v1.1, is drawn with the notes: src/ui/notes.)
 import { resolveStyle, type Theme } from '../../core/theme';
 import type { LayoutResult, LegendItem } from '../../core/types';
+import { Glyph } from './Icon';
 import { notesRowBottom } from '../notes/geometry';
 import { LEGEND_GAP } from '../store/store';
 import { useStoreState } from '../store/hooks';
@@ -18,7 +19,7 @@ export function Legend({ items, layout, theme }: { items: LegendItem[]; layout: 
       {items.map((item, i) => {
         const s = resolveStyle(item.style, theme);
         return (
-          <div key={i} data-testid="legend-item" className="fm-legend-item">
+          <div key={i} data-testid="legend-item" className="fm-legend-item" data-icon={item.icon?.name}>
             <svg width={30} height={20} aria-hidden="true">
               <rect
                 x={2}
@@ -31,6 +32,7 @@ export function Legend({ items, layout, theme }: { items: LegendItem[]; layout: 
                 strokeWidth={s.strokeWidth}
                 strokeDasharray={s.dasharray ?? undefined}
               />
+              {item.icon ? <Glyph icon={item.icon} x={8} y={4} size={12} color={s.textColor} /> : null}
               {s.badge ? <circle cx={26} cy={4} r={3.5} fill={theme.badgeFill} stroke={theme.badgeText} strokeWidth={1} /> : null}
             </svg>
             <span style={{ fontStyle: s.fontStyle, fontWeight: s.fontWeight === 'bold' ? 700 : undefined }}>{item.text}</span>

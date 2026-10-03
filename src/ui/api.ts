@@ -1,20 +1,26 @@
 // The local server's JSON API and push channel (src/server). The UI never touches files except through here.
 import type { Files } from '../core/ops';
+import type { PresetFiles } from '../core/preset';
 
 /** Each file's version (a sha1 of its content), or null when the file doesn't exist. */
 export interface Versions {
   mmd: string | null;
   config: string | null;
   layout: string | null;
+  /** A20: a hash of the preset pack file the config names (null: unreadable); absent while it names none. Not part of
+   *  a save's conflict check; it only tells a viewer that the pack changed. */
+  preset?: string | null;
 }
 
 export interface Snapshot {
   files: Files;
   versions: Versions;
+  /** A20: the text of the pack file the config's `preset:` names, keyed as written (null: could not be read). */
+  presets?: PresetFiles;
 }
 
 export type PutOutcome =
-  | { kind: 'saved'; versions: Versions }
+  | { kind: 'saved'; versions: Versions; presets?: PresetFiles }
   | { kind: 'conflict'; snapshot: Snapshot }
   | { kind: 'error'; message: string };
 
@@ -164,8 +170,8 @@ export async function putDiagram(file: string, base: Versions, files: Files): Pr
   }
   if (res.status === 409) return { kind: 'conflict', snapshot: (await res.json()) as Snapshot };
   if (!res.ok) return { kind: 'error', message: await failure(res) };
-  const js = (await res.json()) as { versions: Versions };
-  return { kind: 'saved', versions: js.versions };
+  const js = (await res.json()) as { versions: Versions; presets?: PresetFiles };
+  return { kind: 'saved', versions: js.versions, presets: js.presets };
 }
 
 /**
@@ -231,6 +237,12 @@ export function subscribeChanges(
   return () => es.close();
 }
 
+/** The three files match (the disk has nothing new for the files the person is editing). */
 export function sameVersions(a: Versions, b: Versions): boolean {
   return a.mmd === b.mmd && a.config === b.config && a.layout === b.layout;
+}
+
+/** A20: the preset pack file matches too (a pack file edited elsewhere changes this and nothing in `sameVersions`). */
+export function samePreset(a: Versions, b: Versions): boolean {
+  return (a.preset ?? null) === (b.preset ?? null);
 }
